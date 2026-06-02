@@ -30,7 +30,8 @@ describe("Run Command", () => {
       runId: "test-run",
       status: "succeeded",
       durationMs: 10,
-      artifactsDir: "runs"
+      artifactsDir: "runs",
+      agents: []
     } as WorkflowRunResult);
     const mockRunner: RuntimeRunner = { run: runSpy };
 
@@ -65,6 +66,7 @@ describe("Run Command", () => {
       status: "failed",
       durationMs: 10,
       artifactsDir: "runs",
+      agents: [],
       error: new Error("execution failure")
     } as WorkflowRunResult);
     const mockRunner: RuntimeRunner = { run: runSpy };
@@ -94,7 +96,8 @@ describe("Run Command", () => {
       runId: "test-run",
       status: "succeeded",
       durationMs: 10,
-      artifactsDir: "runs"
+      artifactsDir: "runs",
+      agents: []
     } as WorkflowRunResult);
     const mockRunner: RuntimeRunner = { run: runSpy };
 

@@ -290,4 +290,48 @@ describe("DSL: agent()", () => {
     await expect(dsl.agent({ prompt: "hello", timeoutMs: -1 })).rejects.toThrow(InvalidDslCallError);
     await expect(dsl.agent({ prompt: "hello", timeoutMs: 0 })).rejects.toThrow(InvalidDslCallError);
   });
+
+  it("generates unique, deterministic IDs for multiple unnamed agents", async () => {
+    const scheduler = {
+      schedule: vi.fn().mockImplementation((task) => {
+        return Promise.resolve(makeSuccessResult(task.id));
+      }),
+      drain: vi.fn(),
+      abort: vi.fn(),
+      getSnapshot: vi.fn()
+    };
+    const runtime = makeRuntimeState({ scheduler: scheduler as any });
+    const dsl = createDsl(runtime);
+
+    await dsl.agent({ prompt: "first" });
+    await dsl.agent({ prompt: "second" });
+
+    expect(scheduler.schedule).toHaveBeenCalledTimes(2);
+    expect(scheduler.schedule.mock.calls[0][0].id).toBe("agent-1");
+    expect(scheduler.schedule.mock.calls[1][0].id).toBe("agent-2");
+  });
+
+  it("ensures uniqueness across parallel unnamed agent calls", async () => {
+    const scheduler = {
+      schedule: vi.fn().mockImplementation((task) => {
+        return Promise.resolve(makeSuccessResult(task.id));
+      }),
+      drain: vi.fn(),
+      abort: vi.fn(),
+      getSnapshot: vi.fn()
+    };
+    const runtime = makeRuntimeState({ scheduler: scheduler as any });
+    const dsl = createDsl(runtime);
+
+    await dsl.parallel([
+      () => dsl.agent({ prompt: "parallel 1" }),
+      () => dsl.agent({ prompt: "parallel 2" })
+    ]);
+
+    expect(scheduler.schedule).toHaveBeenCalledTimes(2);
+    const ids = scheduler.schedule.mock.calls.map(call => call[0].id);
+    expect(ids).toContain("agent-1");
+    expect(ids).toContain("agent-2");
+    expect(ids[0]).not.toBe(ids[1]);
+  });
 });

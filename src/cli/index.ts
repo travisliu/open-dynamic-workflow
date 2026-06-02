@@ -52,7 +52,6 @@ export async function main(argv: string[]): Promise<void> {
       if (options.retry) {
         throw new ExecflowError(ErrorCode.CLI_USAGE_ERROR, "--retry is not supported in the MVP.");
       }
-      console.log("Action triggered! options:", options);
       await runCommand({ workflowFile, rawOptions: options });
     });
 

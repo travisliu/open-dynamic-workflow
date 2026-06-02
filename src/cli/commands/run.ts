@@ -156,12 +156,6 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     artifactsDir: runOutDir
   });
 
-  const idGenerator = {
-    nextId() {
-      return runIdGenerated;
-    }
-  };
-
   const defaultRunner = new DefaultRuntimeRunner();
   const runner = input.deps?.runtimeRunner ?? defaultRunner;
 
@@ -185,7 +179,9 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     agentExecutor,
     eventSink: eventBus,
     artifactStore,
-    idGenerator
+    idGenerator: {
+      nextId: (prefix: string) => (prefix === "run" ? runIdGenerated : crypto.randomUUID())
+    }
   });
 
   await eventBus.drain();
@@ -196,10 +192,14 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   await reporter.finish(result);
 
   if (result.status === "failed") {
+    const agents = result.agents || [];
+    const hasTimeout = agents.some((a) => a.status === "timed_out");
+    const errorCode = hasTimeout ? ErrorCode.PROCESS_TIMEOUT : ErrorCode.PROVIDER_PROCESS_FAILED;
+    
     const errMessage = typeof result.error === "string"
       ? result.error
       : (result.error as any)?.message || "Workflow run failed";
-    throw new ExecflowError(ErrorCode.PROVIDER_PROCESS_FAILED, errMessage, { cause: result.error });
+    throw new ExecflowError(errorCode, errMessage, { cause: result.error });
   } else if (result.status === "cancelled") {
     throw new ExecflowError(ErrorCode.USER_CANCELLED, "Workflow run was cancelled");
   }

@@ -53,13 +53,19 @@ describe("JsonReporter", () => {
     expect(getStdout()).toBe("");
   });
 
-  it("finish() writes valid JSON matching result to stdout", () => {
+  it("finish() writes valid JSON matching result to stdout and nothing else", () => {
     const { streams, getStdout } = createMockStreams();
     const reporter = new JsonReporter(streams);
 
     reporter.finish(dummyResult as any);
 
     const output = getStdout();
+    
+    // Should be exactly the JSON string + newline
+    const expected = JSON.stringify(dummyResult, null, 2) + "\n";
+    expect(output).toBe(expected);
+
+    // Should be parseable
     const parsed = JSON.parse(output.trim());
     expect(parsed).toEqual(dummyResult);
   });

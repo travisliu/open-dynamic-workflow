@@ -1,4 +1,4 @@
-import type { Scheduler, ScheduledTask, ScheduleOptions } from "../types/scheduler.js";
+import type { Scheduler, ScheduledTask, ScheduleOptions, AbortReason } from "../types/scheduler.js";
 import type { AgentResult, AgentTaskState } from "../types/agent.js";
 import type { WorkflowEventType } from "../types/events.js";
 import { createLinkedAbortController } from "./cancellation.js";
@@ -27,7 +27,7 @@ export class DefaultScheduler implements Scheduler {
   private readonly running = new Map<string, InternalTask>();
   private readonly completed = new Map<string, any>();
   private aborted = false;
-  private abortReason?: string;
+  private abortReason?: AbortReason;
   private readonly concurrency: number;
   private readonly failFast: boolean;
   private readonly eventSink?: RuntimeEventSink | undefined;
@@ -82,14 +82,23 @@ export class DefaultScheduler implements Scheduler {
     return promise;
   }
 
-  abort(reason?: string): void {
+  abort(reason?: string | AbortReason): void {
     if (this.aborted) return;
     this.aborted = true;
-    this.abortReason = reason || "Scheduler aborted";
+    
+    if (typeof reason === "string") {
+      this.abortReason = { type: "other", message: reason };
+    } else if (reason) {
+      this.abortReason = reason;
+    } else {
+      this.abortReason = { type: "other", message: "Scheduler aborted" };
+    }
+
+    const abortMsg = this.abortReason.message;
 
     // Abort running tasks
     for (const runningTask of this.running.values()) {
-      runningTask.abortController.abort(this.abortReason);
+      runningTask.abortController.abort(abortMsg);
     }
 
     // Skip queued tasks
@@ -108,7 +117,7 @@ export class DefaultScheduler implements Scheduler {
           exitCode: null,
           error: {
             name: "AgentTaskSkipped",
-            message: this.abortReason || "Task skipped due to scheduler abort",
+            message: abortMsg,
             code: "TASK_SKIPPED"
           }
         });
@@ -213,7 +222,12 @@ export class DefaultScheduler implements Scheduler {
             internalTask.resolve(result);
 
             if (this.failFast || internalTask.options?.failFast) {
-              this.abort(`Fail-fast triggered by step ${internalTask.task.id}`);
+              this.abort({
+                type: "fail-fast",
+                message: `Fail-fast triggered by step ${internalTask.task.id}`,
+                source: internalTask.task.id,
+                cause: agentStatus === "timed_out" ? "timeout" : "failure"
+              });
             }
           }
         } catch (err: any) {
@@ -264,7 +278,12 @@ export class DefaultScheduler implements Scheduler {
           internalTask.resolve(failureResult as any);
 
           if (this.failFast || internalTask.options?.failFast) {
-            this.abort(`Fail-fast triggered by step ${internalTask.task.id} throwing error`);
+            this.abort({
+              type: "fail-fast",
+              message: `Fail-fast triggered by step ${internalTask.task.id} throwing error`,
+              source: internalTask.task.id,
+              cause: "error"
+            });
           }
         } finally {
           this.pump();
@@ -299,7 +318,8 @@ export class DefaultScheduler implements Scheduler {
     }
   }
 
-  private createSkippedOrCancelledResult(task: ScheduledTask<any>, status: "skipped" | "cancelled", reason?: string): AgentResult {
+  private createSkippedOrCancelledResult(task: ScheduledTask<any>, status: "skipped" | "cancelled", reason?: string | AbortReason): AgentResult {
+    const reasonMsg = typeof reason === "string" ? reason : reason?.message;
     const res: AgentResult = {
       ok: false,
       status,
@@ -317,7 +337,7 @@ export class DefaultScheduler implements Scheduler {
       },
       error: {
         name: status === "skipped" ? "AgentTaskSkipped" : "AgentTaskCancelled",
-        message: reason || `Task was ${status}`,
+        message: reasonMsg || `Task was ${status}`,
         code: status === "skipped" ? "TASK_SKIPPED" : "USER_CANCELLED"
       }
     };

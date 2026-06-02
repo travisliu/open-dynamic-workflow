@@ -101,4 +101,170 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     delete process.env.SECRET_KEY_FOR_TEST;
     delete process.env.PASSED_VAR_FOR_TEST;
   });
+
+  it("reports status 'timed_out' when execution times out", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "timeout-agent": {
+              timeout: true,
+              stdout: "some output before timeout",
+              stderr: ""
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-timeout";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, execflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "timeout-agent",
+      label: "Timeout Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 100,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("timed_out");
+    expect(result.stdout).toBe("some output before timeout");
+  });
+
+  it("reports status 'cancelled' when execution is cancelled", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "cancelled-agent": {
+              fail: true,
+              error: { code: "USER_CANCELLED" },
+              stdout: "some output before cancellation",
+              stderr: ""
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-cancelled";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, execflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "cancelled-agent",
+      label: "Cancelled Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("cancelled");
+    expect(result.stdout).toBe("some output before cancellation");
+  });
+
+  it("follows precedence: timeout > cancellation > process failure", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "multi-fail-agent": {
+              timeout: true,
+              fail: true,
+              error: { code: "USER_CANCELLED" },
+              exitCode: 1,
+              stdout: "mixed",
+              stderr: "mixed"
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-multi";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, execflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "multi-fail-agent",
+      label: "Multi Fail Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 100,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("timed_out"); // Timeout has highest precedence
+  });
+
+  it("writes durable logs for mock provider", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "log-agent": {
+              stdout: "mock stdout",
+              stderr: "mock stderr",
+              text: "mock result",
+              exitCode: 0
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-logs";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, execflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    await executor.execute({
+      id: "log-agent",
+      label: "Log Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    const stdoutLog = await fs.readFile(path.join(runOutDir, "agents/log-agent/stdout.log"), "utf8");
+    const stderrLog = await fs.readFile(path.join(runOutDir, "agents/log-agent/stderr.log"), "utf8");
+
+    expect(stdoutLog).toBe("mock stdout");
+    expect(stderrLog).toBe("mock stderr");
+  });
 });

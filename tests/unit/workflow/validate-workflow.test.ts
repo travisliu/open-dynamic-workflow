@@ -105,4 +105,44 @@ describe("Validate Workflow Restrictions", () => {
     const issues = validateWorkflow(parsed, options);
     expect(issues.some(i => i.message.includes("Math.random() is not allowed"))).toBe(true);
   });
+
+  it("flags constructor access", () => {
+    const parsed = createParsed(`
+      const c = ({}).constructor;
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("Access to 'constructor' is not allowed"))).toBe(true);
+  });
+
+  it("flags __proto__ access", () => {
+    const parsed = createParsed(`
+      const p = ({}).__proto__;
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("Access to '__proto__' is not allowed"))).toBe(true);
+  });
+
+  it("flags globalThis access", () => {
+    const parsed = createParsed(`
+      const g = globalThis;
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("Global object access is not allowed"))).toBe(true);
+  });
+
+  it("flags Function constructor", () => {
+    const parsed = createParsed(`
+      const f = new Function('return process');
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("Dynamic function creation is not allowed"))).toBe(true);
+  });
+
+  it("flags indirect constructor access via bracket notation", () => {
+    const parsed = createParsed(`
+      const c = ({})['constructor'];
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("Access to 'constructor' is not allowed"))).toBe(true);
+  });
 });

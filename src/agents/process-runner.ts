@@ -25,6 +25,10 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
     let stdoutAcc = "";
     let stderrAcc = "";
 
+    // Track async output handlers to ensure they complete
+    let stdoutChain = Promise.resolve();
+    let stderrChain = Promise.resolve();
+
     const child = spawn(command, args, {
       cwd,
       env,
@@ -93,11 +97,13 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
       const text = chunk.toString("utf8");
       stdoutAcc += text;
       if (onStdout) {
-        try {
-          onStdout(text);
-        } catch {
-          // Ignore callback errors
-        }
+        stdoutChain = stdoutChain.then(async () => {
+          try {
+            await onStdout(text);
+          } catch {
+            // Ignore callback errors
+          }
+        });
       }
     });
 
@@ -105,11 +111,13 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
       const text = chunk.toString("utf8");
       stderrAcc += text;
       if (onStderr) {
-        try {
-          onStderr(text);
-        } catch {
-          // Ignore callback errors
-        }
+        stderrChain = stderrChain.then(async () => {
+          try {
+            await onStderr(text);
+          } catch {
+            // Ignore callback errors
+          }
+        });
       }
     });
 
@@ -120,8 +128,12 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
       child.stdin.end();
     }
 
-    child.on("close", (exitCode, signalName) => {
+    child.on("close", async (exitCode, signalName) => {
       cleanup();
+      
+      // Wait for all output handlers to complete before resolving
+      await Promise.allSettled([stdoutChain, stderrChain]);
+
       if (!resolved) {
         resolved = true;
         const durationMs = Date.now() - startedAt;

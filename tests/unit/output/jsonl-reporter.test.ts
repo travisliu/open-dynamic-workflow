@@ -39,13 +39,18 @@ describe("JsonlReporter", () => {
     }
   };
 
-  it("handle() writes exactly one line, valid JSON, matching the event", () => {
+  it("handle() writes exactly one line, valid JSON, matching the event, and nothing else", () => {
     const { streams, getStdout } = createMockStreams();
     const reporter = new JsonlReporter(streams);
 
     reporter.handle(dummyEvent);
 
     const output = getStdout();
+    
+    // Should be exactly the JSON string + newline
+    const expected = JSON.stringify(dummyEvent) + "\n";
+    expect(output).toBe(expected);
+
     expect(output.endsWith("\n")).toBe(true);
 
     const parsed = JSON.parse(output.trim());

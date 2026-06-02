@@ -14,6 +14,8 @@ import type { RuntimeState } from "./types.js";
 import { serializeError } from "../errors/serialize.js";
 import { createLinkedAbortController } from "../orchestration/cancellation.js";
 import { shouldTriggerFailFast } from "../orchestration/fail-fast.js";
+import { ExecflowError } from "../errors/types.js";
+import { ErrorCode } from "../errors/codes.js";
 
 export interface Clock {
   now(): Date;
@@ -81,7 +83,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       failFast: input.cli.failFast
     };
 
-    if (deps.artifactStore) {
+    if (deps.artifactStore && !deps.artifactStore.isRunCreated()) {
       await deps.artifactStore.createRun({
         runId,
         outDir: artifactsDir,
@@ -98,11 +100,11 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     // Listen to external signals / cancellation
     if (input.signal) {
       if (input.signal.aborted) {
-        scheduler.abort(input.signal.reason || "External cancellation");
+        scheduler.abort({ type: "user", message: input.signal.reason || "External cancellation" });
         runtimeAbortController.abort(input.signal.reason || "External cancellation");
       } else {
         input.signal.addEventListener("abort", () => {
-          scheduler.abort(input.signal?.reason || "External cancellation");
+          scheduler.abort({ type: "user", message: input.signal?.reason || "External cancellation" });
           runtimeAbortController.abort(input.signal?.reason || "External cancellation");
         });
       }
@@ -133,19 +135,39 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       // Check if scheduler is aborted
       const schedulerSnapshot = (scheduler as any).getSnapshot();
       if (schedulerSnapshot.aborted) {
-        // Build cancelled run result
-        const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), schedulerSnapshot.abortReason);
-        if (deps.eventSink) {
-          deps.eventSink.emit("workflow.cancelled", {
-            status: "cancelled",
-            durationMs,
-            reason: schedulerSnapshot.abortReason || "Workflow cancelled"
-          });
+        const abortReason = schedulerSnapshot.abortReason;
+        const isFailFast = abortReason?.type === "fail-fast";
+        const reasonMsg = typeof abortReason === "string" ? abortReason : abortReason?.message;
+
+        if (isFailFast) {
+          // Build failed run result for fail-fast
+          const result = buildFailedRunResult(runtime, new Error(reasonMsg), durationMs, finishTime.toISOString(), deps.artifactStore);
+          if (deps.eventSink) {
+            deps.eventSink.emit("workflow.failed", {
+              status: "failed",
+              durationMs,
+              error: result.error!
+            });
+          }
+          if (deps.artifactStore) {
+            await deps.artifactStore.updateManifest("failed");
+          }
+          return result;
+        } else {
+          // Build cancelled run result
+          const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), reasonMsg, deps.artifactStore);
+          if (deps.eventSink) {
+            deps.eventSink.emit("workflow.cancelled", {
+              status: "cancelled",
+              durationMs,
+              reason: reasonMsg || "Workflow cancelled"
+            });
+          }
+          if (deps.artifactStore) {
+            await deps.artifactStore.updateManifest("cancelled");
+          }
+          return result;
         }
-        if (deps.artifactStore) {
-          await deps.artifactStore.updateManifest("cancelled");
-        }
-        return result;
       }
 
       // Build succeeded run result
@@ -206,19 +228,53 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
 }
 
 export async function executeWorkflowModule(runtime: RuntimeState): Promise<unknown> {
-  const context = createSandboxContext(runtime);
+  let context: vm.Context;
+  try {
+    context = createSandboxContext(runtime);
+  } catch (err: any) {
+    throw new ExecflowError(
+      ErrorCode.SECURITY_POLICY_VIOLATION,
+      `Failed to create secure sandbox context: ${err.message}`,
+      { cause: err }
+    );
+  }
 
   const body = runtime.parsedWorkflow.body;
   const transformedBody = body.replace(/export\s+default\s+/, "__default = ");
   const wrappedBody = `(async () => {\n${transformedBody}\n})()`;
 
-  const promise = vm.runInContext(wrappedBody, context, {
-    filename: runtime.parsedWorkflow.sourcePath,
-    lineOffset: -1
-  });
+  try {
+    const promise = vm.runInContext(wrappedBody, context, {
+      filename: runtime.parsedWorkflow.sourcePath,
+      lineOffset: -1
+    });
 
-  await promise;
-  return (context as any).__default;
+    await promise;
+    return (context as any).__default;
+  } catch (err: any) {
+    // Check if it's already an ExecflowError (e.g. from DSL)
+    if (err instanceof ExecflowError) {
+      throw err;
+    }
+
+    // Map potential sandbox escapes or violations to SECURITY_POLICY_VIOLATION
+    const isSecurityViolation = 
+      err.name === "SecurityError" || 
+      err.message?.includes("constructor") || 
+      err.message?.includes("__proto__") ||
+      err.message?.includes("globalThis") ||
+      err.message?.includes("process is not defined");
+
+    if (isSecurityViolation) {
+      throw new ExecflowError(
+        ErrorCode.SECURITY_POLICY_VIOLATION,
+        `Workflow execution violated security policy: ${err.message}`,
+        { cause: err }
+      );
+    }
+    
+    throw err;
+  }
 }
 
 export function buildSucceededRunResult(

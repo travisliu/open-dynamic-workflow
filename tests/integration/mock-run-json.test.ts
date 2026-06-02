@@ -80,17 +80,16 @@ describe("Integration - mock run json mode", () => {
     expect(typeof report.finishedAt).toBe("string");
     expect(typeof report.artifactsDir).toBe("string");
 
-    // stdout should not contain progress symbols
+    // stdout should not contain progress symbols or debug logs
     expect(stdout).not.toContain("◇");
     expect(stdout).not.toContain("→ Phase:");
     expect(stdout).not.toContain("▶");
     expect(stdout).not.toContain("✓");
+    expect(stdout).not.toContain("Action triggered!");
 
-    // Only one JSON object - no extra lines before or after
-    const lines = stdout.split("\n").filter((l) => l.trim().length > 0);
-    // All lines should be part of the same JSON object (or ending/beginning braces)
-    // Verify the entire stdout is exactly one JSON object by checking it parses cleanly
-    JSON.parse(result.stdout.trim()); // Should not throw
+    // Verify the entire stdout (excluding whitespace) is exactly one JSON object
+    // JSON.parse(result.stdout.trim()) above already ensures this.
+    // If there were any non-JSON text before or after, it would have failed to parse.
 
     // Verify persisted report matches
     const runs = await fs.readdir(TEMP_DIR);

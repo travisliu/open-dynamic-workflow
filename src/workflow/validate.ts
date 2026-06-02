@@ -54,6 +54,8 @@ export function validateWorkflow(
           report(node, `${calleeText}() is not supported in the MVP.`);
         } else if (calleeText === "fetch") {
           report(node, "Network APIs are not part of MVP workflow capabilities.");
+        } else if (calleeText === "Function") {
+          report(node, "Dynamic function creation is not allowed.");
         }
       }
       if (callee.kind === ts.SyntaxKind.ImportKeyword) {
@@ -64,11 +66,27 @@ export function validateWorkflow(
     if (ts.isPropertyAccessExpression(node)) {
       const expr = node.expression;
       const name = node.name;
-      if (ts.isIdentifier(expr)) {
+      
+      if (name.text === "constructor") {
+        report(node, "Access to 'constructor' is not allowed.");
+      } else if (name.text === "__proto__") {
+        report(node, "Access to '__proto__' is not allowed.");
+      } else if (ts.isIdentifier(expr)) {
         if (expr.text === "Date" && name.text === "now") {
           report(node, "Date.now() is not allowed.");
         } else if (expr.text === "Math" && name.text === "random") {
           report(node, "Math.random() is not allowed.");
+        }
+      }
+    }
+
+    if (ts.isElementAccessExpression(node)) {
+      const arg = node.argumentExpression;
+      if (ts.isStringLiteral(arg)) {
+        if (arg.text === "constructor") {
+          report(node, "Access to 'constructor' is not allowed.");
+        } else if (arg.text === "__proto__") {
+          report(node, "Access to '__proto__' is not allowed.");
         }
       }
     }
@@ -85,6 +103,10 @@ export function validateWorkflow(
           report(node, "Direct module access is not allowed.");
         } else if (text === "child_process") {
           report(node, "Shell/process spawning is not allowed.");
+        } else if (text === "globalThis" || text === "global" || text === "window" || text === "self") {
+          report(node, "Global object access is not allowed.");
+        } else if (text === "Function") {
+          report(node, "Dynamic function creation is not allowed.");
         }
       }
     }

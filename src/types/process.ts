@@ -6,8 +6,8 @@ export interface ProcessRunInput {
   env?: Record<string, string>;
   timeoutMs: number;
   signal?: AbortSignal;
-  onStdout?: (chunk: string) => void;
-  onStderr?: (chunk: string) => void;
+  onStdout?: (chunk: string) => void | Promise<void>;
+  onStderr?: (chunk: string) => void | Promise<void>;
 }
 
 export interface ProcessRunResult {

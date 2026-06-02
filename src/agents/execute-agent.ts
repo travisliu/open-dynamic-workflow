@@ -24,7 +24,6 @@ export class DefaultAgentExecutor implements AgentExecutor {
   }
 
   async execute(input: AgentExecutionInput): Promise<AgentResult> {
-    const runRootDir = this.artifactStore.getRunArtifacts().rootDir;
     const registry = createDefaultProviderRegistry({ config: this.config });
     const adapter = registry.get(input.provider);
 
@@ -35,6 +34,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
     if (input.schema) {
       await this.artifactStore.writeJson(`agents/${input.id}/schema.json`, input.schema);
     }
+
+    // Initialize empty log files to ensure they exist even if no output is produced
+    await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, "");
+    await this.artifactStore.writeText(`agents/${input.id}/stderr.log`, "");
 
     const secretPatterns = this.config.security?.redactEnv ?? [];
     const secretValues: string[] = [];
@@ -74,11 +77,21 @@ export class DefaultAgentExecutor implements AgentExecutor {
         await new Promise((resolve) => setTimeout(resolve, response.delayMs));
       }
 
-      stdout = response.stdout ?? (response.text ?? "mock response");
-      stderr = response.stderr ?? "";
+      stdout = redactText(response.stdout ?? (response.text ?? "mock response"), secretValues);
+      stderr = redactText(response.stderr ?? "", secretValues);
       exitCode = response.exitCode !== undefined ? response.exitCode : 0;
       timedOut = !!response.timeout;
       cancelled = !!response.fail && response.error?.code === "USER_CANCELLED";
+
+      // Stream mock output to event bus and durable logs
+      if (stdout) {
+        await this.artifactStore.appendText(`agents/${input.id}/stdout.log`, stdout);
+        await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stdout", data: stdout });
+      }
+      if (stderr) {
+        await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, stderr);
+        await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stderr", data: stderr });
+      }
     } else {
       // Real process execution path
       const commandInput = await adapter.buildCommand(runInput);
@@ -109,36 +122,27 @@ export class DefaultAgentExecutor implements AgentExecutor {
           }
         });
         exitCode = processResult.exitCode;
+        timedOut = processResult.timedOut;
+        cancelled = processResult.cancelled;
       } catch (err: any) {
         if (err.message?.includes("timeout") || err.code === "PROCESS_TIMEOUT") {
           timedOut = true;
-        } else if (err.name === "AbortError" || input.signal.aborted) {
+        } else if (err.name === "AbortError" || input.signal?.aborted) {
           cancelled = true;
         } else {
           exitCode = exitCode ?? 1;
-          stderr += `\nError running process: ${err.message}`;
+          const errorMsg = `\nError running process: ${err.message}`;
+          stderr += errorMsg;
+          await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, errorMsg);
         }
       }
     }
 
     const durationMs = Date.now() - startMs;
 
-    const redactedStdout = redactText(stdout, secretValues);
-    const redactedStderr = redactText(stderr, secretValues);
-
-    // Write stdout/stderr logs
-    await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, redactedStdout);
-    await this.artifactStore.writeText(`agents/${input.id}/stderr.log`, redactedStderr);
-
-    // If verbose/mock, stream standard agent.output if not already streamed
-    if (input.provider === "mock") {
-      if (redactedStdout) {
-        await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stdout", data: redactedStdout });
-      }
-      if (redactedStderr) {
-        await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stderr", data: redactedStderr });
-      }
-    }
+    // Output is already redacted as it is collected/appended
+    const redactedStdout = stdout;
+    const redactedStderr = stderr;
 
     const agentArtifacts = {
       dir: `agents/${input.id}`,
@@ -153,7 +157,9 @@ export class DefaultAgentExecutor implements AgentExecutor {
       agentArtifacts.schemaPath = `agents/${input.id}/schema.json`;
     }
 
-    // Determine success/failure status
+    // Determine success/failure status based on precedence
+
+    // Precedence 1: Timeout
     if (timedOut) {
       const errPayload = { name: "TimeoutError", message: "Agent execution timed out", code: "PROCESS_TIMEOUT" };
       const failureResult: AgentFailureResult = {
@@ -173,6 +179,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
+    // Precedence 2: Cancellation
     if (cancelled) {
       const errPayload = { name: "CancelledError", message: "Agent execution was cancelled", code: "USER_CANCELLED" };
       const failureResult: AgentFailureResult = {
@@ -192,25 +199,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    // Parse the result
-    let parseResult;
-    try {
-      parseResult = await adapter.parseResult({
-        agentId: input.id,
-        provider: input.provider,
-        stdout: redactedStdout,
-        stderr: redactedStderr,
-        exitCode,
-        signal: null,
-        input: runInput
-      } as any);
-    } catch (err: any) {
-      parseResult = { text: redactedStdout, raw: redactedStdout, parseWarnings: [`Parser crashed: ${err.message}`] };
-    }
-
-    await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, parseResult.raw ?? parseResult);
-
-    // Check if exitCode indicates failure
+    // Precedence 3: Process Failure (non-zero exit code)
     if (exitCode !== null && exitCode !== 0) {
       const failureResult: AgentFailureResult = {
         ok: false,
@@ -229,10 +218,47 @@ export class DefaultAgentExecutor implements AgentExecutor {
           code: "PROVIDER_PROCESS_FAILED"
         }
       };
+      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
     }
 
-    // Schema Validation if schema is provided
+    // Precedence 4: Parse Result
+    let parseResult;
+    try {
+      parseResult = await adapter.parseResult({
+        agentId: input.id,
+        provider: input.provider,
+        stdout: redactedStdout,
+        stderr: redactedStderr,
+        exitCode,
+        signal: null,
+        input: runInput
+      } as any);
+    } catch (err: any) {
+      const failureResult: AgentFailureResult = {
+        ok: false,
+        status: "failed",
+        id: input.id,
+        label: input.label,
+        provider: input.provider,
+        stdout: redactedStdout,
+        stderr: redactedStderr,
+        exitCode,
+        durationMs,
+        artifacts: agentArtifacts,
+        error: {
+          name: "ParseError",
+          message: `Parser crashed: ${err.message}`,
+          code: "INTERNAL_ERROR"
+        }
+      };
+      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+      return failureResult;
+    }
+
+    await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, parseResult.raw ?? parseResult);
+
+    // Precedence 5: Schema Validation
     if (input.schema) {
       const valResult = validateJson(parseResult.json, input.schema);
       if (!valResult.ok) {

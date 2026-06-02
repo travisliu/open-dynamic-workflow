@@ -86,11 +86,12 @@ describe("Integration - mock run jsonl mode", () => {
       expect(sequences[i]).toBeGreaterThan(sequences[i - 1]!);
     }
 
-    // stdout should not contain pretty-progress text
+    // stdout should not contain pretty-progress text or debug logs
     expect(stdout).not.toContain("◇");
     expect(stdout).not.toContain("→ Phase:");
     expect(stdout).not.toContain("▶");
     expect(stdout).not.toContain("Artifacts:");
+    expect(stdout).not.toContain("Action triggered!");
 
     // Stdout events should match persisted events.jsonl
     const runs = await fs.readdir(TEMP_DIR);

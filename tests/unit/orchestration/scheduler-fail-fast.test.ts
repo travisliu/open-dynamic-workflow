@@ -152,14 +152,17 @@ describe("Scheduler: fail-fast behavior", () => {
     expect(scheduler.getSnapshot().aborted).toBe(true);
   });
 
-  it("fail-fast reason is available in scheduler snapshot", async () => {
+  it("fail-fast reason is available in scheduler snapshot as structured object", async () => {
     const scheduler = new DefaultScheduler({ concurrency: 1, failFast: true });
 
     await scheduler.schedule({ id: "fail1", run: async () => makeFailureResult("fail1") });
 
     const snapshot = scheduler.getSnapshot();
     expect(snapshot.aborted).toBe(true);
-    expect(snapshot.abortReason).toBeTruthy();
-    expect(typeof snapshot.abortReason).toBe("string");
+    expect(snapshot.abortReason).toBeDefined();
+    expect(typeof snapshot.abortReason).toBe("object");
+    expect(snapshot.abortReason!.type).toBe("fail-fast");
+    expect(snapshot.abortReason!.cause).toBe("failure");
+    expect(snapshot.abortReason!.source).toBe("fail1");
   });
 });

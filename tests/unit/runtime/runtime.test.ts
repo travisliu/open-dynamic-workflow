@@ -252,4 +252,52 @@ describe("DefaultRuntimeRunner", () => {
     expect(result.error).toBeDefined();
     expect(result.error!.message).toContain("User cancelled execution");
   });
+
+  it("reports SECURITY_POLICY_VIOLATION when workflow tries to access process", async () => {
+    const runner = new DefaultRuntimeRunner();
+    const parsedWorkflow: ParsedWorkflow = {
+      meta: { name: "escape", description: "escape" },
+      body: `
+        const p = process;
+        export default p;
+      `,
+      sourcePath: "workflow.js",
+      sourceText: "",
+      sourceHash: "123"
+    };
+
+    const result = await runner.run(
+      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.error!.code).toBe("SECURITY_POLICY_VIOLATION");
+    expect(result.error!.message).toContain("process is not defined");
+  });
+
+  it("reports status 'failed' when fail-fast is triggered by agent failure", async () => {
+    const runner = new DefaultRuntimeRunner();
+    const parsedWorkflow: ParsedWorkflow = {
+      meta: { name: "fail-fast", description: "fail-fast" },
+      body: `
+        await agent({ prompt: "this will fail" });
+        await agent({ prompt: "this should not run" });
+      `,
+      sourcePath: "workflow.js",
+      sourceText: "",
+      sourceHash: "123"
+    };
+
+    const cliOptions = { ...defaultCliOptions, failFast: true };
+    const result = await runner.run(
+      { parsedWorkflow, config: defaultResolvedConfig, cli: cliOptions },
+      { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.agents.length).toBe(2);
+    expect(result.agents[0].status).toBe("failed");
+    expect(result.agents[1].status).toBe("skipped");
+  });
 });

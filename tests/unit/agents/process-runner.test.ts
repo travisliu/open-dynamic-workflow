@@ -108,4 +108,21 @@ describe("ProcessRunner", () => {
       })
     ).rejects.toThrow();
   });
+
+  it("waits for async output handlers", async () => {
+    let outputHandled = false;
+    const result = await runProcess({
+      command: "node",
+      args: ["-e", "console.log('test')"],
+      cwd: process.cwd(),
+      timeoutMs: 5000,
+      onStdout: async () => {
+        await new Promise(r => setTimeout(r, 100));
+        outputHandled = true;
+      }
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(outputHandled).toBe(true);
+  });
 });

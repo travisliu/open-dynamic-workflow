@@ -1,5 +1,12 @@
 import type { MaybePromise, ProviderName } from "./common.js";
 
+export interface AbortReason {
+  type: "fail-fast" | "user" | "timeout" | "other";
+  message: string;
+  source?: string;
+  cause?: "failure" | "timeout" | "error";
+}
+
 export interface ScheduledTask<T> {
   id: string;
   label?: string | undefined;
@@ -18,5 +25,5 @@ export interface ScheduleOptions {
 export interface Scheduler {
   schedule<T>(task: ScheduledTask<T>, options?: ScheduleOptions): Promise<T>;
   drain(): Promise<void>;
-  abort(reason?: string): void;
+  abort(reason?: string | AbortReason): void;
 }
