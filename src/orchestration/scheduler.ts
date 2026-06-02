@@ -1,0 +1,329 @@
+import type { Scheduler, ScheduledTask, ScheduleOptions } from "../types/scheduler.js";
+import type { AgentResult, AgentTaskState } from "../types/agent.js";
+import type { WorkflowEventType } from "../types/events.js";
+import { createLinkedAbortController } from "./cancellation.js";
+
+export interface SchedulerConfig {
+  concurrency: number;
+  failFast?: boolean;
+}
+
+export interface RuntimeEventSink {
+  emit(type: WorkflowEventType, payload: any): Promise<unknown> | unknown;
+}
+
+interface InternalTask<T = any> {
+  task: ScheduledTask<T>;
+  options?: ScheduleOptions | undefined;
+  status: AgentTaskState;
+  abortController: AbortController;
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: any) => void;
+}
+
+export class DefaultScheduler implements Scheduler {
+  private readonly queue: InternalTask[] = [];
+  private readonly running = new Map<string, InternalTask>();
+  private readonly completed = new Map<string, any>();
+  private aborted = false;
+  private abortReason?: string;
+  private readonly concurrency: number;
+  private readonly failFast: boolean;
+  private readonly eventSink?: RuntimeEventSink | undefined;
+  private drainResolvers: (() => void)[] = [];
+
+  constructor(config: SchedulerConfig, deps?: { eventSink?: RuntimeEventSink }) {
+    this.concurrency = config.concurrency;
+    this.failFast = !!config.failFast;
+    this.eventSink = deps?.eventSink ?? undefined;
+  }
+
+  schedule<T>(task: ScheduledTask<T>, options?: ScheduleOptions): Promise<T> {
+    const abortController = createLinkedAbortController();
+
+    let resolveFn!: (value: T) => void;
+    let rejectFn!: (reason: any) => void;
+    const promise = new Promise<T>((resolve, reject) => {
+      resolveFn = resolve;
+      rejectFn = reject;
+    });
+
+    const internalTask: InternalTask<T> = {
+      task,
+      options: options !== undefined ? options : undefined,
+      status: "queued",
+      abortController,
+      promise,
+      resolve: resolveFn,
+      reject: rejectFn
+    };
+
+    if (this.aborted) {
+      internalTask.status = "skipped";
+      const skippedResult = this.createSkippedOrCancelledResult(task, "skipped", this.abortReason);
+      resolveFn(skippedResult as any);
+      return promise;
+    }
+
+    this.queue.push(internalTask);
+
+    if (this.eventSink) {
+      this.eventSink.emit("agent.queued", {
+        agentId: task.id,
+        label: task.label,
+        provider: task.provider || options?.provider || "mock",
+        state: "queued"
+      });
+    }
+
+    process.nextTick(() => this.pump());
+
+    return promise;
+  }
+
+  abort(reason?: string): void {
+    if (this.aborted) return;
+    this.aborted = true;
+    this.abortReason = reason || "Scheduler aborted";
+
+    // Abort running tasks
+    for (const runningTask of this.running.values()) {
+      runningTask.abortController.abort(this.abortReason);
+    }
+
+    // Skip queued tasks
+    while (this.queue.length > 0) {
+      const queuedTask = this.queue.shift()!;
+      queuedTask.status = "skipped";
+      const result = this.createSkippedOrCancelledResult(queuedTask.task, "skipped", this.abortReason);
+      
+      if (this.eventSink) {
+        this.eventSink.emit("agent.cancelled", {
+          agentId: queuedTask.task.id,
+          label: queuedTask.task.label,
+          provider: queuedTask.task.provider || queuedTask.options?.provider || "mock",
+          status: "skipped",
+          durationMs: 0,
+          exitCode: null,
+          error: {
+            name: "AgentTaskSkipped",
+            message: this.abortReason || "Task skipped due to scheduler abort",
+            code: "TASK_SKIPPED"
+          }
+        });
+      }
+
+      queuedTask.resolve(result as any);
+    }
+
+    this.checkDrain();
+  }
+
+  async drain(): Promise<void> {
+    if (this.running.size === 0 && this.queue.length === 0) {
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.drainResolvers.push(resolve);
+    });
+  }
+
+  getSnapshot() {
+    return {
+      aborted: this.aborted,
+      abortReason: this.abortReason,
+      runningCount: this.running.size,
+      queuedCount: this.queue.length,
+      completedCount: this.completed.size
+    };
+  }
+
+  private pump(): void {
+    if (this.aborted) {
+      return;
+    }
+
+    while (this.running.size < this.concurrency && this.queue.length > 0) {
+      const internalTask = this.queue.shift()!;
+      this.running.set(internalTask.task.id, internalTask);
+      internalTask.status = "running";
+
+      if (this.eventSink) {
+        this.eventSink.emit("agent.started", {
+          agentId: internalTask.task.id,
+          label: internalTask.task.label,
+          provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+          cwd: internalTask.options?.cwd || process.cwd(),
+          state: "running"
+        });
+      }
+
+      const startTime = Date.now();
+
+      (async () => {
+        try {
+          const result = await internalTask.task.run(internalTask.abortController.signal);
+          
+          this.running.delete(internalTask.task.id);
+          this.completed.set(internalTask.task.id, result);
+
+          let isSuccess = true;
+          let agentStatus = "succeeded";
+          let agentResult: any = result;
+
+          if (agentResult && typeof agentResult === "object" && "ok" in agentResult) {
+            isSuccess = agentResult.ok;
+            agentStatus = agentResult.status || (isSuccess ? "succeeded" : "failed");
+          }
+
+          if (isSuccess) {
+            if (this.eventSink) {
+              this.eventSink.emit("agent.completed", {
+                agentId: internalTask.task.id,
+                label: internalTask.task.label,
+                provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+                status: "succeeded",
+                durationMs: Date.now() - startTime,
+                exitCode: agentResult?.exitCode ?? 0,
+                artifacts: agentResult?.artifacts ?? { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" }
+              });
+            }
+            internalTask.resolve(result);
+          } else {
+            const durationMs = Date.now() - startTime;
+            const exitCode = agentResult?.exitCode ?? null;
+            const artifacts = agentResult?.artifacts;
+            const error = agentResult?.error || { name: "AgentFailure", message: "Agent failed execution", code: "PROVIDER_PROCESS_FAILED" };
+
+            const eventName = this.getEventNameForStatus(agentStatus);
+            if (this.eventSink) {
+              this.eventSink.emit(eventName, {
+                agentId: internalTask.task.id,
+                label: internalTask.task.label,
+                provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+                status: agentStatus,
+                durationMs,
+                exitCode,
+                artifacts,
+                error
+              });
+            }
+
+            internalTask.resolve(result);
+
+            if (this.failFast || internalTask.options?.failFast) {
+              this.abort(`Fail-fast triggered by step ${internalTask.task.id}`);
+            }
+          }
+        } catch (err: any) {
+          this.running.delete(internalTask.task.id);
+          
+          const durationMs = Date.now() - startTime;
+          const isAbort = internalTask.abortController.signal.aborted || err.name === "AbortError";
+          const status = isAbort ? "cancelled" : "failed";
+          
+          const errorPayload = {
+            name: err.name || "Error",
+            message: err.message || String(err),
+            code: isAbort ? "USER_CANCELLED" : "INTERNAL_ERROR"
+          };
+          if (err.stack) {
+            (errorPayload as any).stack = err.stack;
+          }
+
+          const failureResult = {
+            ok: false,
+            status,
+            id: internalTask.task.id,
+            label: internalTask.task.label,
+            provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+            stdout: "",
+            stderr: err.message || "",
+            exitCode: null,
+            durationMs,
+            artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
+            error: errorPayload
+          };
+
+          this.completed.set(internalTask.task.id, failureResult);
+
+          if (this.eventSink) {
+            const eventName = isAbort ? "agent.cancelled" : "agent.failed";
+            this.eventSink.emit(eventName, {
+              agentId: internalTask.task.id,
+              label: internalTask.task.label,
+              provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+              status,
+              durationMs,
+              exitCode: null,
+              error: errorPayload
+            });
+          }
+
+          internalTask.resolve(failureResult as any);
+
+          if (this.failFast || internalTask.options?.failFast) {
+            this.abort(`Fail-fast triggered by step ${internalTask.task.id} throwing error`);
+          }
+        } finally {
+          this.pump();
+          this.checkDrain();
+        }
+      })();
+    }
+
+    this.checkDrain();
+  }
+
+  private getEventNameForStatus(status: string): WorkflowEventType {
+    switch (status) {
+      case "timed_out":
+        return "agent.timed_out";
+      case "cancelled":
+      case "skipped":
+        return "agent.cancelled";
+      case "failed":
+      default:
+        return "agent.failed";
+    }
+  }
+
+  private checkDrain(): void {
+    if (this.running.size === 0 && this.queue.length === 0) {
+      const resolvers = this.drainResolvers;
+      this.drainResolvers = [];
+      for (const resolve of resolvers) {
+        resolve();
+      }
+    }
+  }
+
+  private createSkippedOrCancelledResult(task: ScheduledTask<any>, status: "skipped" | "cancelled", reason?: string): AgentResult {
+    const res: AgentResult = {
+      ok: false,
+      status,
+      id: task.id,
+      provider: task.provider || "mock",
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      durationMs: 0,
+      artifacts: {
+        dir: "",
+        promptPath: "",
+        stdoutPath: "",
+        stderrPath: ""
+      },
+      error: {
+        name: status === "skipped" ? "AgentTaskSkipped" : "AgentTaskCancelled",
+        message: reason || `Task was ${status}`,
+        code: status === "skipped" ? "TASK_SKIPPED" : "USER_CANCELLED"
+      }
+    };
+    if (task.label !== undefined) {
+      res.label = task.label;
+    }
+    return res;
+  }
+}

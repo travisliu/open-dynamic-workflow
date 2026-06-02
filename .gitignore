@@ -4,3 +4,5 @@ dist/
 coverage/
 *.log
 .DS_Store
+.antigravitycli/
+docs/

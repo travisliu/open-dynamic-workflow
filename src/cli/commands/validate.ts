@@ -1,16 +1,49 @@
-import { EXIT_CODES } from "../../types/errors.js";
+import { ErrorCode } from "../../errors/codes.js";
+import { ExecflowError } from "../../errors/types.js";
+import { loadConfig } from "../../config/load.js";
+import { loadWorkflow } from "../../workflow/load.js";
+import { parseWorkflow } from "../../workflow/parse.js";
+import { validateWorkflow } from "../../workflow/validate.js";
+import { printValidationSuccess, printValidationIssues } from "../print.js";
 
-export interface ValidateCommandArgs {
-  workflowFile: string | undefined;
+export interface ValidateCommandInput {
+  workflowFile: string;
+  rawOptions: any;
 }
 
-export async function validateCommand(args: ValidateCommandArgs): Promise<number> {
-  if (!args.workflowFile) {
-    console.error("error: missing <workflow-file>");
-    return EXIT_CODES.CLI_USAGE_ERROR;
+export async function validateCommand(input: ValidateCommandInput): Promise<void> {
+  const rawOptions = input.rawOptions || {};
+  const cwd = rawOptions.cwd ?? process.cwd();
+
+  // Load config (resolves paths, merges defaults, etc.)
+  const config = await loadConfig({
+    cwd,
+    configPath: rawOptions.config,
+    cli: {
+      verbose: rawOptions.verbose
+    }
+  });
+
+  // Load workflow
+  const loaded = await loadWorkflow(input.workflowFile, config.cwd);
+
+  // Parse workflow metadata
+  const parsed = parseWorkflow(loaded);
+
+  // Validate restrictions
+  const issues = validateWorkflow(parsed, {
+    allowImports: false,
+    allowShell: false
+  });
+
+  if (issues.length > 0) {
+    printValidationIssues(issues);
+    const summary = issues.map((issue) => issue.message).join("\n");
+    throw new ExecflowError(
+      ErrorCode.WORKFLOW_VALIDATION_ERROR,
+      `Workflow validation failed:\n${summary}`
+    );
   }
 
-  console.error(`[phase0] validate command routed for ${args.workflowFile}`);
-  console.error("[phase0] parser/validator implementation is intentionally not included yet.");
-  return EXIT_CODES.SUCCESS;
+  printValidationSuccess(parsed.meta.name);
 }

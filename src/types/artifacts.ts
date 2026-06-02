@@ -19,21 +19,27 @@ export interface RunManifest {
   workflowHash: string;
   execflowVersion: string;
   cwd: string;
-  configPath?: string;
+  configPath?: string | undefined;
 }
 
 export interface CreateRunInput {
+  runId: string;
+  outDir: string;
   workflowPath: string;
+  workflowSource: string;
   workflowHash: string;
-  cwd: string;
-  configPath?: string;
+  resolvedConfig: unknown;
   execflowVersion: string;
+  cwd: string;
+  configPath?: string | undefined;
 }
 
 export interface RunArtifacts {
   runId: string;
   rootDir: string;
   manifestPath: string;
+  workflowInputPath: string;
+  resolvedConfigPath: string;
   eventsPath: string;
   reportPath: string;
   agentDir(agentId: string): string;
@@ -41,8 +47,11 @@ export interface RunArtifacts {
 
 export interface ArtifactStore {
   createRun(input: CreateRunInput): Promise<RunArtifacts>;
-  writeText(relativePath: string, content: string | Uint8Array): Promise<string>;
+  writeText(relativePath: string, content: string): Promise<string>;
+  appendText(relativePath: string, content: string): Promise<string>;
   writeJson(relativePath: string, value: unknown): Promise<string>;
-  appendJsonl(relativePath: string, value: unknown): Promise<void>;
+  appendJsonl(relativePath: string, value: unknown): Promise<string>;
   writeFinalReport(value: unknown): Promise<string>;
+  updateManifest(status: "succeeded" | "failed" | "cancelled"): Promise<string>;
+  getRunArtifacts(): RunArtifacts;
 }

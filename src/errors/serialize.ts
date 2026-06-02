@@ -1,24 +1,39 @@
-import type { ExecflowErrorCode, SerializedError } from "../types/errors.js";
+import { ExecflowError } from "./types.js";
+import type { SerializedError } from "./types.js";
 
-export function serializeError(error: unknown, fallbackCode: ExecflowErrorCode = "INTERNAL_ERROR"): SerializedError {
-  if (error instanceof Error) {
-    const maybeCode = (error as Error & { code?: string }).code;
-    const serialized: SerializedError = {
+export function serializeError(error: unknown): SerializedError {
+  if (error instanceof ExecflowError) {
+    const res: SerializedError = {
       name: error.name,
       message: error.message,
-      code: maybeCode ?? fallbackCode
+      code: error.code,
     };
-
-    if (error.stack) {
-      serialized.stack = error.stack;
+    if (error.stack !== undefined) {
+      res.stack = error.stack;
     }
+    if (error.cause !== undefined) {
+      res.cause = error.cause;
+    }
+    return res;
+  }
 
-    return serialized;
+  if (error instanceof Error || (error && typeof error === "object" && "name" in error && "message" in error)) {
+    const errObj = error as any;
+    const res: SerializedError = {
+      name: String(errObj.name),
+      message: String(errObj.message),
+    };
+    if (errObj.stack !== undefined) {
+      res.stack = String(errObj.stack);
+    }
+    if (errObj.cause !== undefined) {
+      res.cause = errObj.cause;
+    }
+    return res;
   }
 
   return {
-    name: "NonErrorThrown",
-    message: String(error),
-    code: fallbackCode
+    name: "UnknownError",
+    message: String(error)
   };
 }

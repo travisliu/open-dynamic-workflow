@@ -41,6 +41,7 @@ export interface ExecflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
   timeoutMs: number;
+  failFast?: boolean;
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
   reporting: ReportingConfig;

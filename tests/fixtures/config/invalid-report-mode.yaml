@@ -1,0 +1,6 @@
+defaultProvider: mock
+concurrency: 4
+timeoutMs: 900000
+reporting:
+  mode: xml
+  verbose: false

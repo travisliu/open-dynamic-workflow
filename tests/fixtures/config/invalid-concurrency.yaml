@@ -1,0 +1,3 @@
+defaultProvider: mock
+concurrency: 0
+timeoutMs: 900000

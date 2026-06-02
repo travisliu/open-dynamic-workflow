@@ -1,53 +1,92 @@
 #!/usr/bin/env node
-import { doctorCommand } from "./commands/doctor.js";
+
+import { Command } from "commander";
 import { runCommand } from "./commands/run.js";
 import { validateCommand } from "./commands/validate.js";
-import { EXIT_CODES } from "../types/errors.js";
+import { doctorCommand } from "./commands/doctor.js";
+import { exitCodeForError } from "../errors/exit-codes.js";
+import { serializeError } from "../errors/serialize.js";
+import { ExecflowError } from "../errors/types.js";
+import { ErrorCode } from "../errors/codes.js";
 
-function printHelp(): void {
-  console.log(`execflow phase0
-
-Usage:
-  execflow run <workflow-file> [--dry-run]
-  execflow validate <workflow-file>
-  execflow doctor
-  execflow --help
-
-Phase 0 provides command routing and shared TypeScript contracts only.`);
+function collectArgs(value: string, previous: string[]): string[] {
+  return previous.concat([value]);
 }
 
-async function main(argv: string[]): Promise<number> {
-  const [command, ...rest] = argv;
+export async function main(argv: string[]): Promise<void> {
+  const program = new Command();
 
-  if (!command || command === "--help" || command === "-h") {
-    printHelp();
-    return EXIT_CODES.SUCCESS;
-  }
+  program
+    .name("execflow")
+    .description("Orchestrate coding-agent CLI workflows")
+    .version("0.0.0")
+    .exitOverride((err) => {
+      // Throw CLI usage error on command parsing errors
+      throw new ExecflowError(ErrorCode.CLI_USAGE_ERROR, err.message, { cause: err });
+    });
 
-  switch (command) {
-    case "run": {
-      const dryRun = rest.includes("--dry-run");
-      const workflowFile = rest.find((arg) => !arg.startsWith("--"));
-      return runCommand({ workflowFile, dryRun });
-    }
-    case "validate": {
-      const workflowFile = rest.find((arg) => !arg.startsWith("--"));
-      return validateCommand({ workflowFile });
-    }
-    case "doctor":
-      return doctorCommand();
-    default:
-      console.error(`error: unknown command '${command}'`);
-      printHelp();
-      return EXIT_CODES.CLI_USAGE_ERROR;
-  }
+  program
+    .command("run")
+    .argument("<workflow-file>", "Path to workflow file")
+    .option("-p, --provider <name>", "Default agent provider name")
+    .option("-a, --arg <key=value>", "Workflow input argument (can be repeated)", collectArgs, [])
+    .option("-c, --config <path>", "Path to config file")
+    .option("--cwd <path>", "Custom working directory")
+    .option("-o, --out <path>", "Runs artifact directory")
+    .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
+    .option("--concurrency <number>", "Maximum parallel concurrency")
+    .option("--timeout-ms <ms>", "Workflow run timeout in ms")
+    .option("--dry-run", "Validate and print summary without invoking providers")
+    .option("--fail-fast", "Stop immediately on first agent step failure")
+    .option("-v, --verbose", "Enable verbose logging")
+    .option("--allow-shell", "Enable shell execution (unsupported)")
+    .option("--isolation <type>", "Isolation mechanism (unsupported)")
+    .option("--retry", "Retry count (unsupported)")
+    .action(async (workflowFile, options) => {
+      if (options.allowShell) {
+        throw new ExecflowError(ErrorCode.CLI_USAGE_ERROR, "--allow-shell is not supported in the MVP.");
+      }
+      if (options.isolation) {
+        throw new ExecflowError(ErrorCode.CLI_USAGE_ERROR, `--isolation is not supported in the MVP.`);
+      }
+      if (options.retry) {
+        throw new ExecflowError(ErrorCode.CLI_USAGE_ERROR, "--retry is not supported in the MVP.");
+      }
+      console.log("Action triggered! options:", options);
+      await runCommand({ workflowFile, rawOptions: options });
+    });
+
+  program
+    .command("validate")
+    .argument("<workflow-file>", "Path to workflow file")
+    .option("-c, --config <path>", "Path to config file")
+    .option("--cwd <path>", "Custom working directory")
+    .option("-v, --verbose", "Enable verbose logging")
+    .action(async (workflowFile, options) => {
+      if (!workflowFile) {
+        throw new ExecflowError(ErrorCode.CLI_USAGE_ERROR, "Missing <workflow-file>");
+      }
+      await validateCommand({ workflowFile, rawOptions: options });
+    });
+
+  program
+    .command("doctor")
+    .option("-c, --config <path>", "Path to config file")
+    .option("--cwd <path>", "Custom working directory")
+    .option("-v, --verbose", "Enable verbose logging")
+    .action(async (options) => {
+      await doctorCommand({ rawOptions: options });
+    });
+
+  await program.parseAsync(argv);
 }
 
-main(process.argv.slice(2))
-  .then((code) => {
-    process.exitCode = code;
-  })
-  .catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = EXIT_CODES.INTERNAL_ERROR;
+// Execute CLI only when run directly as binary script
+const isMain = import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("/execflow") || process.argv[1]?.endsWith("/cli/index.js");
+if (isMain || process.env.NODE_ENV !== "test") {
+  main(process.argv).catch((error) => {
+    const serialized = serializeError(error);
+    console.error(serialized.message);
+    process.exitCode = exitCodeForError(error);
   });
+}

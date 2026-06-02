@@ -3,15 +3,15 @@ import type { JsonSchema, ProviderName } from "./common.js";
 import type { SerializedError } from "./errors.js";
 
 export interface AgentCallInput {
-  id?: string;
-  label?: string;
-  provider?: ProviderName;
+  id?: string | undefined;
+  label?: string | undefined;
+  provider?: ProviderName | undefined;
   prompt: string;
-  model?: string;
-  schema?: JsonSchema;
-  timeoutMs?: number;
-  cwd?: string;
-  metadata?: Record<string, unknown>;
+  model?: string | undefined;
+  schema?: JsonSchema | undefined;
+  timeoutMs?: number | undefined;
+  cwd?: string | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export type AgentTaskState =
@@ -34,9 +34,9 @@ export interface AgentSuccessResult {
   ok: true;
   status: "succeeded";
   id: string;
-  label?: string;
+  label?: string | undefined;
   provider: ProviderName;
-  text?: string;
+  text?: string | undefined;
   json?: unknown;
   stdout: string;
   stderr: string;
@@ -49,7 +49,7 @@ export interface AgentFailureResult {
   ok: false;
   status: "failed" | "timed_out" | "cancelled" | "skipped";
   id: string;
-  label?: string;
+  label?: string | undefined;
   provider: ProviderName;
   stdout: string;
   stderr: string;
@@ -61,15 +61,15 @@ export interface AgentFailureResult {
 
 export interface AgentRunInput {
   id: string;
-  label?: string;
+  label?: string | undefined;
   provider: ProviderName;
   prompt: string;
-  model?: string;
-  schema?: JsonSchema;
+  model?: string | undefined;
+  schema?: JsonSchema | undefined;
   timeoutMs: number;
   cwd: string;
   env: Record<string, string>;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface ProviderHealth {
@@ -77,24 +77,23 @@ export interface ProviderHealth {
   available: boolean;
   command?: string;
   version?: string;
+  message?: string;
   error?: SerializedError;
 }
 
 export interface ProviderCommand {
   command: string;
   args: string[];
-  stdin?: string;
+  stdin?: string | undefined;
   cwd: string;
   env: Record<string, string>;
 }
 
 export interface ProviderParseInput {
-  agentId: string;
-  provider: ProviderName;
+  input: AgentRunInput;
   stdout: string;
   stderr: string;
   exitCode: number | null;
-  signal: string | null;
 }
 
 export interface ProviderParsedResult {

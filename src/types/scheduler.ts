@@ -2,16 +2,17 @@ import type { MaybePromise, ProviderName } from "./common.js";
 
 export interface ScheduledTask<T> {
   id: string;
-  label?: string;
-  provider?: ProviderName;
-  run: () => MaybePromise<T>;
+  label?: string | undefined;
+  provider?: ProviderName | undefined;
+  run: (signal: AbortSignal) => MaybePromise<T>;
 }
 
 export interface ScheduleOptions {
-  provider?: ProviderName;
-  priority?: number;
-  timeoutMs?: number;
-  failFast?: boolean;
+  provider?: ProviderName | undefined;
+  priority?: number | undefined;
+  timeoutMs?: number | undefined;
+  failFast?: boolean | undefined;
+  cwd?: string | undefined;
 }
 
 export interface Scheduler {

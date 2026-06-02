@@ -1,0 +1,6 @@
+defaultProvider: mock
+concurrency: 8
+timeoutMs: 60000
+reporting:
+  mode: json
+  verbose: true

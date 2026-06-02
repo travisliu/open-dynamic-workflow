@@ -1,0 +1,36 @@
+defaultProvider: mock
+concurrency: 2
+timeoutMs: 30000
+
+providers:
+  mock:
+    command: mock
+    responses:
+      default:
+        text: "mock response"
+      review-auth:
+        json:
+          findings: []
+      summary:
+        text: "summary response"
+      failure:
+        exitCode: 1
+        stderr: "configured mock failure"
+      review-fail:
+        exitCode: 1
+        stderr: "mock agent failure"
+      schema-fail:
+        json:
+          wrongField: true
+      invalid-schema:
+        json:
+          wrongField: true
+
+security:
+  passEnv: []
+  redactEnv:
+    - OPENAI_API_KEY
+    - GEMINI_API_KEY
+    - GOOGLE_API_KEY
+    - "*_TOKEN"
+    - "*_SECRET"

@@ -14,6 +14,7 @@ export interface ParsedWorkflow {
   meta: WorkflowMeta;
   body: string;
   sourcePath: string;
+  sourceText: string;
   sourceHash: string;
 }
 
