@@ -1,0 +1,29 @@
+{
+  "name": "execflow",
+  "version": "0.0.0-phase0",
+  "description": "Phase 0 contract-freeze scaffold for execflow MVP.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "execflow": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "docs"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "smoke": "npm run build && node dist/examples/contracts-smoke.js",
+    "clean": "rm -rf dist .execflow"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}

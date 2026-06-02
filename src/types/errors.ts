@@ -1,0 +1,60 @@
+export type ExecflowErrorCode =
+  | "CLI_USAGE_ERROR"
+  | "CONFIG_VALIDATION_ERROR"
+  | "WORKFLOW_PARSE_ERROR"
+  | "WORKFLOW_VALIDATION_ERROR"
+  | "PROVIDER_UNAVAILABLE"
+  | "PROVIDER_PROCESS_FAILED"
+  | "PROCESS_TIMEOUT"
+  | "SCHEMA_VALIDATION_FAILED"
+  | "SECURITY_POLICY_VIOLATION"
+  | "USER_CANCELLED"
+  | "ARTIFACT_WRITE_FAILED"
+  | "INTERNAL_ERROR";
+
+export interface SerializedError {
+  name: string;
+  message: string;
+  code?: ExecflowErrorCode | string;
+  stack?: string;
+  cause?: unknown;
+}
+
+export const EXIT_CODES = {
+  SUCCESS: 0,
+  WORKFLOW_FAILED: 1,
+  CLI_USAGE_ERROR: 2,
+  WORKFLOW_PARSE_OR_VALIDATION_ERROR: 3,
+  PROVIDER_UNAVAILABLE: 4,
+  SECURITY_POLICY_VIOLATION: 5,
+  USER_CANCELLED: 6,
+  TIMEOUT: 7,
+  INTERNAL_ERROR: 8
+} as const;
+
+export type ExitCode = (typeof EXIT_CODES)[keyof typeof EXIT_CODES];
+
+export function exitCodeForErrorCode(code: ExecflowErrorCode): ExitCode {
+  switch (code) {
+    case "CLI_USAGE_ERROR":
+    case "CONFIG_VALIDATION_ERROR":
+      return EXIT_CODES.CLI_USAGE_ERROR;
+    case "WORKFLOW_PARSE_ERROR":
+    case "WORKFLOW_VALIDATION_ERROR":
+      return EXIT_CODES.WORKFLOW_PARSE_OR_VALIDATION_ERROR;
+    case "PROVIDER_UNAVAILABLE":
+      return EXIT_CODES.PROVIDER_UNAVAILABLE;
+    case "SECURITY_POLICY_VIOLATION":
+      return EXIT_CODES.SECURITY_POLICY_VIOLATION;
+    case "USER_CANCELLED":
+      return EXIT_CODES.USER_CANCELLED;
+    case "PROCESS_TIMEOUT":
+      return EXIT_CODES.TIMEOUT;
+    case "PROVIDER_PROCESS_FAILED":
+    case "SCHEMA_VALIDATION_FAILED":
+      return EXIT_CODES.WORKFLOW_FAILED;
+    case "ARTIFACT_WRITE_FAILED":
+    case "INTERNAL_ERROR":
+      return EXIT_CODES.INTERNAL_ERROR;
+  }
+}
