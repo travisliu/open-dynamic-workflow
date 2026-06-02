@@ -5,7 +5,7 @@ import type {
   PipelineStageResult,
   NormalizedPipelineOptions
 } from "./types.js";
-import { ConcurrencyLimiter, createLimiter } from "./concurrency.js";
+import { ConcurrencyLimiter, createLimiter, getEffectiveStageConcurrency } from "./concurrency.js";
 import { runStage } from "./stage-runner.js";
 import { createLinkedAbortController } from "../orchestration/cancellation.js";
 import {
@@ -149,7 +149,12 @@ export async function runItemStreaming(
 
   const itemLimiter = createLimiter(options.concurrency);
   const stageLimiters = stages.map((stage) => {
-    const limit = options.stageConcurrency[stage.name] ?? stage.concurrency;
+    const limit = getEffectiveStageConcurrency(
+      stage.name,
+      stage.concurrency,
+      options.concurrency,
+      options.stageConcurrency[stage.name]
+    );
     return createLimiter(limit);
   });
 

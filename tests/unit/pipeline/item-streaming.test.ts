@@ -130,4 +130,47 @@ describe("runItemStreaming", () => {
     expect(aRes?.status).toBe("failed");
     expect(bRes?.status).toBe("cancelled");
   });
+
+  it("honors the strictest stage-local limit over options overrides", async () => {
+    const items = ["a", "b", "c", "d"];
+    let active = 0;
+    let maxActive = 0;
+
+    const stages: PipelineStage<string, string>[] = [
+      {
+        name: "stage1",
+        concurrency: 2, // Strictest limit
+        run: async (item) => {
+          active++;
+          maxActive = Math.max(maxActive, active);
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          active--;
+          return `${item}-1`;
+        }
+      }
+    ];
+
+    const pipelineOptions: NormalizedPipelineOptions = {
+      strategy: "item-streaming",
+      preserveOrder: true,
+      failFast: false,
+      concurrency: 5, // Pipeline options concurrency
+      stageConcurrency: {
+        stage1: 3 // Option override
+      }
+    };
+
+    const results = await runItemStreaming(
+      items,
+      stages,
+      pipelineOptions,
+      "pipeline-1",
+      dummyState,
+      new AbortController().signal
+    );
+
+    expect(results).toHaveLength(4);
+    // It should have never exceeded 2 concurrent executions for stage1
+    expect(maxActive).toBeLessThanOrEqual(2);
+  });
 });

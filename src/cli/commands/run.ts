@@ -187,14 +187,24 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
         verbose: config.reporting.verbose
       },
       signal: abortController.signal
-    }, {
-      agentExecutor,
-      eventSink: eventBus,
-      artifactStore,
-      idGenerator: {
-        nextId: (prefix: string) => (prefix === "run" ? runIdGenerated : crypto.randomUUID())
-      }
-    });
+    }, (() => {
+      let pipelineCounter = 0;
+      return {
+        agentExecutor,
+        eventSink: eventBus,
+        artifactStore,
+        idGenerator: {
+          nextId: (prefix: string) => {
+            if (prefix === "run") return runIdGenerated;
+            if (prefix === "pipeline") {
+              pipelineCounter += 1;
+              return `pipeline-${pipelineCounter}`;
+            }
+            return crypto.randomUUID();
+          }
+        }
+      };
+    })());
 
     await eventBus.drain();
 

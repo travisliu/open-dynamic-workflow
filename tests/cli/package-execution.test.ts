@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 
-const WORKSPACE_DIR = "/root/projects/execflow";
+const WORKSPACE_DIR = path.resolve(process.cwd());
 const TEMP_NPM_DIR = path.resolve(WORKSPACE_DIR, "tests/temp-npm-prefix");
 let packedTarballPath = "";
 

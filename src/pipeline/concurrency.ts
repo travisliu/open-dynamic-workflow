@@ -43,3 +43,29 @@ export class ConcurrencyLimiter {
 export function createLimiter(limit?: number): ConcurrencyLimiter {
   return new ConcurrencyLimiter(limit !== undefined && limit > 0 ? limit : Infinity);
 }
+
+export function getEffectiveStageConcurrency(
+  stageName: string,
+  stageConcurrencyProp?: number,
+  pipelineConcurrency?: number,
+  stageConcurrencyOption?: number
+): number {
+  const limits: number[] = [];
+
+  if (stageConcurrencyProp !== undefined && stageConcurrencyProp > 0) {
+    limits.push(stageConcurrencyProp);
+  }
+  if (pipelineConcurrency !== undefined && pipelineConcurrency > 0) {
+    limits.push(pipelineConcurrency);
+  }
+  if (stageConcurrencyOption !== undefined && stageConcurrencyOption > 0) {
+    limits.push(stageConcurrencyOption);
+  }
+
+  if (limits.length === 0) {
+    return Infinity;
+  }
+
+  return Math.min(...limits);
+}
+
