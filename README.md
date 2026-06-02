@@ -70,34 +70,42 @@ The `mock` provider is intended for tests, examples, and CI workflows that shoul
 
 ---
 
-## Installation
+## Installation & Usage
 
-### From npm
+### Usage with npx
 
-```bash
-npm install --save-dev execflow
-```
-
-Then run with:
+Run without installing globally:
 
 ```bash
 npx execflow --help
+npx execflow doctor
+npx execflow validate workflows/review.ts
+npx execflow run workflows/review.ts
 ```
 
-### From source
+### Global installation
 
 ```bash
-git clone <repo-url>
-cd execflow
+npm install -g execflow
+execflow --help
+execflow doctor
+```
+
+### Local development
+
+```bash
 npm install
 npm run build
-npm link
+npx . --help
+npx . run workflows/review.ts
 ```
 
-Then run:
+### Local package smoke test
 
 ```bash
-execflow --help
+npm pack
+npx ./execflow-0.1.0.tgz --help
+npx ./execflow-0.1.0.tgz doctor
 ```
 
 ---

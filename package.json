@@ -1,26 +1,33 @@
 {
   "name": "execflow",
-  "version": "0.0.0-phase0",
-  "description": "Phase 0 contract-freeze scaffold for execflow MVP.",
+  "version": "0.1.0",
+  "description": "Local-first workflow CLI for orchestrating coding-agent CLIs.",
   "type": "module",
   "private": true,
   "bin": {
-    "execflow": "dist/src/index.js"
+    "execflow": "./dist/index.js"
   },
   "files": [
     "dist",
     "README.md",
-    "docs"
+    "LICENSE",
+    "package.json"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist",
+    "build": "tsc",
+    "postbuild": "node scripts/fix-bin-permissions.mjs",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "check": "tsc --noEmit",
     "test": "vitest run",
-    "smoke": "npm run build && node dist/examples/contracts-smoke.js",
-    "clean": "rm -rf dist .execflow"
+    "prepack": "npm run clean && npm run build",
+    "pack:local": "npm pack",
+    "publish:dry-run": "npm publish --dry-run",
+    "release:check": "npm run check && npm test && npm run build && npm pack --dry-run"
   },
   "engines": {
-    "node": ">=20.11"
+    "node": ">=20"
   },
   "devDependencies": {
     "@types/node": "20",

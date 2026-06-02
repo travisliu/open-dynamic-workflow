@@ -20,8 +20,11 @@ export async function main(argv: string[]): Promise<void> {
   program
     .name("execflow")
     .description("Orchestrate coding-agent CLI workflows")
-    .version("0.0.0")
+    .version("0.1.0")
     .exitOverride((err) => {
+      if (err.code === "commander.helpDisplayed" || err.code === "commander.help" || err.code === "commander.version") {
+        throw err;
+      }
       // Throw CLI usage error on command parsing errors
       throw new ExecflowError(ErrorCode.CLI_USAGE_ERROR, err.message, { cause: err });
     });
@@ -78,12 +81,30 @@ export async function main(argv: string[]): Promise<void> {
       await doctorCommand({ rawOptions: options });
     });
 
-  await program.parseAsync(argv);
+  let parseOptions: { from: "node" | "user" } | undefined = undefined;
+  if (
+    argv.length >= 2 &&
+    (argv[0] === "node" ||
+      argv[0]?.endsWith("node") ||
+      argv[0]?.endsWith("npm") ||
+      argv[0]?.includes("/bin/"))
+  ) {
+    parseOptions = { from: "node" };
+  } else {
+    parseOptions = { from: "user" };
+  }
+
+  await program.parseAsync(argv, parseOptions);
 }
 
 // Execute CLI only when run directly as binary script
-const isMain = import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith("/execflow") || process.argv[1]?.endsWith("/cli/index.js");
-if (isMain || process.env.NODE_ENV !== "test") {
+const isMain =
+  import.meta.url === `file://${process.argv[1]}` ||
+  process.argv[1]?.endsWith("/execflow") ||
+  process.argv[1]?.endsWith("/cli/index.js") ||
+  process.argv[1]?.endsWith("/dist/cli/index.js");
+
+if (isMain) {
   main(process.argv).catch((error) => {
     const serialized = serializeError(error);
     console.error(serialized.message);

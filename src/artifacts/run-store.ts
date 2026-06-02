@@ -4,6 +4,17 @@ import type { ArtifactStore, RunArtifacts, CreateRunInput, RunManifest } from ".
 import { createInitialManifest, updateManifestStatus } from "./manifest.js";
 import { ExecflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { resolveUserPath, resolveProjectPath } from "../cli/paths.js";
+
+export function defaultRunsDir(cwd = process.cwd()): string {
+  return resolveProjectPath(".execflow/runs", cwd);
+}
+
+export async function createRunDir(runId: string, cwd = process.cwd()): Promise<string> {
+  const dir = path.resolve(defaultRunsDir(cwd), runId);
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
+}
 
 function safeFileName(input: string): string {
   return input.replace(/[^a-zA-Z0-9._:-]/g, "_");
@@ -31,7 +42,7 @@ export class FileSystemArtifactStore implements ArtifactStore {
   }
 
   async createRun(input: CreateRunInput): Promise<RunArtifacts> {
-    const outDir = input.outDir || this.options.rootDir || ".execflow/runs";
+    const outDir = input.outDir || this.options.rootDir || defaultRunsDir();
     const runRootDir = outDir.endsWith(input.runId) ? path.resolve(outDir) : path.resolve(outDir, input.runId);
     this.runRootDir = runRootDir;
     this.runId = input.runId;

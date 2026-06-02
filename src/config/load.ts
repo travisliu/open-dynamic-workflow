@@ -7,6 +7,7 @@ import { DEFAULT_CONFIG } from "./defaults.js";
 import { mergeConfig, type ConfigCliOverrides } from "./merge.js";
 import { validateConfig } from "./schema.js";
 import type { ResolvedExecflowConfig } from "./types.js";
+import { resolveUserPath, resolveProjectPath } from "../cli/paths.js";
 
 export interface LoadConfigInput {
   cwd: string;
@@ -15,13 +16,17 @@ export interface LoadConfigInput {
   cli: ConfigCliOverrides;
 }
 
+export function defaultConfigPath(cwd = process.cwd()): string {
+  return resolveProjectPath(".execflow/config.yaml", cwd);
+}
+
 export async function loadConfig(input: LoadConfigInput): Promise<ResolvedExecflowConfig> {
-  const absoluteCwd = resolve(process.cwd(), input.cwd);
+  const absoluteCwd = resolveProjectPath(input.cwd);
   let resolvedConfigPath: string | undefined;
   let fileConfig: any = {};
 
   if (input.configPath) {
-    resolvedConfigPath = resolve(absoluteCwd, input.configPath);
+    resolvedConfigPath = resolveUserPath(input.configPath, absoluteCwd);
     try {
       const content = await readFile(resolvedConfigPath, "utf8");
       try {
@@ -48,10 +53,10 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedExecfl
     }
   } else {
     // Try to load default config location: .execflow/config.yaml
-    const defaultConfigPath = resolve(absoluteCwd, ".execflow/config.yaml");
+    const defPath = defaultConfigPath(absoluteCwd);
     try {
-      const content = await readFile(defaultConfigPath, "utf8");
-      resolvedConfigPath = defaultConfigPath;
+      const content = await readFile(defPath, "utf8");
+      resolvedConfigPath = defPath;
       try {
         fileConfig = parse(content);
         if (typeof fileConfig !== "object" || fileConfig === null) {
@@ -60,7 +65,7 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedExecfl
       } catch (err: any) {
         throw new ExecflowError(
           ErrorCode.CONFIG_VALIDATION_ERROR,
-          `Invalid YAML in config file: ${defaultConfigPath}. ${err.message}`,
+          `Invalid YAML in config file: ${defPath}. ${err.message}`,
           { cause: err }
         );
       }
@@ -73,8 +78,8 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedExecfl
   validateConfig(merged);
 
   const resolvedOutDir = input.outDir 
-    ? resolve(absoluteCwd, input.outDir) 
-    : resolve(absoluteCwd, ".execflow/runs");
+    ? resolveUserPath(input.outDir, absoluteCwd) 
+    : resolveProjectPath(".execflow/runs", absoluteCwd);
 
   const result: ResolvedExecflowConfig = {
     ...merged,

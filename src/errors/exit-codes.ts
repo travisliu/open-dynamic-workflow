@@ -16,6 +16,13 @@ export const ExitCode = {
 export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
 
 export function exitCodeForError(error: unknown): ExitCode {
+  if (error && typeof error === "object") {
+    const errObj = error as any;
+    if (errObj.code === "commander.helpDisplayed" || errObj.code === "commander.help" || errObj.code === "commander.version" ||
+        (errObj.cause && (errObj.cause.code === "commander.helpDisplayed" || errObj.cause.code === "commander.help" || errObj.cause.code === "commander.version"))) {
+      return ExitCode.Success;
+    }
+  }
   const isExecflowError = error instanceof ExecflowError || (error && typeof error === "object" && "code" in error && "name" in error && (error as any).name === "ExecflowError");
   if (!isExecflowError) return ExitCode.InternalError;
 

@@ -13,6 +13,7 @@ import { DefaultAgentExecutor } from "../../agents/execute-agent.js";
 import { createReporter } from "../../output/reporter.js";
 import { EventBus } from "../../orchestration/event-bus.js";
 import * as path from "node:path";
+import { resolveUserPath } from "../paths.js";
 
 export interface RunCommandDeps {
   runtimeRunner: RuntimeRunner;
@@ -48,6 +49,8 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
 
+  const workflowPath = resolveUserPath(input.workflowFile, cwd);
+
   // Parse option arguments cleanly
   const parsedArgs = parseKeyValueArgs(rawOptions.arg || []);
   const concurrency = rawOptions.concurrency !== undefined
@@ -76,7 +79,7 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   });
 
   // Load workflow
-  const loaded = await loadWorkflow(input.workflowFile, config.cwd);
+  const loaded = await loadWorkflow(workflowPath, config.cwd);
 
   // Parse workflow
   const parsed = parseWorkflow(loaded);
