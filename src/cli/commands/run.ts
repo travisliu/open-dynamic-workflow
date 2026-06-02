@@ -63,8 +63,16 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     ? parseReportMode(rawOptions.report)
     : undefined;
 
+  if (rawOptions.model !== undefined && (typeof rawOptions.model !== "string" || rawOptions.model.trim() === "")) {
+    throw new ExecflowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      "CLI option '--model' value must be a non-empty string."
+    );
+  }
+
   const cliOverrides: any = {};
   if (rawOptions.provider !== undefined) cliOverrides.provider = rawOptions.provider;
+  if (rawOptions.model !== undefined) cliOverrides.model = rawOptions.model;
   if (concurrency !== undefined) cliOverrides.concurrency = concurrency;
   if (timeoutMs !== undefined) cliOverrides.timeoutMs = timeoutMs;
   if (reportMode !== undefined) cliOverrides.report = reportMode;
@@ -106,6 +114,8 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
       description: parsed.meta.description,
       phases: parsed.meta.phases || [],
       provider: config.defaultProvider,
+      defaultModel: config.defaultModel,
+      providers: config.providers,
       concurrency: config.concurrency,
       timeoutMs: config.timeoutMs,
       reportMode: config.reporting.mode,
@@ -176,6 +186,7 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
       cli: {
         workflowFile: loaded.sourcePath,
         provider: rawOptions.provider,
+        model: rawOptions.model,
         args: parsedArgs,
         cwd: config.cwd,
         outDir: runOutDir,

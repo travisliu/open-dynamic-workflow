@@ -1,6 +1,6 @@
 import type { ParsedWorkflow, WorkflowMeta } from "../types/workflow.js";
 import type { ArtifactStore } from "../types/artifacts.js";
-import type { ResolvedConfig } from "../types/config.js";
+import type { ResolvedConfig, CliRunOptions } from "../types/config.js";
 import type { AgentResult } from "../types/agent.js";
 import type { Scheduler } from "../types/scheduler.js";
 import type { AgentExecutor } from "../agents/execution-types.js";
@@ -27,6 +27,7 @@ export interface RuntimeState {
   runId: string;
   parsedWorkflow: ParsedWorkflow;
   config: ResolvedConfig;
+  cli: CliRunOptions;
   args: Record<string, unknown>;
   cwd: string;
   artifactsDir: string;

@@ -36,6 +36,13 @@ export class DefaultAgentExecutor implements AgentExecutor {
       await this.artifactStore.writeJson(`agents/${input.id}/schema.json`, input.schema);
     }
 
+    // Write metadata.json
+    const metadataJson = {
+      model: input.model,
+      resolutionSource: input.metadata?.modelResolutionSource || "provider-default"
+    };
+    await this.artifactStore.writeJson(`agents/${input.id}/metadata.json`, metadataJson);
+
     // Initialize empty log files to ensure they exist even if no output is produced
     await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, "");
     await this.artifactStore.writeText(`agents/${input.id}/stderr.log`, "");
@@ -166,7 +173,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
       stdoutPath: `agents/${input.id}/stdout.log`,
       stderrPath: `agents/${input.id}/stderr.log`,
       rawResultPath: `agents/${input.id}/raw-result.json`,
-      normalizedResultPath: `agents/${input.id}/normalized-result.json`
+      normalizedResultPath: `agents/${input.id}/normalized-result.json`,
+      metadataPath: `agents/${input.id}/metadata.json`
     } as any;
 
     if (input.schema) {
@@ -184,6 +192,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         id: input.id,
         label: input.label,
         provider: input.provider,
+        model: input.model,
         stdout: redactedStdout,
         stderr: redactedStderr,
         exitCode: null,
@@ -204,6 +213,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         id: input.id,
         label: input.label,
         provider: input.provider,
+        model: input.model,
         stdout: redactedStdout,
         stderr: redactedStderr,
         exitCode: null,
@@ -223,6 +233,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         id: input.id,
         label: input.label,
         provider: input.provider,
+        model: input.model,
         stdout: redactedStdout,
         stderr: redactedStderr,
         exitCode,
@@ -257,6 +268,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         id: input.id,
         label: input.label,
         provider: input.provider,
+        model: input.model,
         stdout: redactedStdout,
         stderr: redactedStderr,
         exitCode,
@@ -293,6 +305,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         id: input.id,
         label: input.label,
         provider: input.provider,
+        model: input.model,
         stdout: redactedStdout,
         stderr: redactedStderr,
         exitCode,
@@ -316,6 +329,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       id: input.id,
       label: input.label,
       provider: input.provider,
+      model: input.model,
       text: redactText(normalized.text ?? "", secretValues),
       json: normalized.json,
       stdout: redactedStdout,

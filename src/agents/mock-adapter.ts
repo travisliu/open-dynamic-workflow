@@ -20,7 +20,8 @@ export class MockAdapter implements AgentAdapter {
   async checkHealth(): Promise<ProviderHealth> {
     return {
       provider: "mock",
-      available: true
+      available: true,
+      supportsModelSelection: true
     };
   }
 
@@ -33,17 +34,19 @@ export class MockAdapter implements AgentAdapter {
     };
   }
 
-  async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult> {
+  async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult & { model?: string }> {
     const response = this.lookupResponse(input.input);
+    const result: ProviderParsedResult & { model?: string } = {};
     if (response.json !== undefined) {
-      return {
-        json: response.json,
-        text: response.text ?? (typeof response.json === "string" ? response.json : JSON.stringify(response.json))
-      };
+      result.json = response.json;
+      result.text = response.text ?? (typeof response.json === "string" ? response.json : JSON.stringify(response.json));
+    } else {
+      result.text = response.text ?? "mock response";
     }
-    return {
-      text: response.text ?? "mock response"
-    };
+    if (input.input.model !== undefined) {
+      result.model = input.input.model;
+    }
+    return result;
   }
 
   lookupResponse(input: AgentRunInput): MockProviderResponse {

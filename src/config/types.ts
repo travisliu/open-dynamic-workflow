@@ -1,10 +1,15 @@
 export type ProviderName = "codex" | "gemini" | "mock" | string;
 export type ReporterMode = "pretty" | "json" | "jsonl";
 
+export interface ProviderModelArgConfig {
+  flag: string;
+}
+
 export interface ProviderConfig {
   command: string;
   args: string[];
   defaultModel: string | null;
+  modelArg?: ProviderModelArgConfig | false;
   timeoutMs?: number;
   env?: Record<string, string>;
   responses?: Record<string, unknown>; // Used by mock provider.
@@ -21,6 +26,7 @@ export interface ExecflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
   timeoutMs: number;
+  defaultModel?: string | null;
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
   reporting: {

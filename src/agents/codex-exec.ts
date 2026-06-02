@@ -9,6 +9,7 @@ import type {
 } from "./types.js";
 import { runProcess } from "./process-runner.js";
 import { shouldRedactEnvName } from "../security/env.js";
+import { appendModelArg } from "./model-args.js";
 
 export interface CodexProviderConfig extends ProviderConfig {
   promptMode?: "stdin" | "arg";
@@ -35,7 +36,8 @@ export class CodexExecAdapter implements AgentAdapter {
       return {
         provider: "codex",
         available: true,
-        command
+        command,
+        supportsModelSelection: this.config.modelArg !== false
       };
     } catch (err) {
       return {
@@ -46,7 +48,8 @@ export class CodexExecAdapter implements AgentAdapter {
         error: {
           name: (err as Error).name,
           message: (err as Error).message
-        }
+        },
+        supportsModelSelection: this.config.modelArg !== false
       };
     }
   }
@@ -56,10 +59,8 @@ export class CodexExecAdapter implements AgentAdapter {
     const baseArgs = this.config.args ?? ["exec", "--json", "--ephemeral"];
     const args = [...baseArgs];
 
-    const model = input.model ?? this.config.defaultModel;
-    if (model) {
-      args.push("--model", model);
-    }
+    const model = input.model ?? this.config.defaultModel ?? undefined;
+    appendModelArg(args, model, this.config.modelArg, "--model");
 
     const promptMode = this.config.promptMode ?? "stdin";
     let stdin: string | undefined = undefined;

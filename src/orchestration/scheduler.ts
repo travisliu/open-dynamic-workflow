@@ -86,6 +86,7 @@ export class DefaultScheduler implements Scheduler {
         agentId: task.id,
         label: task.label,
         provider: task.provider || options?.provider || "mock",
+        model: task.model || options?.model,
         state: "queued"
       });
     }
@@ -176,6 +177,7 @@ export class DefaultScheduler implements Scheduler {
           agentId: internalTask.task.id,
           label: internalTask.task.label,
           provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+          model: internalTask.task.model || internalTask.options?.model,
           cwd: internalTask.options?.cwd || process.cwd(),
           state: "running"
         });
@@ -205,6 +207,7 @@ export class DefaultScheduler implements Scheduler {
                 agentId: internalTask.task.id,
                 label: internalTask.task.label,
                 provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+                model: internalTask.task.model || internalTask.options?.model,
                 status: "succeeded",
                 durationMs: Date.now() - startTime,
                 exitCode: agentResult?.exitCode ?? 0,
@@ -224,6 +227,7 @@ export class DefaultScheduler implements Scheduler {
                 agentId: internalTask.task.id,
                 label: internalTask.task.label,
                 provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+                model: internalTask.task.model || internalTask.options?.model,
                 status: agentStatus,
                 durationMs,
                 exitCode,
@@ -270,6 +274,7 @@ export class DefaultScheduler implements Scheduler {
             id: internalTask.task.id,
             label: internalTask.task.label,
             provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+            model: internalTask.task.model || internalTask.options?.model,
             stdout: "",
             stderr: err.message || "",
             exitCode: null,
@@ -286,6 +291,7 @@ export class DefaultScheduler implements Scheduler {
               agentId: internalTask.task.id,
               label: internalTask.task.label,
               provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+              model: internalTask.task.model || internalTask.options?.model,
               status,
               durationMs,
               exitCode: null,

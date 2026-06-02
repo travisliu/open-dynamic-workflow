@@ -36,6 +36,7 @@ export interface AgentSuccessResult {
   id: string;
   label?: string | undefined;
   provider: ProviderName;
+  model?: string | undefined;
   text?: string | undefined;
   json?: unknown;
   stdout: string;
@@ -51,6 +52,7 @@ export interface AgentFailureResult {
   id: string;
   label?: string | undefined;
   provider: ProviderName;
+  model?: string | undefined;
   stdout: string;
   stderr: string;
   exitCode: number | null;
@@ -79,6 +81,7 @@ export interface ProviderHealth {
   version?: string;
   message?: string;
   error?: SerializedError;
+  supportsModelSelection?: boolean;
 }
 
 export interface ProviderCommand {

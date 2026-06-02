@@ -1,6 +1,7 @@
 import type { AgentCallInput, AgentResult } from "../types/agent.js";
 import type { ScheduledTask, ScheduleOptions } from "../types/scheduler.js";
 import type { RuntimeState } from "./types.js";
+import { resolveAgentModel } from "../agents/resolve-model.js";
 import { InvalidDslCallError } from "./errors.js";
 import { ExecflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
@@ -84,9 +85,17 @@ export function createDsl(runtime: RuntimeState) {
       const normalizedTimeoutMs = input.timeoutMs || runtime.config.timeoutMs || 30000;
       const normalizedCwd = input.cwd || runtime.cwd;
 
+      const resolved = resolveAgentModel({
+        agentModel: input.model,
+        cliModel: runtime.cli?.model,
+        providerDefaultModel: runtime.config.providers?.[normalizedProvider]?.defaultModel,
+        globalDefaultModel: runtime.config.defaultModel
+      });
+
       const task: ScheduledTask<AgentResult> = {
         id: normalizedId,
         provider: normalizedProvider,
+        model: resolved.model,
         run: async (schedulerSignal: AbortSignal) => {
           let finalSignal = schedulerSignal;
           let onAbort: (() => void) | undefined;
@@ -113,12 +122,15 @@ export function createDsl(runtime: RuntimeState) {
             prompt: input.prompt,
             timeoutMs: normalizedTimeoutMs,
             cwd: normalizedCwd,
-            signal: finalSignal
+            signal: finalSignal,
+            metadata: {
+              ...input.metadata,
+              modelResolutionSource: resolved.source
+            }
           };
           if (input.label !== undefined) execInput.label = input.label;
-          if (input.model !== undefined) execInput.model = input.model;
+          if (resolved.model !== undefined) execInput.model = resolved.model;
           if (input.schema !== undefined) execInput.schema = input.schema;
-          if (input.metadata !== undefined) execInput.metadata = input.metadata;
 
           try {
             return await runtime.agentExecutor.execute(execInput);
@@ -136,6 +148,7 @@ export function createDsl(runtime: RuntimeState) {
 
       const scheduleOptions: ScheduleOptions = {
         provider: normalizedProvider,
+        model: resolved.model,
         timeoutMs: normalizedTimeoutMs,
         failFast: runtime.failFast,
         cwd: normalizedCwd

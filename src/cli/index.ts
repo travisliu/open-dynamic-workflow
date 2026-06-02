@@ -33,6 +33,7 @@ export async function main(argv: string[]): Promise<void> {
     .command("run")
     .argument("<workflow-file>", "Path to workflow file")
     .option("-p, --provider <name>", "Default agent provider name")
+    .option("-m, --model <model>", "Default model for agent calls")
     .option("-a, --arg <key=value>", "Workflow input argument (can be repeated)", collectArgs, [])
     .option("-c, --config <path>", "Path to config file")
     .option("--cwd <path>", "Custom working directory")

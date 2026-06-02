@@ -499,6 +499,40 @@ Configuration precedence:
 
 ---
 
+## Model Selection
+
+Model selection can be configured globally, per provider, on the command line, or explicitly within workflows.
+
+### Precedence Rules
+
+When resolving which model to use for an agent task, ExecFlow applies the following precedence (from strongest to weakest):
+
+1. **Per-agent model**: Defined explicitly in the workflow script: `agent({ model: "model-name" })`.
+2. **CLI override**: Provided via the `--model` (or `-m`) option: `execflow run workflow.ts --model model-name`.
+3. **Provider-specific default model**: Configured in `.execflow/config.yaml` under `providers.<provider>.defaultModel`.
+4. **Global default model**: Configured in `.execflow/config.yaml` under `defaultModel`.
+5. **Provider default**: If no model is configured, the provider's CLI decides.
+
+### Provider Flag Customization (`modelArg`)
+
+By default, the `codex` provider CLI uses `--model <model>` and the `gemini` provider CLI uses `-m <model>`. You can customize this flag or disable model selection entirely for any provider in `.execflow/config.yaml`:
+
+```yaml
+defaultModel: gemini-2.5-flash # Global default model
+
+providers:
+  codex:
+    command: codex
+    modelArg:
+      flag: --custom-model-flag # Custom flag instead of default --model
+      
+  gemini:
+    command: gemini
+    modelArg: false # Disable model selection (errors if a model is requested)
+```
+
+---
+
 ## Reports
 
 ExecFlow supports three report modes.

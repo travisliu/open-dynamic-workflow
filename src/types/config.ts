@@ -1,9 +1,14 @@
 import type { JsonObject, ProviderName, ReporterMode } from "./common.js";
 
+export interface ProviderModelArgConfig {
+  flag: string;
+}
+
 export interface ProviderConfig {
   command: string;
   args?: string[];
   defaultModel?: string | null;
+  modelArg?: ProviderModelArgConfig | false;
   timeoutMs?: number;
   env?: Record<string, string>;
   mock?: MockProviderConfig;
@@ -41,6 +46,7 @@ export interface ExecflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
   timeoutMs: number;
+  defaultModel?: string | null;
   failFast?: boolean;
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
@@ -57,6 +63,7 @@ export interface ResolvedConfig extends ExecflowConfig {
 export interface CliRunOptions {
   workflowFile: string;
   provider?: ProviderName;
+  model?: string;
   args: JsonObject;
   configPath?: string;
   cwd?: string;

@@ -4,6 +4,8 @@ export interface DryRunSummary {
   description: string;
   phases: string[];
   provider: string;
+  defaultModel?: string | null | undefined;
+  providers?: Record<string, { defaultModel?: string | null | undefined; modelArg?: any }> | undefined;
   concurrency: number;
   timeoutMs: number;
   reportMode: string;
@@ -27,6 +29,20 @@ export function printDryRunSummary(summary: DryRunSummary): void {
   console.log(`Description: ${summary.description}`);
   console.log(`Phases: ${summary.phases.join(", ")}`);
   console.log(`Default provider: ${summary.provider}`);
+  if (summary.defaultModel !== undefined) {
+    console.log(`Global default model: ${summary.defaultModel}`);
+  }
+  if (summary.providers) {
+    console.log(`Providers:`);
+    for (const [name, p] of Object.entries(summary.providers)) {
+      const modelArgStr = p.modelArg === false
+        ? "[no model selection]"
+        : (p.modelArg && typeof p.modelArg === "object" && p.modelArg.flag
+          ? `[model flag: ${p.modelArg.flag}]`
+          : "[default model flag]");
+      console.log(`  - ${name}: default model = ${p.defaultModel ?? "none"}, ${modelArgStr}`);
+    }
+  }
   console.log(`Concurrency: ${summary.concurrency}`);
   console.log(`Timeout: ${summary.timeoutMs} ms`);
   console.log(`Report mode: ${summary.reportMode}`);

@@ -2,6 +2,7 @@ import type { ExecflowConfig } from "./types.js";
 
 export interface ConfigCliOverrides {
   provider?: string | undefined;
+  model?: string | undefined;
   concurrency?: number | undefined;
   timeoutMs?: number | undefined;
   report?: "pretty" | "json" | "jsonl" | undefined;
@@ -42,6 +43,7 @@ export function mergeConfig(
   };
 
   if (cli.provider) merged.defaultProvider = cli.provider;
+  if (cli.model !== undefined) merged.defaultModel = cli.model;
   if (cli.concurrency !== undefined) merged.concurrency = cli.concurrency;
   if (cli.timeoutMs !== undefined) merged.timeoutMs = cli.timeoutMs;
   if (cli.report) merged.reporting.mode = cli.report;

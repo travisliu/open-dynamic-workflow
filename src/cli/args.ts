@@ -7,6 +7,7 @@ export type ReportMode = "pretty" | "json" | "jsonl";
 export interface RunCliOptions {
   workflowFile: string;
   provider?: string;
+  model?: string;
   args: Record<string, string>;
   configPath?: string;
   cwd: string;

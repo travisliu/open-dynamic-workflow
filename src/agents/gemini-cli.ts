@@ -9,6 +9,7 @@ import type {
 } from "./types.js";
 import { runProcess } from "./process-runner.js";
 import { shouldRedactEnvName } from "../security/env.js";
+import { appendModelArg } from "./model-args.js";
 
 export interface GeminiProviderConfig extends ProviderConfig {
   promptFlag?: string;
@@ -35,7 +36,8 @@ export class GeminiCliAdapter implements AgentAdapter {
       return {
         provider: "gemini",
         available: true,
-        command
+        command,
+        supportsModelSelection: this.config.modelArg !== false
       };
     } catch (err) {
       return {
@@ -46,7 +48,8 @@ export class GeminiCliAdapter implements AgentAdapter {
         error: {
           name: (err as Error).name,
           message: (err as Error).message
-        }
+        },
+        supportsModelSelection: this.config.modelArg !== false
       };
     }
   }
@@ -54,7 +57,7 @@ export class GeminiCliAdapter implements AgentAdapter {
   async buildCommand(input: AgentRunInput): Promise<ProviderCommand> {
     const command = this.config.command ?? "gemini";
     const promptFlag = this.config.promptFlag ?? "-p";
-    const modelFlag = this.config.modelFlag ?? "-m";
+    const defaultFlag = this.config.modelFlag ?? "-m";
 
     const args: string[] = [];
     args.push(promptFlag, input.prompt);
@@ -62,10 +65,8 @@ export class GeminiCliAdapter implements AgentAdapter {
     const baseArgs = this.config.args ?? ["--output-format", "json"];
     args.push(...baseArgs);
 
-    const model = input.model ?? this.config.defaultModel;
-    if (model) {
-      args.push(modelFlag, model);
-    }
+    const model = input.model ?? this.config.defaultModel ?? undefined;
+    appendModelArg(args, model, this.config.modelArg, defaultFlag);
 
     // Filter environment variables according to security policy
     const filteredEnv: Record<string, string> = {};

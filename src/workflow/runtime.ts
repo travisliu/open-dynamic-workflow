@@ -70,6 +70,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       runId,
       parsedWorkflow: input.parsedWorkflow,
       config: input.config,
+      cli: input.cli,
       args: (input.cli.args as any) || {},
       cwd,
       artifactsDir,

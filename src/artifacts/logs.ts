@@ -10,6 +10,7 @@ export interface AgentArtifactPaths {
   normalizedResultPath: string;
   schemaPath: string;
   validationErrorPath: string;
+  metadataPath: string;
 }
 
 function safeFileName(input: string): string {
@@ -27,7 +28,8 @@ export function getAgentArtifactPaths(rootDir: string, agentId: string): AgentAr
     rawResultPath: path.join(agentDir, "raw-result.json"),
     normalizedResultPath: path.join(agentDir, "normalized-result.json"),
     schemaPath: path.join(agentDir, "schema.json"),
-    validationErrorPath: path.join(agentDir, "validation-error.json")
+    validationErrorPath: path.join(agentDir, "validation-error.json"),
+    metadataPath: path.join(agentDir, "metadata.json")
   };
 }
 

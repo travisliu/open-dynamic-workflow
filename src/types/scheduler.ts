@@ -11,11 +11,13 @@ export interface ScheduledTask<T> {
   id: string;
   label?: string | undefined;
   provider?: ProviderName | undefined;
+  model?: string | undefined;
   run: (signal: AbortSignal) => MaybePromise<T>;
 }
 
 export interface ScheduleOptions {
   provider?: ProviderName | undefined;
+  model?: string | undefined;
   priority?: number | undefined;
   timeoutMs?: number | undefined;
   failFast?: boolean | undefined;

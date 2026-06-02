@@ -81,12 +81,14 @@ export interface AgentQueuedPayload {
   agentId: string;
   label?: string;
   provider: string;
+  model?: string;
 }
 
 export interface AgentStartedPayload {
   agentId: string;
   label?: string;
   provider: string;
+  model?: string;
   cwd: string;
 }
 
@@ -100,6 +102,7 @@ export interface AgentCompletedPayload {
   agentId: string;
   label?: string;
   provider: string;
+  model?: string;
   status: "succeeded";
   durationMs: number;
   exitCode: number;
@@ -110,6 +113,7 @@ export interface AgentFailedPayload {
   agentId: string;
   label?: string;
   provider: string;
+  model?: string;
   status: "failed";
   durationMs: number;
   exitCode: number | null;
@@ -121,6 +125,7 @@ export interface AgentTimedOutPayload {
   agentId: string;
   label?: string;
   provider: string;
+  model?: string;
   status: "timed_out";
   durationMs: number;
   error: SerializedError;
@@ -131,6 +136,7 @@ export interface AgentCancelledPayload {
   agentId: string;
   label?: string;
   provider: string;
+  model?: string;
   status: "cancelled";
   durationMs: number;
   error?: SerializedError;

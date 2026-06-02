@@ -26,6 +26,14 @@ export function validateConfig(config: ExecflowConfig): void {
     );
   }
 
+  // defaultModel validation
+  if (config.defaultModel !== undefined && config.defaultModel !== null && typeof config.defaultModel !== "string") {
+    throw new ExecflowError(
+      ErrorCode.MODEL_CONFIG_INVALID,
+      "Global config value 'defaultModel' must be a string, null, or undefined."
+    );
+  }
+
   // providers validation
   if (typeof config.providers !== "object" || config.providers === null) {
     throw new ExecflowError(
@@ -59,6 +67,28 @@ export function validateConfig(config: ExecflowConfig): void {
           throw new ExecflowError(
             ErrorCode.CONFIG_VALIDATION_ERROR,
             `Provider '${name}' args must contain only strings.`
+          );
+        }
+      }
+    }
+    if (provider.defaultModel !== undefined && provider.defaultModel !== null && typeof provider.defaultModel !== "string") {
+      throw new ExecflowError(
+        ErrorCode.MODEL_CONFIG_INVALID,
+        `Provider '${name}' defaultModel must be a string, null, or undefined.`
+      );
+    }
+    if (provider.modelArg !== undefined) {
+      if (provider.modelArg !== false && (typeof provider.modelArg !== "object" || provider.modelArg === null)) {
+        throw new ExecflowError(
+          ErrorCode.MODEL_CONFIG_INVALID,
+          `Provider '${name}' modelArg must be false or an object.`
+        );
+      }
+      if (provider.modelArg !== false) {
+        if (typeof provider.modelArg.flag !== "string" || provider.modelArg.flag.trim() === "") {
+          throw new ExecflowError(
+            ErrorCode.MODEL_CONFIG_INVALID,
+            `Provider '${name}' modelArg flag must be a non-empty string.`
           );
         }
       }

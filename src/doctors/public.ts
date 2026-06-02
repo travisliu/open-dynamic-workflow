@@ -4,6 +4,8 @@ export interface ProviderHealth {
   provider: string;
   ok: boolean;
   message: string;
+  defaultModel?: string | null;
+  supportsModelSelection?: boolean;
 }
 
 export interface DoctorResult {

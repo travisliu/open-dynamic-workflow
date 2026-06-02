@@ -23,11 +23,17 @@ const defaultProviderHealthChecker: ProviderHealthChecker = {
     for (const adapter of registry.list()) {
       const health = adapter.checkHealth
         ? await adapter.checkHealth()
-        : { provider: adapter.name, available: true, message: "available" };
+        : { provider: adapter.name, available: true, message: "available", supportsModelSelection: true };
+      
+      const providerConfig = config.providers[adapter.name];
+      const defaultModel = providerConfig ? providerConfig.defaultModel : null;
+
       providers.push({
         provider: health.provider,
         ok: health.available,
-        message: health.message || (health.available ? "available" : "unavailable")
+        message: health.message || (health.available ? "available" : "unavailable"),
+        defaultModel,
+        supportsModelSelection: health.supportsModelSelection !== false
       });
       if (!health.available) {
         ok = false;
@@ -91,10 +97,12 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
 
   for (const provider of result.providers) {
     const symbol = provider.ok ? "✓" : "✕";
+    const defaultModelStr = provider.defaultModel ? ` (default model: ${provider.defaultModel})` : "";
+    const modelSelectionStr = provider.supportsModelSelection ? " [supports model selection]" : " [no model selection]";
     console.log(
       `${symbol} ${provider.provider.padEnd(8)} ${provider.ok ? "available" : "unavailable"}${
         provider.message ? `: ${provider.message}` : ""
-      }`
+      }${defaultModelStr}${modelSelectionStr}`
     );
   }
 

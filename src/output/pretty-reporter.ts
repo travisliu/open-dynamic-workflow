@@ -45,13 +45,15 @@ export class PrettyReporter implements Reporter {
       case "agent.queued": {
         if (this.verbose) {
           const label = displayAgentLabel(payload);
-          this.stdout.write(`• ${label} queued [${payload.provider}]\n`);
+          const providerStr = payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
+          this.stdout.write(`• ${label} queued [${providerStr}]\n`);
         }
         break;
       }
       case "agent.started": {
         const label = displayAgentLabel(payload);
-        this.stdout.write(`▶ ${label} started [${payload.provider}]\n`);
+        const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
+        this.stdout.write(`▶ ${label} started [${providerStr}]\n`);
         break;
       }
       case "agent.output": {
@@ -63,25 +65,29 @@ export class PrettyReporter implements Reporter {
       case "agent.completed": {
         const label = displayAgentLabel(payload);
         const dur = formatDuration(payload.durationMs);
-        this.stdout.write(`✓ ${label} succeeded [${payload.provider}] ${dur}\n`);
+        const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
+        this.stdout.write(`✓ ${label} succeeded [${providerStr}] ${dur}\n`);
         break;
       }
       case "agent.failed": {
         const label = displayAgentLabel(payload);
         const errMsg = payload.error?.message || "Unknown error";
-        this.stdout.write(`✕ ${label} failed [${payload.provider}] ${errMsg}\n`);
+        const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
+        this.stdout.write(`✕ ${label} failed [${providerStr}] ${errMsg}\n`);
         break;
       }
       case "agent.timed_out": {
         const label = displayAgentLabel(payload);
         const errMsg = payload.error?.message || "Timed out";
-        this.stdout.write(`✕ ${label} timed out [${payload.provider}] ${errMsg}\n`);
+        const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
+        this.stdout.write(`✕ ${label} timed out [${providerStr}] ${errMsg}\n`);
         break;
       }
       case "agent.cancelled": {
         const label = displayAgentLabel(payload);
         const errMsg = payload.error?.message || "Cancelled";
-        this.stdout.write(`✕ ${label} cancelled [${payload.provider}] ${errMsg}\n`);
+        const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
+        this.stdout.write(`✕ ${label} cancelled [${providerStr}] ${errMsg}\n`);
         break;
       }
       case "pipeline.started": {
