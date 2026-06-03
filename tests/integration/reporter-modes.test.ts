@@ -169,7 +169,7 @@ providers:
     expect(stdout).not.toContain("Artifacts:");
 
     // Assert: Operational logs, if any, are on stderr
-    expect(result.stderr).toContain("DEBUG");
+    expect(result.stderr).not.toContain("DEBUG");
   });
 
   it("JSONL reporter emits ordered event stream", async () => {

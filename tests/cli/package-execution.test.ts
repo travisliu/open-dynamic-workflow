@@ -52,7 +52,7 @@ describe("CLI package execution and installation", () => {
     expect(stdout).toContain("Workflow is valid: simple-mock-workflow");
   });
 
-  it("can install globally with a custom prefix and run", () => {
+  it("can install globally with a custom prefix and run", async () => {
     // Install globally with custom prefix (which uses temp prefix directory inside workspace)
     execSync(`npm install --prefix "${TEMP_NPM_DIR}" -g "${packedTarballPath}"`, {
       cwd: WORKSPACE_DIR,
@@ -71,5 +71,36 @@ describe("CLI package execution and installation", () => {
     const doctorStdout = execSync(`"${globalBinPath}" doctor`, { encoding: "utf8" });
     expect(doctorStdout).toContain("Node.js >= 20");
     expect(doctorStdout).toContain("openflow 0.1.0");
+
+    // Run the installed openflow binary with a real workflow and verify output/artifacts
+    const runOutDir = path.join(TEMP_NPM_DIR, "out");
+    await fs.mkdir(runOutDir, { recursive: true });
+
+    const runCommand = `"${globalBinPath}" run tests/fixtures/workflows/mock-success.workflow.js --config tests/fixtures/config/mock.config.yaml --out "${runOutDir}" --report json`;
+    const runStdout = execSync(runCommand, { encoding: "utf8" });
+
+    // Assert: stdout is exactly one parseable JSON report
+    let parsedReport: any;
+    expect(() => {
+      parsedReport = JSON.parse(runStdout.trim());
+    }).not.toThrow();
+
+    expect(parsedReport.schemaVersion).toBe("openflow.report.v1");
+    expect(typeof parsedReport.runId).toBe("string");
+    expect(parsedReport.status).toBe("succeeded");
+
+    // Assert: only one run directory is created under the temp output path
+    const runDirs = await fs.readdir(runOutDir);
+    expect(runDirs.length).toBe(1);
+    const actualRunDir = runDirs[0]!;
+
+    // Assert: the persisted report contains a single runId matching that one run directory
+    expect(parsedReport.runId).toBe(actualRunDir);
+
+    const persistedReportPath = path.join(runOutDir, actualRunDir, "report.json");
+    expect(existsSync(persistedReportPath)).toBe(true);
+    const persistedReportContent = await fs.readFile(persistedReportPath, "utf8");
+    const parsedPersistedReport = JSON.parse(persistedReportContent);
+    expect(parsedPersistedReport.runId).toBe(actualRunDir);
   });
 });

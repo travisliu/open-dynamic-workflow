@@ -14,7 +14,6 @@ function collectArgs(value: string, previous: string[]): string[] {
 }
 
 export async function main(argv: string[]): Promise<void> {
-  console.error("DEBUG main argv:", argv);
   const program = new Command();
 
   program
@@ -98,17 +97,4 @@ export async function main(argv: string[]): Promise<void> {
   await program.parseAsync(argv, parseOptions);
 }
 
-// Execute CLI only when run directly as binary script
-const isMain =
-  import.meta.url === `file://${process.argv[1]}` ||
-  process.argv[1]?.endsWith("/openflow") ||
-  process.argv[1]?.endsWith("/cli/index.js") ||
-  process.argv[1]?.endsWith("/dist/cli/index.js");
 
-if (isMain) {
-  main(process.argv).catch((error) => {
-    const serialized = serializeError(error);
-    console.error(serialized.message);
-    process.exitCode = exitCodeForError(error);
-  });
-}

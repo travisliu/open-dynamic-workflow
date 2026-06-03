@@ -45,7 +45,6 @@ const defaultRuntimeRunner: RuntimeRunner = {
 };
 
 export async function runCommand(input: RunCommandInput): Promise<void> {
-  console.error("DEBUG runCommand started");
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
 
