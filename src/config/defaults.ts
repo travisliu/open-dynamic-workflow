@@ -20,8 +20,9 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
     },
     gemini: {
       command: "gemini",
-      args: ["--output-format", "json"],
-      defaultModel: "gemini-2.5-flash"
+      args: ["--output-format", "json", "--approval-mode", "plan"],
+      defaultModel: "gemini-2.5-flash",
+      promptMode: "stdin"
     }
   },
   security: {

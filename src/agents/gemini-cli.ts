@@ -14,6 +14,7 @@ import { appendModelArg } from "./model-args.js";
 export interface GeminiProviderConfig extends ProviderConfig {
   promptFlag?: string;
   modelFlag?: string;
+  promptMode?: "stdin" | "arg";
 }
 
 export class GeminiCliAdapter implements AgentAdapter {
@@ -58,9 +59,16 @@ export class GeminiCliAdapter implements AgentAdapter {
     const command = this.config.command ?? "gemini";
     const promptFlag = this.config.promptFlag ?? "-p";
     const defaultFlag = this.config.modelFlag ?? "-m";
+    const promptMode = this.config.promptMode ?? "arg";
 
     const args: string[] = [];
-    args.push(promptFlag, input.prompt);
+    let stdin: string | undefined = undefined;
+
+    if (promptMode === "stdin") {
+      stdin = input.prompt;
+    } else {
+      args.push(promptFlag, input.prompt);
+    }
 
     const baseArgs = this.config.args ?? ["--output-format", "json"];
     args.push(...baseArgs);
@@ -78,12 +86,16 @@ export class GeminiCliAdapter implements AgentAdapter {
       }
     }
 
-    return {
+    const cmd: ProviderCommand = {
       command,
       args,
       cwd: input.cwd,
       env: filteredEnv
     };
+    if (stdin !== undefined) {
+      cmd.stdin = stdin;
+    }
+    return cmd;
   }
 
   async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult> {
@@ -101,6 +113,13 @@ export class GeminiCliAdapter implements AgentAdapter {
         if (typeof parsed.text === "string") {
           return {
             text: parsed.text,
+            json: parsed,
+            raw: parsed
+          };
+        }
+        if (typeof parsed.response === "string") {
+          return {
+            text: parsed.response,
             json: parsed,
             raw: parsed
           };

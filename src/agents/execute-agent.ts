@@ -7,7 +7,17 @@ import { createDefaultProviderRegistry } from "./registry.js";
 import { runProcess } from "./process-runner.js";
 import { validateJson } from "../structured/validate-json.js";
 import { normalizeAgentOutput } from "../structured/normalize-agent-output.js";
-import { buildProviderEnv, shouldRedactEnvName, redactText } from "../security/env.js";
+import { buildProviderEnv, shouldRedactEnvName, redactText, StreamRedactor } from "../security/env.js";
+
+const MAX_IN_MEMORY_LOG_SIZE = 1024 * 1024; // 1MB limit for in-memory results
+
+interface MockAdapterWithLookup {
+  lookupResponse(input: AgentRunInput): any;
+}
+
+function isMockAdapter(adapter: any): adapter is MockAdapterWithLookup {
+  return typeof adapter.lookupResponse === "function";
+}
 
 export class DefaultAgentExecutor implements AgentExecutor {
   private readonly config: ResolvedConfig;
@@ -43,7 +53,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
     };
     await this.artifactStore.writeJson(`agents/${input.id}/metadata.json`, metadataJson);
 
-    // Initialize empty log files to ensure they exist even if no output is produced
+    // Initialize empty log files
     await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, "");
     await this.artifactStore.writeText(`agents/${input.id}/stderr.log`, "");
 
@@ -55,9 +65,12 @@ export class DefaultAgentExecutor implements AgentExecutor {
       }
     }
 
+    const stdoutRedactor = new StreamRedactor(secretValues);
+    const stderrRedactor = new StreamRedactor(secretValues);
+
     const startMs = Date.now();
-    let stdout = "";
-    let stderr = "";
+    let stdoutInMemory = "";
+    let stderrInMemory = "";
     let exitCode: number | null = null;
     let timedOut = false;
     let cancelled = false;
@@ -76,96 +89,49 @@ export class DefaultAgentExecutor implements AgentExecutor {
       metadata: input.metadata
     };
 
-    if (input.provider === "mock") {
-      // Mock execution path
-      const mockAdapter = adapter as any;
-      const response = mockAdapter.lookupResponse(runInput);
-
-      if (response.delayMs) {
-        try {
-          await new Promise((resolve, reject) => {
-            const timer = setTimeout(resolve, response.delayMs);
-            input.signal.addEventListener("abort", () => {
-              clearTimeout(timer);
-              reject(new Error("Aborted"));
-            });
-          });
-        } catch (err: any) {
-          const reason = String(input.signal.reason);
-          if (reason.includes("timed out")) {
-            timedOut = true;
-          } else {
-            cancelled = true;
+    const appendToLogs = async (stream: "stdout" | "stderr", chunk: string, redactor: StreamRedactor) => {
+      const redactedPart = redactor.process(chunk);
+      if (redactedPart) {
+        if (stream === "stdout") {
+          if (stdoutInMemory.length < MAX_IN_MEMORY_LOG_SIZE) {
+            stdoutInMemory += redactedPart;
           }
-        }
-      }
-
-      stdout = redactText(response.stdout ?? (response.text ?? "mock response"), secretValues);
-      stderr = redactText(response.stderr ?? "", secretValues);
-      exitCode = response.exitCode !== undefined ? response.exitCode : 0;
-      timedOut = timedOut || !!response.timeout;
-      cancelled = cancelled || (!!response.fail && response.error?.code === "USER_CANCELLED");
-
-      // Stream mock output to event bus and durable logs
-      if (stdout) {
-        await this.artifactStore.appendText(`agents/${input.id}/stdout.log`, stdout);
-        await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stdout", data: stdout });
-      }
-      if (stderr) {
-        await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, stderr);
-        await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stderr", data: stderr });
-      }
-    } else {
-      // Real process execution path
-      const commandInput = await adapter.buildCommand(runInput);
-      try {
-        const filteredEnv = buildProviderEnv({
-          baseEnv: process.env,
-          passEnv: this.config.security?.passEnv ?? [],
-          explicitEnv: commandInput.env
-        });
-        const processResult = await runProcess({
-          command: commandInput.command,
-          args: commandInput.args,
-          cwd: commandInput.cwd,
-          env: filteredEnv,
-          timeoutMs: input.timeoutMs,
-          signal: input.signal,
-          onStdout: async (chunk) => {
-            const redactedChunk = redactText(chunk, secretValues);
-            stdout += redactedChunk;
-            await this.artifactStore.appendText(`agents/${input.id}/stdout.log`, redactedChunk);
-            await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stdout", data: redactedChunk });
-          },
-          onStderr: async (chunk) => {
-            const redactedChunk = redactText(chunk, secretValues);
-            stderr += redactedChunk;
-            await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, redactedChunk);
-            await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stderr", data: redactedChunk });
-          }
-        });
-        exitCode = processResult.exitCode;
-        timedOut = processResult.timedOut;
-        cancelled = processResult.cancelled;
-      } catch (err: any) {
-        if (err.message?.includes("timeout") || err.code === "PROCESS_TIMEOUT") {
-          timedOut = true;
-        } else if (err.name === "AbortError" || input.signal?.aborted) {
-          cancelled = true;
         } else {
-          exitCode = exitCode ?? 1;
-          const errorMsg = `\nError running process: ${err.message}`;
-          stderr += errorMsg;
-          await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, errorMsg);
+          if (stderrInMemory.length < MAX_IN_MEMORY_LOG_SIZE) {
+            stderrInMemory += redactedPart;
+          }
         }
+        await this.artifactStore.appendText(`agents/${input.id}/${stream}.log`, redactedPart);
+        await this.eventBus.emit("agent.output", { agentId: input.id, stream, data: redactedPart });
       }
+    };
+
+    let executionResult: { exitCode: number | null; timedOut: boolean; cancelled: boolean };
+    if (input.provider === "mock" && isMockAdapter(adapter)) {
+      executionResult = await this.executeMock(input, runInput, adapter, appendToLogs, { stdoutRedactor, stderrRedactor });
+    } else {
+      executionResult = await this.executeProcess(input, runInput, adapter, appendToLogs, { stdoutRedactor, stderrRedactor });
+    }
+
+    exitCode = executionResult.exitCode;
+    timedOut = executionResult.timedOut;
+    cancelled = executionResult.cancelled;
+
+    // Flush redactors
+    const finalStdout = stdoutRedactor.flush();
+    if (finalStdout) {
+      if (stdoutInMemory.length < MAX_IN_MEMORY_LOG_SIZE) stdoutInMemory += finalStdout;
+      await this.artifactStore.appendText(`agents/${input.id}/stdout.log`, finalStdout);
+      await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stdout", data: finalStdout });
+    }
+    const finalStderr = stderrRedactor.flush();
+    if (finalStderr) {
+      if (stderrInMemory.length < MAX_IN_MEMORY_LOG_SIZE) stderrInMemory += finalStderr;
+      await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, finalStderr);
+      await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stderr", data: finalStderr });
     }
 
     const durationMs = Date.now() - startMs;
-
-    // Output is already redacted as it is collected/appended
-    const redactedStdout = stdout;
-    const redactedStderr = stderr;
 
     const agentArtifacts = {
       dir: `agents/${input.id}`,
@@ -183,7 +149,6 @@ export class DefaultAgentExecutor implements AgentExecutor {
 
     // Determine success/failure status based on precedence
 
-    // Precedence 1: Timeout
     if (timedOut) {
       const errPayload = { name: "TimeoutError", message: "Agent execution timed out", code: "PROCESS_TIMEOUT" };
       const failureResult: AgentFailureResult = {
@@ -193,8 +158,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         label: input.label,
         provider: input.provider,
         model: input.model,
-        stdout: redactedStdout,
-        stderr: redactedStderr,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
         exitCode: null,
         durationMs,
         artifacts: agentArtifacts,
@@ -204,7 +169,6 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    // Precedence 2: Cancellation
     if (cancelled) {
       const errPayload = { name: "CancelledError", message: "Agent execution was cancelled", code: "USER_CANCELLED" };
       const failureResult: AgentFailureResult = {
@@ -214,8 +178,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         label: input.label,
         provider: input.provider,
         model: input.model,
-        stdout: redactedStdout,
-        stderr: redactedStderr,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
         exitCode: null,
         durationMs,
         artifacts: agentArtifacts,
@@ -225,7 +189,6 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    // Precedence 3: Process Failure (non-zero exit code)
     if (exitCode !== null && exitCode !== 0) {
       const failureResult: AgentFailureResult = {
         ok: false,
@@ -234,14 +197,14 @@ export class DefaultAgentExecutor implements AgentExecutor {
         label: input.label,
         provider: input.provider,
         model: input.model,
-        stdout: redactedStdout,
-        stderr: redactedStderr,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
         exitCode,
         durationMs,
         artifacts: agentArtifacts,
         error: {
           name: "ProviderProcessFailed",
-          message: redactedStderr.trim() || `Process exited with code ${exitCode}`,
+          message: stderrInMemory.trim() || `Process exited with code ${exitCode}`,
           code: "PROVIDER_PROCESS_FAILED"
         }
       };
@@ -249,18 +212,14 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    // Precedence 4: Parse Result
     let parseResult;
     try {
       parseResult = await adapter.parseResult({
-        agentId: input.id,
-        provider: input.provider,
-        stdout: redactedStdout,
-        stderr: redactedStderr,
-        exitCode,
-        signal: null,
-        input: runInput
-      } as any);
+        input: runInput,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode
+      });
     } catch (err: any) {
       const failureResult: AgentFailureResult = {
         ok: false,
@@ -269,8 +228,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         label: input.label,
         provider: input.provider,
         model: input.model,
-        stdout: redactedStdout,
-        stderr: redactedStderr,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
         exitCode,
         durationMs,
         artifacts: agentArtifacts,
@@ -286,11 +245,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
 
     await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, parseResult.raw ?? parseResult);
 
-    // Precedence 5: Normalization and Schema Validation
     const normalized = await normalizeAgentOutput({
       schema: input.schema,
       parsed: parseResult,
-      stdout: redactedStdout
+      stdout: stdoutInMemory
     });
 
     if (!normalized.ok) {
@@ -306,8 +264,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         label: input.label,
         provider: input.provider,
         model: input.model,
-        stdout: redactedStdout,
-        stderr: redactedStderr,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
         exitCode,
         durationMs,
         artifacts: agentArtifacts,
@@ -320,7 +278,6 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    // Write normalized result if successful
     await this.artifactStore.writeJson(`agents/${input.id}/normalized-result.json`, normalized.json ?? normalized.text);
 
     const successResult: AgentSuccessResult = {
@@ -332,13 +289,99 @@ export class DefaultAgentExecutor implements AgentExecutor {
       model: input.model,
       text: redactText(normalized.text ?? "", secretValues),
       json: normalized.json,
-      stdout: redactedStdout,
-      stderr: redactedStderr,
+      stdout: stdoutInMemory,
+      stderr: stderrInMemory,
       exitCode: exitCode ?? 0,
       durationMs,
       artifacts: agentArtifacts
     };
 
     return successResult;
+  }
+
+  private async executeMock(
+    input: AgentExecutionInput,
+    runInput: AgentRunInput,
+    adapter: MockAdapterWithLookup,
+    appendToLogs: (stream: "stdout" | "stderr", chunk: string, redactor: StreamRedactor) => Promise<void>,
+    redactors: { stdoutRedactor: StreamRedactor; stderrRedactor: StreamRedactor }
+  ): Promise<{ exitCode: number; timedOut: boolean; cancelled: boolean }> {
+    const response = adapter.lookupResponse(runInput);
+    let timedOut = false;
+    let cancelled = false;
+
+    if (response.delayMs) {
+      try {
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, response.delayMs);
+          input.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error("Aborted"));
+          });
+        });
+      } catch (err: any) {
+        const reason = String(input.signal.reason);
+        if (reason.includes("timed out")) {
+          timedOut = true;
+        } else {
+          cancelled = true;
+        }
+      }
+    }
+
+    const mockStdout = response.stdout ?? (response.text ?? "mock response");
+    const mockStderr = response.stderr ?? "";
+    
+    await appendToLogs("stdout", mockStdout, redactors.stdoutRedactor);
+    await appendToLogs("stderr", mockStderr, redactors.stderrRedactor);
+
+    return {
+      exitCode: response.exitCode !== undefined ? response.exitCode : 0,
+      timedOut: timedOut || !!response.timeout,
+      cancelled: cancelled || (!!response.fail && response.error?.code === "USER_CANCELLED")
+    };
+  }
+
+  private async executeProcess(
+    input: AgentExecutionInput,
+    runInput: AgentRunInput,
+    adapter: any,
+    appendToLogs: (stream: "stdout" | "stderr", chunk: string, redactor: StreamRedactor) => Promise<void>,
+    redactors: { stdoutRedactor: StreamRedactor; stderrRedactor: StreamRedactor }
+  ): Promise<{ exitCode: number | null; timedOut: boolean; cancelled: boolean }> {
+    const commandInput = await adapter.buildCommand(runInput);
+    try {
+      const filteredEnv = buildProviderEnv({
+        baseEnv: process.env,
+        passEnv: this.config.security?.passEnv ?? [],
+        explicitEnv: commandInput.env
+      });
+      const processResult = await runProcess({
+        command: commandInput.command,
+        args: commandInput.args,
+        cwd: commandInput.cwd,
+        ...(commandInput.stdin !== undefined ? { stdin: commandInput.stdin } : {}),
+        env: filteredEnv,
+        timeoutMs: input.timeoutMs,
+        signal: input.signal,
+        onStdout: async (chunk) => {
+          await appendToLogs("stdout", chunk, redactors.stdoutRedactor);
+        },
+        onStderr: async (chunk) => {
+          await appendToLogs("stderr", chunk, redactors.stderrRedactor);
+        }
+      });
+      return processResult;
+    } catch (err: any) {
+      if (err.message?.includes("timeout") || err.code === "PROCESS_TIMEOUT") {
+        return { exitCode: null, timedOut: true, cancelled: false };
+      } else if (err.name === "AbortError" || input.signal?.aborted) {
+        return { exitCode: null, timedOut: false, cancelled: true };
+      } else {
+        const errorMsg = `\nError running process: ${err.message}`;
+        await appendToLogs("stderr", errorMsg, redactors.stderrRedactor);
+        return { exitCode: 1, timedOut: false, cancelled: false };
+      }
+    }
   }
 }

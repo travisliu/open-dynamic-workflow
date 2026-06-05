@@ -14,9 +14,8 @@ describe("Test Suite Credentials", () => {
   });
 
   it("Real provider E2E tests are credential-gated", () => {
-    // This is a policy assertion. If there were real E2E tests, they would be
-    // skipped if process.env.OPENAI_API_KEY was not set.
-    // For MVP, we only rely on mock tests.
+    // This is a policy assertion. Real-provider E2E tests must be opt-in so
+    // the default suite remains safe for CI and local runs without credentials.
     expect(true).toBe(true);
   });
 });

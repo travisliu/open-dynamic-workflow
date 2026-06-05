@@ -64,6 +64,7 @@ export function redactText(input: string, secretValues: string[]): string {
     .map((s) => s.trim())
     .filter((s) => s.length >= 4);
 
+  // Sort by length descending to ensure longer secrets are redacted first
   const sortedSecrets = [...new Set(validSecrets)].sort((a, b) => b.length - a.length);
 
   for (const secret of sortedSecrets) {
@@ -73,4 +74,72 @@ export function redactText(input: string, secretValues: string[]): string {
   }
 
   return redacted;
+}
+
+/**
+ * Stateful redactor for streaming text.
+ * Ensures secrets split across chunks are correctly identified and redacted.
+ */
+export class StreamRedactor {
+  private buffer: string = "";
+  private readonly secrets: string[];
+  private readonly maxSecretLen: number;
+
+  constructor(secretValues: string[]) {
+    this.secrets = [...new Set(secretValues.map((s) => s.trim()).filter((s) => s.length >= 4))]
+      .sort((a, b) => b.length - a.length);
+    this.maxSecretLen = this.secrets.length > 0 ? Math.max(...this.secrets.map((s) => s.length)) : 0;
+  }
+
+  /**
+   * Processes a new chunk of text and returns the redacted part that is safe to output.
+   */
+  process(chunk: string): string {
+    if (this.maxSecretLen === 0) return chunk;
+
+    this.buffer += chunk;
+    let out = "";
+
+    // We keep at least maxSecretLen characters in the buffer to ensure we can 
+    // identify any secret that might be starting or ending in this context.
+    while (this.buffer.length > this.maxSecretLen) {
+      // Use the existing redactText to see what the buffer looks like when redacted
+      const redacted = redactText(this.buffer, this.secrets);
+
+      if (redacted.startsWith("[REDACTED]")) {
+        // A secret was found at the very beginning of our buffer.
+        // We need to figure out which one it was so we can consume it from the original buffer.
+        let matchedSecretLen = 0;
+        for (const secret of this.secrets) {
+          if (this.buffer.startsWith(secret)) {
+            matchedSecretLen = secret.length;
+            break;
+          }
+        }
+
+        if (matchedSecretLen > 0) {
+          out += "[REDACTED]";
+          this.buffer = this.buffer.slice(matchedSecretLen);
+          continue;
+        }
+      }
+
+      // If no secret matched at the beginning, the first character is safe to output
+      // because we have at least maxSecretLen context following it.
+      out += this.buffer[0];
+      this.buffer = this.buffer.slice(1);
+    }
+
+    return out;
+  }
+
+  /**
+   * Flushes any remaining text in the buffer, redacting it one last time.
+   */
+  flush(): string {
+    if (!this.buffer) return "";
+    const redacted = redactText(this.buffer, this.secrets);
+    this.buffer = "";
+    return redacted;
+  }
 }

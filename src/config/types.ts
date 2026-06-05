@@ -13,6 +13,7 @@ export interface ProviderConfig {
   timeoutMs?: number;
   env?: Record<string, string>;
   responses?: Record<string, unknown>; // Used by mock provider.
+  promptMode?: "stdin" | "arg";
 }
 
 export interface SecurityConfig {

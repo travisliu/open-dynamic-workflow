@@ -93,6 +93,13 @@ export function validateConfig(config: OpenFlowConfig): void {
         }
       }
     }
+
+    if (provider.promptMode !== undefined && provider.promptMode !== "stdin" && provider.promptMode !== "arg") {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Provider '${name}' promptMode must be 'stdin' or 'arg'.`
+      );
+    }
   }
 
   // defaultProvider validation

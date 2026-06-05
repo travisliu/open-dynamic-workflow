@@ -267,4 +267,58 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     expect(stdoutLog).toBe("mock stdout");
     expect(stderrLog).toBe("mock stderr");
   });
+
+  it("passes provider stdin to real process adapters", async () => {
+    const config: any = {
+      defaultProvider: "codex",
+      providers: {
+        mock: {
+          responses: {}
+        },
+        codex: {
+          command: "node",
+          args: ["-e", "process.stdin.pipe(process.stdout)"],
+          promptMode: "stdin",
+          modelArg: false
+        },
+        gemini: {
+          command: "node",
+          args: ["-e", "process.exit(0)"]
+        }
+      },
+      security: {
+        allowShell: false,
+        allowWorkflowImports: false,
+        passEnv: [],
+        redactEnv: []
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-stdin-forwarding";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const prompt = "Review src/cli/index.ts for architectural alignment and code quality.";
+    const result = await executor.execute({
+      id: "stdin-agent",
+      label: "Stdin Agent",
+      provider: "codex",
+      prompt,
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.text).toBe(prompt);
+    }
+
+    const stdoutLog = await fs.readFile(path.join(runOutDir, "agents/stdin-agent/stdout.log"), "utf8");
+    expect(stdoutLog).toBe(prompt);
+  });
 });

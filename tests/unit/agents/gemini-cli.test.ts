@@ -135,4 +135,46 @@ describe("GeminiCliAdapter", () => {
     expect(health.command).toBe("missing-gemini-binary-xyz");
     expect(health.message).toContain("is not available");
   });
+
+  it("builds command with promptMode stdin", async () => {
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      promptMode: "stdin"
+    });
+
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "gemini",
+      prompt: "generate a test",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.command).toBe("gemini");
+    expect(cmd.args).toEqual(["--output-format", "json"]);
+    expect(cmd.stdin).toBe("generate a test");
+  });
+
+  it("parses JSON stdout with response field", async () => {
+    const adapter = new GeminiCliAdapter();
+    const parseInput: ProviderParseInput = {
+      input: {
+        id: "1",
+        provider: "gemini",
+        prompt: "test",
+        cwd: "",
+        timeoutMs: 1,
+        env: {}
+      },
+      stdout: '{"response": "hello from gemini via response", "stats": {}}',
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe("hello from gemini via response");
+    expect(parsed.json).toEqual({ response: "hello from gemini via response", stats: {} });
+  });
 });
