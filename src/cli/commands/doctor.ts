@@ -59,7 +59,7 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
   }
 
   // openflow package version check
-  console.log("✓ openflow 0.1.0");
+  console.log("✓ openflow 0.1.1");
 
   // current working directory is writable check
   let isCwdWritable = false;

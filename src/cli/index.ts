@@ -19,7 +19,7 @@ export async function main(argv: string[]): Promise<void> {
   program
     .name("openflow")
     .description("Orchestrate coding-agent CLI workflows")
-    .version("0.1.0")
+    .version("0.1.1")
     .exitOverride((err) => {
       if (err.code === "commander.helpDisplayed" || err.code === "commander.help" || err.code === "commander.version") {
         throw err;
