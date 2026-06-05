@@ -1,18 +1,39 @@
 {
-  "name": "openflow",
+  "name": "@prmflow/openflow",
   "version": "0.1.0",
   "description": "Local-first workflow CLI for orchestrating coding-agent CLIs.",
   "type": "module",
-  "private": true,
+  "private": false,
+  "license": "MIT",
+  "author": "OpenFlow contributors",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "bin": {
     "openflow": "./dist/index.js"
   },
   "files": [
     "dist",
     "README.md",
-    "LICENSE",
-    "package.json"
+    "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/travisliu/openflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/travisliu/openflow/issues"
+  },
+  "homepage": "https://github.com/travisliu/openflow#readme",
+  "keywords": [
+    "workflow",
+    "cli",
+    "agent",
+    "orchestration",
+    "local-first"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "tsc",

@@ -78,16 +78,16 @@ The `mock` provider is intended for tests, examples, and CI workflows that shoul
 Run without installing globally:
 
 ```bash
-npx openflow --help
-npx openflow doctor
-npx openflow validate workflows/review.ts
-npx openflow run workflows/review.ts
+npx @prmflow/openflow --help
+npx @prmflow/openflow doctor
+npx @prmflow/openflow validate workflows/review.ts
+npx @prmflow/openflow run workflows/review.ts
 ```
 
 ### Global installation
 
 ```bash
-npm install -g openflow
+npm install -g @prmflow/openflow
 openflow --help
 openflow doctor
 ```
@@ -105,8 +105,8 @@ npx . run workflows/review.ts
 
 ```bash
 npm pack
-npx ./openflow-0.1.0.tgz --help
-npx ./openflow-0.1.0.tgz doctor
+npx ./prmflow-openflow-0.1.0.tgz --help
+npx ./prmflow-openflow-0.1.0.tgz doctor
 ```
 
 ---
