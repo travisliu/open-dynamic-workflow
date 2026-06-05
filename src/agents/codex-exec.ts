@@ -99,6 +99,7 @@ export class CodexExecAdapter implements AgentAdapter {
       };
     }
 
+    // Rule 1. Single-document JSON wins when it fully parses
     try {
       const parsed = JSON.parse(trimmed);
       if (parsed && typeof parsed === "object") {
@@ -119,10 +120,171 @@ export class CodexExecAdapter implements AgentAdapter {
         parseWarnings: ["Parsed JSON is not an object or array"]
       };
     } catch (err) {
+      // It is not a single valid JSON document. Let's try to parse as JSONL.
+      const jsonlResult = tryParseJsonLines(trimmed);
+      if (jsonlResult) {
+        const { events, warnings } = jsonlResult;
+        const messages = extractAgentMessageTexts(events);
+
+        // Rule 3. For structured-output scenarios, prefer the last JSON-shaped agent_message
+        const structured = selectStructuredCandidate(messages);
+        if (structured) {
+          const parsedJson = tryParseEmbeddedJson(structured.text);
+          const result: ProviderParsedResult = {
+            text: structured.text,
+            json: parsedJson,
+            raw: {
+              format: "codex-jsonl",
+              events,
+              selectedEventIndex: structured.index,
+              selectedMessageText: structured.text
+            }
+          };
+          if (warnings.length > 0) {
+            result.parseWarnings = warnings;
+          }
+          return result;
+        }
+
+        // Rule 4. For plain-text scenarios, prefer the last non-empty agent_message
+        const plaintext = selectPlaintextCandidate(messages);
+        if (plaintext) {
+          const result: ProviderParsedResult = {
+            text: plaintext.text,
+            raw: {
+              format: "codex-jsonl",
+              events,
+              selectedEventIndex: plaintext.index,
+              selectedMessageText: plaintext.text
+            }
+          };
+          if (warnings.length > 0) {
+            result.parseWarnings = warnings;
+          }
+          return result;
+        }
+
+        // Edge case 2: JSONL stream with no agent_message
+        const finalWarnings = [...warnings, "No agent_message event found in JSONL stream"];
+        const result: ProviderParsedResult = {
+          text: input.stdout,
+          raw: {
+            format: "codex-jsonl",
+            events
+          },
+          parseWarnings: finalWarnings
+        };
+        return result;
+      }
+
+      // If it's not a valid JSONL stream either, fall back to plain text with the original single-document parse error
       return {
         text: input.stdout,
         parseWarnings: [`Malformed JSON: ${(err as Error).message}`]
       };
     }
   }
+}
+
+function tryParseJsonLines(stdout: string): { events: unknown[]; warnings: string[] } | null {
+  const lines = stdout.split(/\r?\n/);
+  const events: unknown[] = [];
+  const warnings: string[] = [];
+  let parsedCount = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line === undefined) {
+      continue;
+    }
+    const trimmedLine = line.trim();
+    if (!trimmedLine) {
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(trimmedLine);
+      events.push(parsed);
+      parsedCount++;
+    } catch (err) {
+      warnings.push(`Line ${i + 1} is malformed JSON: ${(err as Error).message}`);
+    }
+  }
+
+  // If more than one line parses successfully, treat the output as JSONL.
+  if (parsedCount > 1) {
+    return { events, warnings };
+  }
+  return null;
+}
+
+function extractAgentMessageTexts(events: unknown[]): Array<{ index: number; text: string }> {
+  const messages: Array<{ index: number; text: string }> = [];
+  for (let i = 0; i < events.length; i++) {
+    const event = events[i];
+    if (
+      event &&
+      typeof event === "object" &&
+      !Array.isArray(event) &&
+      (event as any).type === "item.completed" &&
+      (event as any).item &&
+      typeof (event as any).item === "object" &&
+      !Array.isArray((event as any).item) &&
+      (event as any).item.type === "agent_message" &&
+      typeof (event as any).item.text === "string"
+    ) {
+      messages.push({
+        index: i,
+        text: (event as any).item.text
+      });
+    }
+  }
+  return messages;
+}
+
+function selectStructuredCandidate(messages: Array<{ index: number; text: string }>): { index: number; text: string } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg) {
+      continue;
+    }
+    if (tryParseEmbeddedJson(msg.text) !== undefined) {
+      return msg;
+    }
+  }
+  return null;
+}
+
+function selectPlaintextCandidate(messages: Array<{ index: number; text: string }>): { index: number; text: string } | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg) {
+      continue;
+    }
+    if (msg.text.trim() !== "") {
+      return msg;
+    }
+  }
+  return null;
+}
+
+function tryParseEmbeddedJson(text: string): unknown | undefined {
+  const trimmed = text.trim();
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed !== null && typeof parsed === "object") {
+      return parsed;
+    }
+  } catch {
+    // If it fails, check if the string contains a JSON block wrapped in markdown
+    const match = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (match && match[1] !== undefined) {
+      try {
+        const parsed = JSON.parse(match[1].trim());
+        if (parsed !== null && typeof parsed === "object") {
+          return parsed;
+        }
+      } catch {}
+    }
+  }
+  return undefined;
 }
