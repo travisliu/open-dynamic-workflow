@@ -145,6 +145,130 @@ describe("CodexExecAdapter", () => {
     expect(parsed.parseWarnings?.[0]).toContain("Malformed JSON");
   });
 
+  it("parses a JSONL event stream and returns the final plain-text agent_message.text", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "First plain message"}}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "Final plain text answer"}}',
+        '{"type": "turn.completed"}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe("Final plain text answer");
+    expect(parsed.json).toBeUndefined();
+    expect(parsed.raw).toEqual({
+      format: "codex-jsonl",
+      events: [
+        { type: "thread.started" },
+        { type: "item.completed", item: { type: "agent_message", text: "First plain message" } },
+        { type: "item.completed", item: { type: "agent_message", text: "Final plain text answer" } },
+        { type: "turn.completed" }
+      ],
+      selectedEventIndex: 2,
+      selectedMessageText: "Final plain text answer"
+    });
+  });
+
+  it("parses a JSONL event stream and returns the last JSON-shaped agent_message.text as both text and json", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "{\\"result\\": \\"success\\"}"}}',
+        '{"type": "turn.completed"}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe('{"result": "success"}');
+    expect(parsed.json).toEqual({ result: "success" });
+  });
+
+  it("ignores non-message events such as thread.started, turn.started, command_execution, and turn.completed", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started"}',
+        '{"type": "turn.started"}',
+        '{"type": "command_execution", "command": "ls"}',
+        '{"type": "turn.completed"}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe(parseInput.stdout);
+    expect(parsed.json).toBeUndefined();
+    expect(parsed.parseWarnings).toContain("No agent_message event found in JSONL stream");
+  });
+
+  it("prefers the last JSON-shaped agent_message.text when multiple agent messages exist", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "{\\"v\\": 1}"}}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "{\\"v\\": 2}"}}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "some plaintext that is not json"}}',
+        '{"type": "turn.completed"}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe('{"v": 2}');
+    expect(parsed.json).toEqual({ v: 2 });
+  });
+
+  it("falls back to stdout with a warning when JSONL exists but no agent_message is present", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started"}',
+        '{"type": "turn.completed"}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe(parseInput.stdout);
+    expect(parsed.parseWarnings).toContain("No agent_message event found in JSONL stream");
+  });
+
+  it("preserves warnings when one or more JSONL lines are malformed but other lines still parse", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started"}',
+        'this is a malformed json line',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "hello from valid line"}}',
+        '{"type": "turn.completed"}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe("hello from valid line");
+    expect(parsed.parseWarnings?.[0]).toContain("Line 2 is malformed JSON");
+  });
+
   it("health check reports missing command clearly", async () => {
     const adapter = new CodexExecAdapter({
       command: "missing-codex-binary-xyz"
