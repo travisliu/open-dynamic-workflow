@@ -75,7 +75,7 @@ providers:
       - "json"
       - "--approval-mode"
       - "plan"
-    defaultModel: "gemini-2.5-flash"
+    defaultModel: "gemini-3-flash-preview"
     promptMode: "stdin"
 ```
 
