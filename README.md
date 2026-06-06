@@ -105,8 +105,8 @@ npx . run workflows/review.ts
 
 ```bash
 npm pack
-npx ./prmflow-openflow-0.1.1.tgz --help
-npx ./prmflow-openflow-0.1.1.tgz doctor
+npx ./prmflow-openflow-0.2.0.tgz --help
+npx ./prmflow-openflow-0.2.0.tgz doctor
 ```
 
 ---

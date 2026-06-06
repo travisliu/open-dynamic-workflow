@@ -1,6 +1,6 @@
 {
   "name": "@prmflow/openflow",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Local-first workflow CLI for orchestrating coding-agent CLIs.",
   "type": "module",
   "private": false,
