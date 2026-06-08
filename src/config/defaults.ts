@@ -1,7 +1,7 @@
 import type { OpenFlowConfig } from "./types.js";
 
 export const DEFAULT_CONFIG: OpenFlowConfig = {
-  defaultProvider: "mock",
+  defaultProvider: "codex",
   concurrency: 4,
   timeoutMs: 900_000,
   providers: {
@@ -15,8 +15,10 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
     },
     codex: {
       command: "codex",
-      args: ["exec", "--json", "--ephemeral"],
-      defaultModel: null
+      defaultModel: null,
+      sandbox: "read-only",
+      approval: "never",
+      ephemeral: true
     },
     gemini: {
       command: "gemini",

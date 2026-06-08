@@ -1,341 +1,354 @@
 ---
 name: openflow-workflow-writer
-description: Create, review, validate, and improve OpenFlow workflow scripts that orchestrate Codex, Gemini, and mock provider agents through agent(), parallel(), pipeline(), phase(), and log().
+description: Write and revise OpenFlow dynamic workflow scripts for deterministic Codex multi-agent orchestration.
 ---
 
-# Purpose
+# OpenFlow Dynamic Workflows
 
-Use this skill when the user wants Codex to create, review, debug, validate, or improve an OpenFlow workflow script.
+Use this skill when the user explicitly wants an OpenFlow workflow, multi-agent orchestration, fan-out agents, a workflow script, or help revising/debugging an existing OpenFlow workflow.
 
-OpenFlow is a local-first command-line workflow runner for orchestrating external coding-agent CLIs. A good OpenFlow workflow expresses orchestration intent in a constrained JavaScript / TypeScript-like DSL, keeps provider behavior isolated, uses structured output where useful, and remains observable through reports and artifacts.
+A workflow structures work across many agents: to be comprehensive, to be confident, or to take on scale one context cannot hold. The script is where you encode that structure: what fans out, what verifies, what synthesizes.
 
-Use this skill for requests such as:
+Do not create a workflow merely because parallelism would be useful. For ordinary tasks, solve the task directly. If a workflow might help but the user has not opted in, briefly describe what the workflow could do and ask before authoring or running it.
 
-- Create an OpenFlow workflow for code review, CI/CD, finance, accounting, research, migration checks, test triage, documentation review, or other repeatable multi-agent work.
-- Convert an informal workflow idea into an OpenFlow workflow file.
-- Review an existing workflow for API correctness, validation errors, concurrency risks, provider selection, structured output, and CI usability.
-- Explain how to run, validate, configure, or troubleshoot an OpenFlow workflow.
-- Refactor a workflow to use `parallel()` or `pipeline()` appropriately.
-
-Do not use this skill when the user only wants a general explanation of agent orchestration, generic JavaScript help unrelated to OpenFlow, or implementation work inside the OpenFlow runtime itself unless the user explicitly asks to modify OpenFlow.
+The right move is often hybrid: scout inline first to discover the work-list, then write a workflow to pipeline over it. You do not need to know the shape before the task; you need to know it before the orchestration step.
 
 # References
 
-Consult these files when needed:
+Read only what is needed:
 
-- `references/api-document.md`: Syntax reference for workflow file shape, `agent()`, `parallel()`, `pipeline()`, `phase()`, `log()`, providers, reports, artifacts, exit codes, templates, and common validation mistakes.
-- `references/cli-commands.md`: Command reference for `openflow run`, `openflow validate`, and `openflow doctor`.
-- `references/configuration.md`: Configuration reference for `.openflow/config.yaml`, provider settings, security settings, reporting settings, and precedence rules.
+- `references/api-document.md`: exact OpenFlow DSL syntax.
+- `references/cli-commands.md`: run, validate, doctor, resume, and report commands.
+- `references/configuration.md`: config defaults and provider settings.
+- `references/codex-cli-setup.md`: Codex CLI readiness and real-run troubleshooting.
 
-When the user asks for exact syntax, validation constraints, command options, configuration behavior, or troubleshooting, prefer the references over memory.
+# Script Shape
 
-# Workflow
+Every workflow file must begin with `export const meta = {...}`:
 
-When using this skill:
-
-1. Clarify the user's workflow goal from the prompt.
-   - Identify the domain, target inputs, expected outputs, providers, and whether the workflow is local, CI, or documentation-oriented.
-   - If the user provides enough information, proceed without asking follow-up questions.
-
-2. Choose the right OpenFlow pattern.
-   - Use a single `agent()` when one agent can complete the task.
-   - Use `parallel()` when independent reviews or analyses can run concurrently and then be summarized.
-   - Use `pipeline()` when many items must pass through the same ordered stages.
-   - Use fan-out / fan-in when multiple independent branches should be summarized by a final agent.
-
-3. Draft valid workflow metadata first.
-   - `export const meta = ...` must be the first top-level statement.
-   - Include a static `name` and `description`.
-   - Include `phases` when the workflow has meaningful milestones.
-   - Use only static literal metadata values.
-
-4. Write the workflow using only supported DSL primitives.
-   - Use `agent()` for provider-backed tasks.
-   - Use `parallel()` with task thunks, not already-started promises.
-   - Use `pipeline()` with named stage objects.
-   - Use `ctx.agent()` inside pipeline stage `run()` functions.
-   - Use `phase()` to mark major progress points.
-   - Use `log()` only for non-sensitive operational metadata.
-
-5. Select providers intentionally.
-   - Use `codex` for correctness, security, code reasoning, implementation review, and safety checks.
-   - Use `gemini` for test strategy, operations review, broad synthesis, summarization, and cross-perspective aggregation.
-   - Use `mock` for examples, deterministic CI checks, smoke tests, and workflows that must run without real credentials.
-   - Let config or `--provider` provide defaults unless the workflow needs explicit per-agent provider choices.
-
-6. Add structured output when downstream steps depend on machine-readable results.
-   - Use JSON Schema for review findings, risk lists, plans, checklists, summaries, or classification output.
-   - Keep schemas simple enough that providers can satisfy them reliably.
-   - Set `structuredOutput: { transport: "auto" }` with `schema` unless there is a specific reason to choose another transport.
-   - Use `transport: "prompt"` when you want schema instructions injected into the provider prompt explicitly.
-   - Use `transport: "validate-only"` only when the prompt already contains exact output instructions and you only want local validation.
-   - Do not use `transport: "native"` for current `codex`, `gemini`, or `mock` workflows; current adapters reject it.
-   - Ask agents to return exactly one JSON object when a schema is required.
-
-7. Make concurrency and failure behavior explicit when it matters.
-   - Document expected `--concurrency`, `--timeout-ms`, and `--fail-fast` usage for CLI runs.
-   - For `pipeline()`, choose `strategy`, `concurrency`, and `failFast` based on whether partial item failure should be tolerated.
-   - Prefer item-tolerant behavior for analysis pipelines unless the user wants strict gating.
-
-8. Add run instructions.
-   - Include `openflow validate <workflow-file>` before `openflow run <workflow-file>`.
-   - Include local commands and CI-friendly commands when relevant.
-   - Suggest `--report json` for final machine-readable reports and `--report jsonl` for event streams.
-   - Suggest `openflow doctor` when provider availability or config may be uncertain.
-
-9. Review the workflow before finalizing.
-   - Check metadata placement.
-   - Check that all agent calls return promises correctly.
-   - Check that `parallel()` receives functions.
-   - Check that `pipeline()` stages are named objects.
-   - Check that pipeline stages use `ctx.agent()`.
-   - Check for secrets in prompts/logs.
-   - Check that the final result is exported.
-
-10. Provide a concise explanation of how to use or adapt the workflow.
-
-# Rules
-
-- Do not invent unsupported OpenFlow APIs.
-- Do not use arbitrary imports, `require()`, filesystem APIs, process APIs, shell commands, or host capabilities inside workflow files.
-- Do not place anything before `export const meta`.
-- Do not use dynamic metadata values.
-- Do not pass already-started promises into `parallel()`.
-- Do not use anonymous callback shorthand as a pipeline stage.
-- Do not call global `agent()` from inside a pipeline stage; use `ctx.agent()`.
-- Do not assume automatic patch application, automatic commits, automatic merge, approval gates, DAG pipelines, retries, worktree isolation, container isolation, distributed execution, or resumable runs are available unless explicitly implemented.
-- Do not log secrets, tokens, credentials, full private source dumps, or unnecessary raw provider output.
-- Prefer explicit, reusable workflow files over vague prompts.
-- Prefer validation and dry-run commands before real provider execution.
-- Keep workflow scripts provider-agnostic except for intentional provider selection in `agent()` calls.
-- In CI examples, prefer deterministic `mock` provider where the goal is smoke testing the workflow shape rather than getting real model output.
-- When using `schema`, include `structuredOutput` only with supported transports: `"auto"`, `"prompt"`, or `"validate-only"` for current providers.
-
-# Output format
-
-When creating a workflow, return:
-
-## Workflow
-
-A complete OpenFlow workflow file in a JavaScript code block.
-
-## How to run
-
-Commands to validate, dry-run if useful, run locally, and run in CI.
-
-## Design notes
-
-Brief notes explaining the selected pattern, providers, concurrency, structured outputs, and failure behavior.
-
-## Validation checklist
-
-A short checklist of OpenFlow-specific correctness checks.
-
-When reviewing a workflow, return:
-
-## Summary
-
-Overall assessment and risk level.
-
-## Findings
-
-For each issue:
-
-- Severity: Critical, High, Medium, or Low
-- Location:
-- Problem:
-- Why it matters:
-- Suggested fix:
-
-## Corrected workflow
-
-Include a corrected workflow only when the user asks for edits or when the fix is short enough to be useful.
-
-## Commands to verify
-
-List validation and run commands.
-
-# Optional scripts
-
-Use these helper scripts when relevant and available:
-
-- `scripts/openflow-validate.sh`: Validate one or more workflow files with `openflow validate`.
-- `scripts/openflow-smoke-run.sh`: Run a workflow with the mock provider and JSON report mode for deterministic smoke testing.
-
-These scripts are optional helpers. If they do not fit the repository, show equivalent commands instead.
-
-# Examples
-
-## Example request: create a parallel review workflow
-
-User request:
-
-```text
-Create an OpenFlow workflow that uses Codex to review correctness and security while Gemini reviews tests and operations, then Gemini summarizes the results.
-```
-
-Example response workflow:
-
-```ts
+```js
 export const meta = {
-  name: "parallel-pr-review",
-  description: "Run parallel correctness, security, test, and operations reviews, then summarize the results.",
-  phases: ["review", "summarize"]
+  name: "review-changes",
+  description: "Review changed files across dimensions and verify findings",
+  phases: ["Review", "Verify", "Synthesize"]
 };
 
-phase("review");
-
-const reviews = await parallel({
-  correctness: () => agent({
-    id: "correctness-review",
-    provider: "codex",
-    prompt: "Review the change for correctness bugs, edge cases, and regression risks."
-  }),
-
-  security: () => agent({
-    id: "security-review",
-    provider: "codex",
-    prompt: "Review the change for authentication, authorization, data exposure, and injection risks."
-  }),
-
-  tests: () => agent({
-    id: "test-review",
-    provider: "gemini",
-    prompt: "Review the test plan and identify missing coverage or brittle tests."
-  }),
-
-  operations: () => agent({
-    id: "operations-review",
-    provider: "gemini",
-    prompt: "Review operational risks, rollout risks, observability gaps, and rollback concerns."
-  })
-});
-
-phase("summarize");
-
-const summary = await agent({
-  id: "review-summary",
-  provider: "gemini",
-  prompt: `Summarize these review results, deduplicate findings, and provide a merge recommendation:\n${JSON.stringify(reviews, null, 2)}`
-});
-
-export default {
-  reviews,
-  summary
-};
+phase("Review");
+const findings = await agent("Find correctness risks.", { id: "find-correctness" });
 ```
 
-## Example request: create a pipeline workflow
+The `meta` object must be a pure literal: no variables, function calls, spreads, or template interpolation. Required fields: `name`, `description`. Optional fields include `phases`, `version`, and `tags`. Use phase names that match `phase()` calls.
 
-User request:
+Scripts are plain JavaScript, not TypeScript. Use `await` directly at top level. Standard JS built-ins such as `JSON`, arrays, strings, and objects are available. No filesystem, Node.js, process, import, require, or shell access is available. `Date.now()`, `Math.random()`, and no-argument `new Date()` are rejected because they break resume/cache determinism.
 
-```text
-Create a workflow that processes several documents through extract, assess, and summarize stages.
+# Script Body Hooks
+
+## `agent(prompt, opts?)`
+
+Spawn a Codex-backed agent.
+
+```js
+const text = await agent("Review this file for correctness risks.", {
+  id: "correctness-review",
+  label: "Correctness review"
+});
 ```
 
-Example response workflow:
+Without `schema`, string-form `agent()` returns final text. With `schema`, it returns the validated JSON object. If `optional: true` is set and the call fails, it returns `null`; otherwise string-form failures throw and fail the workflow.
 
-```ts
-export const meta = {
-  name: "document-risk-pipeline",
-  description: "Process documents through extraction, risk assessment, and summary stages.",
-  phases: ["analyze", "summarize"]
-};
+Use stable `id` values for expensive calls so resume/cache can match them later.
 
-const documents = [
-  "contracts/vendor-a.md",
-  "contracts/vendor-b.md",
-  "contracts/vendor-c.md"
-];
+Use schema when downstream code needs structured data. Do not parse JSON by hand when a schema can express the contract.
 
-phase("analyze");
-
-const itemResults = await pipeline(
-  documents,
-  [
-    {
-      name: "extract-obligations",
-      run: (documentPath, ctx) => ctx.agent({
-        id: ctx.agentId("extract"),
-        provider: "codex",
-        prompt: `Extract obligations, deadlines, and risk-bearing clauses from ${documentPath}.`,
-        schema: {
+```js
+const result = await agent("Return exactly one JSON object with findings.", {
+  id: "security-findings",
+  schema: {
+    type: "object",
+    properties: {
+      findings: {
+        type: "array",
+        items: {
           type: "object",
           properties: {
-            document: { type: "string" },
-            obligations: { type: "array", items: { type: "string" } },
-            risks: { type: "array", items: { type: "string" } }
+            title: { type: "string" },
+            severity: { type: "string" },
+            evidence: { type: "string" }
           },
-          required: ["document", "obligations", "risks"]
-        },
-        structuredOutput: {
-          transport: "auto"
+          required: ["title", "severity", "evidence"]
         }
-      })
+      }
     },
-    {
-      name: "assess-risk",
-      run: (extraction, ctx) => ctx.agent({
-        id: ctx.agentId("risk"),
-        provider: "codex",
-        prompt: `Assess the severity and business impact of this extraction:\n${JSON.stringify(extraction, null, 2)}`
-      })
-    },
-    {
-      name: "summarize-item",
-      run: (riskAssessment, ctx) => ctx.agent({
-        id: ctx.agentId("summary"),
-        provider: "gemini",
-        prompt: `Create an executive summary for this assessment:\n${JSON.stringify(riskAssessment, null, 2)}`
-      })
-    }
-  ],
+    required: ["findings"]
+  },
+  structuredOutput: { transport: "auto" }
+});
+```
+
+Object form is supported for older workflows and returns a full `AgentResult`:
+
+```js
+const result = await agent({
+  id: "legacy-review",
+  prompt: "Review this.",
+  provider: "mock"
+});
+```
+
+## `agent.review(prompt, opts?)`
+
+Run Codex review mode through `codex exec review`.
+
+```js
+const review = await agent.review("Review current uncommitted changes.", {
+  id: "review-uncommitted",
+  uncommitted: true
+});
+```
+
+Use this for code-review shaped tasks. For ordinary analysis or synthesis, use `agent()`.
+
+## `pipeline(items, stages, options?)`
+
+Run each item through ordered stages. Default to pipeline for multi-stage work.
+
+```js
+const result = await pipeline(files, [
   {
-    label: "document-risk-pipeline",
-    strategy: "item-streaming",
-    concurrency: 3,
-    failFast: false
+    name: "scan",
+    run: (file, ctx) => ctx.agent({
+      id: ctx.agentId("scan"),
+      prompt: `Scan ${file} for risky code.`
+    })
+  },
+  {
+    name: "verify",
+    run: (scan, ctx) => ctx.agent({
+      id: ctx.agentId("verify"),
+      prompt: "Adversarially verify this scan:\n" + JSON.stringify(scan, null, 2)
+    })
   }
-);
+], {
+  strategy: "item-streaming",
+  concurrency: 4,
+  failFast: false
+});
+```
 
-phase("summarize");
+Use `ctx.agent()` inside stages. Do not call global `agent()` from a pipeline stage.
 
-const summary = await agent({
-  id: "portfolio-summary",
-  provider: "gemini",
-  prompt: `Create a portfolio-level summary from these item results:\n${JSON.stringify(itemResults, null, 2)}`
+Prefer `strategy: "item-streaming"` when item A can move to a later stage while item B is still in an earlier stage. Use a barrier only when the next step genuinely needs all prior results together.
+
+## `parallel(thunks)`
+
+Run independent task thunks concurrently and wait for all results.
+
+```js
+const reviews = await parallel({
+  correctness: () => agent("Review correctness.", { id: "review-correctness" }),
+  security: () => agent("Review security.", { id: "review-security" }),
+  tests: () => agent("Review tests.", { id: "review-tests" })
+});
+```
+
+`parallel()` is a barrier. Use it only when tasks are independent and the next step needs their results together. Pass functions, not already-started promises.
+
+## `phase(name)` and `log(message)`
+
+Use `phase()` for major progress groups. Use `log()` for short progress notes, not secrets or large raw outputs.
+
+## `args`
+
+Use `args` to parameterize a workflow. Pass arrays and objects as actual values from the CLI or runner, not JSON-encoded strings.
+
+# Default To Pipeline
+
+Default to pipeline. Only reach for a barrier when you genuinely need all prior-stage results together.
+
+A barrier is correct when stage N needs cross-item context from all of stage N-1:
+
+- deduping or merging across a full result set before expensive downstream work
+- early exit if the total count is zero
+- a prompt that compares one finding against all other findings
+
+A barrier is not justified by:
+
+- needing to map, flatten, or filter
+- stages being conceptually separate
+- code looking cleaner with `await parallel(...)` in the middle
+
+Smell test:
+
+```js
+const a = await parallel(...);
+const b = transform(a);
+const c = await parallel(...);
+```
+
+If `transform(a)` does not need cross-item context, rewrite it as a pipeline stage.
+
+# Quality Patterns
+
+Pick and compose patterns based on the task.
+
+- **Adversarial verify**: spawn independent skeptics per finding, each prompted to refute. Keep only findings that survive.
+- **Perspective-diverse verify**: use distinct lenses such as correctness, security, performance, reproducibility, and testability.
+- **Judge panel**: generate independent attempts from different angles, score them, then synthesize from the winner while borrowing the best ideas from runners-up.
+- **Loop-until-dry**: for unknown-size discovery, keep finding until consecutive rounds return nothing new.
+- **Multi-modal sweep**: search different ways in parallel: by file, by content, by runtime path, by ownership, by time.
+- **Completeness critic**: ask a final agent what is missing, unverified, or under-covered; use that as the next round of work.
+- **No silent caps**: if a workflow samples, truncates, or bounds coverage, log what was dropped.
+
+Scale to what the user asked for. Quick checks get a few agents. Thorough audits get a larger finder pool, verification, and synthesis. When unsure, lean thorough for research/review/audit and brief for quick checks.
+
+# Canonical Review Pattern
+
+Pipeline by default; each dimension verifies as soon as its review completes:
+
+```js
+export const meta = {
+  name: "review-changes",
+  description: "Review changed files across dimensions and verify findings",
+  phases: ["Review", "Verify", "Synthesize"]
+};
+
+const DIMENSIONS = [
+  { key: "bugs", prompt: "Find correctness bugs." },
+  { key: "security", prompt: "Find security risks." },
+  { key: "tests", prompt: "Find missing tests." }
+];
+
+const FINDINGS_SCHEMA = {
+  type: "object",
+  properties: {
+    findings: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          evidence: { type: "string" }
+        },
+        required: ["title", "evidence"]
+      }
+    }
+  },
+  required: ["findings"]
+};
+
+phase("Review");
+const reviewed = await pipeline(DIMENSIONS, [
+  {
+    name: "find",
+    run: (dimension, ctx) => ctx.agent({
+      id: ctx.agentId(dimension.key),
+      prompt: dimension.prompt,
+      schema: FINDINGS_SCHEMA,
+      structuredOutput: { transport: "auto" }
+    })
+  },
+  {
+    name: "verify",
+    run: (review, ctx) => ctx.agent({
+      id: ctx.agentId("verify"),
+      prompt: "Adversarially verify these findings:\n" + JSON.stringify(review, null, 2)
+    })
+  }
+], {
+  strategy: "item-streaming",
+  failFast: false
 });
 
-export default {
-  itemResults,
-  summary
-};
+phase("Synthesize");
+const summary = await agent("Synthesize verified findings:\n" + JSON.stringify(reviewed, null, 2), {
+  id: "summary"
+});
+
+export default { reviewed, summary };
 ```
 
-## Example commands
+When a barrier is correct, use it intentionally:
+
+```js
+const all = await parallel(DIMENSIONS.map(d => () =>
+  agent(d.prompt, { id: `find-${d.key}`, schema: FINDINGS_SCHEMA })
+));
+
+const deduped = all
+  .filter(Boolean)
+  .flatMap(r => r.findings)
+  .filter((finding, index, arr) =>
+    arr.findIndex(other => other.title === finding.title) === index
+  );
+
+const verified = await parallel(deduped.map((finding, index) => () =>
+  agent("Verify this finding:\n" + JSON.stringify(finding, null, 2), {
+    id: `verify-${index}`
+  })
+));
+```
+
+# Loops
+
+Loop-until-count:
+
+```js
+const bugs = [];
+while (bugs.length < 10) {
+  const result = await agent("Find more bugs.", {
+    id: `find-bugs-${bugs.length}`,
+    schema: BUGS_SCHEMA
+  });
+  bugs.push(...result.bugs);
+  log(`${bugs.length}/10 found`);
+}
+```
+
+Loop-until-dry:
+
+```js
+const seen = new Set();
+const confirmed = [];
+let dry = 0;
+
+while (dry < 2) {
+  const found = await parallel(FINDERS.map((finder, index) => () =>
+    agent(finder.prompt, { id: `finder-${dry}-${index}`, schema: BUGS_SCHEMA })
+  ));
+  const fresh = found
+    .filter(Boolean)
+    .flatMap(r => r.bugs)
+    .filter(bug => !seen.has(bug.key));
+
+  if (!fresh.length) {
+    dry += 1;
+    continue;
+  }
+
+  dry = 0;
+  fresh.forEach(bug => seen.add(bug.key));
+  confirmed.push(...fresh);
+}
+```
+
+Dedup against all seen, not only confirmed, or rejected findings can reappear forever.
+
+# Resume
+
+Resume/cache is based on the workflow hash plus stable agent call fingerprints. Give important calls stable ids. Re-run with:
 
 ```bash
-openflow doctor
-openflow validate workflows/parallel-pr-review.js
-openflow run workflows/parallel-pr-review.js --provider mock --dry-run
-openflow run workflows/parallel-pr-review.js --provider codex --concurrency 4 --timeout-ms 900000
-openflow run workflows/parallel-pr-review.js --provider mock --report json
-openflow run workflows/parallel-pr-review.js --report jsonl
+openflow run workflow.js --resume <runId>
 ```
 
-# Quality checklist
+Same workflow plus same agent call inputs should hit cache. Edited or new calls run live.
 
-Before returning a final OpenFlow workflow, confirm:
+# Output Requirements
 
-- `meta` is first and static.
-- The workflow exports a final result.
-- `phase()` names match declared phases when phases are declared.
-- `parallel()` receives functions, not promises.
-- `pipeline()` stages are named objects.
-- Pipeline stages call `ctx.agent()`.
-- Provider choices are intentional and explainable.
-- Structured output schemas are valid JSON Schema objects.
-- Structured output uses a supported transport: `auto`, `prompt`, or `validate-only`.
-- CLI commands include validation before execution.
-- Config assumptions are stated clearly.
-- No unsupported APIs or out-of-scope capabilities are used.
+When creating a workflow, provide:
+
+- the complete workflow file
+- commands to validate and run it
+- concise notes about the orchestration shape and failure behavior
+
+When reviewing a workflow, lead with findings ordered by severity, then provide corrected code only when useful.

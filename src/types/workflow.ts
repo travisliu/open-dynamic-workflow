@@ -1,4 +1,4 @@
-import type { AgentCallInput, AgentResult } from "./agent.js";
+import type { AgentResult, AgentRuntimeFunction } from "./agent.js";
 import type { JsonObject, WorkflowStatus } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
@@ -32,7 +32,7 @@ export interface WorkflowRuntimeContext {
   cwd: string;
   runId: string;
   artifactsDir: string;
-  agent(input: AgentCallInput): Promise<AgentResult>;
+  agent: AgentRuntimeFunction;
   parallel<TTasks extends ParallelTasks<unknown>>(tasks: TTasks): Promise<ParallelResult<TTasks>>;
   phase(name: string): void;
   log(message: string, data?: unknown): void;

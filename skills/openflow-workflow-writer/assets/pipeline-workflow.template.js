@@ -37,7 +37,7 @@ const itemResults = await pipeline(
       name: "plan",
       run: (analysis, ctx) => ctx.agent({
         id: ctx.agentId("plan"),
-        provider: "gemini",
+        provider: "codex",
         prompt: `Create a remediation plan from this analysis:\n${JSON.stringify(analysis, null, 2)}`
       })
     },
@@ -60,10 +60,8 @@ const itemResults = await pipeline(
 
 phase("summarize");
 
-const summary = await agent({
+const summary = await agent(`Summarize these pipeline results:\n${JSON.stringify(itemResults, null, 2)}`, {
   id: "summary",
-  provider: "gemini",
-  prompt: `Summarize these pipeline results:\n${JSON.stringify(itemResults, null, 2)}`
 });
 
 export default {

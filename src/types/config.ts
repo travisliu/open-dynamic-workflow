@@ -12,6 +12,16 @@ export interface ProviderConfig {
   timeoutMs?: number;
   env?: Record<string, string>;
   mock?: MockProviderConfig;
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  approval?: "untrusted" | "on-request" | "never";
+  ephemeral?: boolean;
+  profile?: string;
+  profileV2?: string;
+  config?: string[];
+  ignoreUserConfig?: boolean;
+  ignoreRules?: boolean;
+  skipGitRepoCheck?: boolean;
+  addDir?: string[];
 }
 
 export interface MockProviderConfig {
@@ -74,4 +84,6 @@ export interface CliRunOptions {
   dryRun: boolean;
   failFast: boolean;
   verbose: boolean;
+  resume?: string;
+  noCache?: boolean;
 }

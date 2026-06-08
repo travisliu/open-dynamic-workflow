@@ -132,6 +132,12 @@ export function validateWorkflow(
       }
     }
 
+    if (ts.isNewExpression(node)) {
+      if (ts.isIdentifier(node.expression) && node.expression.text === "Date" && (!node.arguments || node.arguments.length === 0)) {
+        report(node, "new Date() without arguments is not allowed.");
+      }
+    }
+
     if (ts.isPropertyAccessExpression(node)) {
       const expr = node.expression;
       const name = node.name;

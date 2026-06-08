@@ -67,13 +67,13 @@ providers:
       "--config", configPath
     ]);
 
-    expect(result.error).toBeDefined();
-    expect(result.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(result.error).toBeNull();
 
     // Output contains codex: Unavailable or similar
     expect(result.stdout).toContain("✕ codex");
     expect(result.stdout).toMatch(/unavailable/i);
     expect(result.stdout).toContain("Command '/path/to/bogus/codex' is not available");
+    expect(result.stdout).toContain("Warning: optional provider CLI unavailable: codex");
   });
 
   it("Doctor reports missing Gemini CLI", async () => {
@@ -90,12 +90,12 @@ providers:
       "--config", configPath
     ]);
 
-    expect(result.error).toBeDefined();
-    expect(result.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(result.error).toBeNull();
 
     expect(result.stdout).toContain("✕ gemini");
     expect(result.stdout).toMatch(/unavailable/i);
     expect(result.stdout).toContain("Command '/path/to/bogus/gemini' is not available");
+    expect(result.stdout).toContain("Warning: optional provider CLI unavailable: gemini");
   });
 
   it("Doctor succeeds with mock provider only", async () => {

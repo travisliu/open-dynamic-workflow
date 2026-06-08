@@ -59,23 +59,19 @@ export class CodexExecAdapter implements AgentAdapter {
 
   async buildCommand(input: AgentRunInput): Promise<ProviderCommand> {
     const command = this.config.command ?? "codex";
-    const baseArgs = this.config.args ?? ["exec", "--json", "--ephemeral"];
-    const args = [...baseArgs];
-    const structuredPrompt = resolveStructuredOutputPrompt({
-      prompt: input.prompt,
-      schema: input.schema,
-      structuredOutput: input.structuredOutput
-    });
+    const reviewMode = input.metadata?.codexMode === "review";
+    const usesDefaultArgs = this.config.args === undefined;
+    const baseArgs = this.config.args ?? (reviewMode ? ["exec", "review", "--json"] : ["exec", "--json"]);
+    const args = usesDefaultArgs ? buildCodexArgsPrefix(input, this.config) : [];
+    args.push(...baseArgs);
 
-    if (structuredPrompt.nativeRequested) {
-      throw new OpenFlowError(
-        ErrorCode.CLI_USAGE_ERROR,
-        'Codex does not support structuredOutput.transport="native" yet.'
-      );
-    }
+    const structuredPrompt = resolveCodexStructuredPrompt(input, usesDefaultArgs);
 
     const model = input.model ?? this.config.defaultModel ?? undefined;
     appendModelArg(args, model, this.config.modelArg, "--model");
+    if (usesDefaultArgs) {
+      appendCodexRunOptions(args, input, this.config);
+    }
 
     const promptMode = this.config.promptMode ?? "stdin";
     let stdin: string | undefined = undefined;
@@ -106,6 +102,15 @@ export class CodexExecAdapter implements AgentAdapter {
   }
 
   async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult> {
+    const lastMessage = input.lastMessage?.trim();
+    if (lastMessage) {
+      return resultFromMessageText(lastMessage, {
+        format: "codex-last-message",
+        lastMessage,
+        jsonl: summarizeCodexEvents(input.stdout)
+      });
+    }
+
     const trimmed = input.stdout.trim();
     if (!trimmed) {
       return {
@@ -119,13 +124,7 @@ export class CodexExecAdapter implements AgentAdapter {
       const parsed = JSON.parse(trimmed);
       if (parsed && typeof parsed === "object") {
         if (typeof parsed.text === "string") {
-          const structured = tryParseEmbeddedJson(parsed.text);
-          return {
-            text: parsed.text,
-            json: parsed,
-            structuredJson: structured,
-            raw: parsed
-          };
+          return resultFromMessageText(parsed.text, parsed, parsed);
         }
         return {
           json: parsed,
@@ -156,7 +155,8 @@ export class CodexExecAdapter implements AgentAdapter {
               format: "codex-jsonl",
               events,
               selectedEventIndex: structured.index,
-              selectedMessageText: structured.text
+              selectedMessageText: structured.text,
+              ...extractCodexEventSummary(events)
             }
           };
           if (warnings.length > 0) {
@@ -174,7 +174,8 @@ export class CodexExecAdapter implements AgentAdapter {
               format: "codex-jsonl",
               events,
               selectedEventIndex: plaintext.index,
-              selectedMessageText: plaintext.text
+              selectedMessageText: plaintext.text,
+              ...extractCodexEventSummary(events)
             }
           };
           if (warnings.length > 0) {
@@ -189,7 +190,8 @@ export class CodexExecAdapter implements AgentAdapter {
           text: input.stdout,
           raw: {
             format: "codex-jsonl",
-            events
+            events,
+            ...extractCodexEventSummary(events)
           },
           parseWarnings: finalWarnings
         };
@@ -203,6 +205,159 @@ export class CodexExecAdapter implements AgentAdapter {
       };
     }
   }
+}
+
+function buildCodexArgsPrefix(input: AgentRunInput, config: CodexProviderConfig): string[] {
+  const args: string[] = [];
+  args.push("-C", input.cwd);
+
+  if (config.sandbox) {
+    args.push("-s", config.sandbox);
+  }
+  if (config.approval) {
+    args.push("-a", config.approval);
+  }
+  if (config.profile) {
+    args.push("-p", config.profile);
+  }
+  if (config.profileV2) {
+    args.push("--profile-v2", config.profileV2);
+  }
+  for (const value of config.config ?? []) {
+    args.push("-c", value);
+  }
+  for (const dir of config.addDir ?? []) {
+    args.push("--add-dir", dir);
+  }
+
+  return args;
+}
+
+function appendCodexRunOptions(args: string[], input: AgentRunInput, config: CodexProviderConfig): void {
+  if (input.schema && input.schemaPath && shouldUseNativeSchema(input)) {
+    args.push("--output-schema", input.schemaPath);
+  }
+  if (input.lastMessagePath) {
+    args.push("-o", input.lastMessagePath);
+  }
+  if (config.ephemeral !== false) {
+    args.push("--ephemeral");
+  }
+  if (config.ignoreUserConfig) {
+    args.push("--ignore-user-config");
+  }
+  if (config.ignoreRules) {
+    args.push("--ignore-rules");
+  }
+  if (config.skipGitRepoCheck) {
+    args.push("--skip-git-repo-check");
+  }
+
+  if (input.metadata?.codexMode === "review") {
+    const review = input.metadata?.codexReview;
+    if (review && typeof review === "object" && !Array.isArray(review)) {
+      if ((review as any).uncommitted) args.push("--uncommitted");
+      if (typeof (review as any).base === "string") args.push("--base", (review as any).base);
+      if (typeof (review as any).commit === "string") args.push("--commit", (review as any).commit);
+      if (typeof (review as any).title === "string") args.push("--title", (review as any).title);
+    }
+  }
+}
+
+function resolveCodexStructuredPrompt(input: AgentRunInput, canUseNativeSchema: boolean): { prompt: string } {
+  if (canUseNativeSchema && input.schema && shouldUseNativeSchema(input)) {
+    if (!input.schemaPath && input.structuredOutput?.transport === "native") {
+      throw new OpenFlowError(
+        ErrorCode.CLI_USAGE_ERROR,
+        'Codex structuredOutput.transport="native" requires an artifact schemaPath.'
+      );
+    }
+    if (input.schemaPath) {
+      return { prompt: input.prompt };
+    }
+  }
+
+  const structuredPrompt = resolveStructuredOutputPrompt({
+    prompt: input.prompt,
+    schema: input.schema,
+    structuredOutput: input.structuredOutput
+  });
+
+  if (structuredPrompt.nativeRequested) {
+    throw new OpenFlowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      'Codex structuredOutput.transport="native" requires an artifact schemaPath.'
+    );
+  }
+
+  return { prompt: structuredPrompt.prompt };
+}
+
+function shouldUseNativeSchema(input: AgentRunInput): boolean {
+  const transport = input.structuredOutput?.transport ?? "auto";
+  return transport === "auto" || transport === "native";
+}
+
+function resultFromMessageText(text: string, raw: unknown, jsonOverride?: unknown): ProviderParsedResult {
+  const structured = tryParseEmbeddedJson(text);
+  const result: ProviderParsedResult = {
+    text,
+    raw
+  };
+  if (jsonOverride !== undefined) {
+    result.json = jsonOverride;
+  } else if (structured !== undefined) {
+    result.json = structured;
+  }
+  if (structured !== undefined) {
+    result.structuredJson = structured;
+  }
+  return result;
+}
+
+function summarizeCodexEvents(stdout: string): unknown {
+  const jsonlResult = tryParseJsonLines(stdout.trim());
+  if (!jsonlResult) {
+    return undefined;
+  }
+  return {
+    events: jsonlResult.events,
+    warnings: jsonlResult.warnings,
+    ...extractCodexEventSummary(jsonlResult.events)
+  };
+}
+
+function extractCodexEventSummary(events: unknown[]): Record<string, unknown> {
+  let threadId: string | undefined;
+  let usage: unknown;
+  const failures: unknown[] = [];
+  const errors: unknown[] = [];
+
+  for (const event of events) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      continue;
+    }
+    const typed = event as any;
+    if (typed.type === "thread.started" && typeof typed.thread_id === "string") {
+      threadId = typed.thread_id;
+    }
+    if (typed.type === "turn.completed" && typed.usage !== undefined) {
+      usage = typed.usage;
+    }
+    if (typed.type === "turn.failed") {
+      failures.push(typed);
+    }
+    if (typed.type === "error") {
+      errors.push(typed);
+    }
+  }
+
+  const summary: Record<string, unknown> = {};
+  if (threadId !== undefined) summary.threadId = threadId;
+  if (usage !== undefined) summary.usage = usage;
+  if (failures.length > 0) summary.failures = failures;
+  if (errors.length > 0) summary.errors = errors;
+  return summary;
 }
 
 function tryParseJsonLines(stdout: string): { events: unknown[]; warnings: string[] } | null {

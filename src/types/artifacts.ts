@@ -3,6 +3,7 @@ export interface AgentArtifacts {
   promptPath: string;
   stdoutPath: string;
   stderrPath: string;
+  lastMessagePath?: string;
   rawResultPath?: string;
   normalizedResultPath?: string;
   schemaPath?: string;
@@ -42,6 +43,8 @@ export interface RunArtifacts {
   workflowInputPath: string;
   resolvedConfigPath: string;
   eventsPath: string;
+  callsPath: string;
+  cacheIndexPath: string;
   reportPath: string;
   agentDir(agentId: string): string;
 }

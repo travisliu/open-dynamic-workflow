@@ -106,6 +106,14 @@ describe("Validate Workflow Restrictions", () => {
     expect(issues.some(i => i.message.includes("Math.random() is not allowed"))).toBe(true);
   });
 
+  it("flags new Date() without arguments", () => {
+    const parsed = createParsed(`
+      const now = new Date();
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("new Date() without arguments is not allowed"))).toBe(true);
+  });
+
   it("flags constructor access", () => {
     const parsed = createParsed(`
       const c = ({}).constructor;

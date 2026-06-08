@@ -1,10 +1,11 @@
-openflow-workflow-author/
+openflow-workflow-writer/
   SKILL.md
   references/
     README.md
     api-document.md
     cli-commands.md
     configuration.md
+    codex-cli-setup.md
   assets/
     basic-workflow.template.ts
     parallel-workflow.template.ts

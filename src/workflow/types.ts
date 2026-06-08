@@ -6,6 +6,7 @@ import type { Scheduler } from "../types/scheduler.js";
 import type { AgentExecutor } from "../agents/execution-types.js";
 import type { RuntimeEventSink } from "../orchestration/scheduler.js";
 import type { PipelineSummary } from "../pipeline/types.js";
+import type { RuntimeCallCache } from "../artifacts/call-cache.js";
 
 export type { ParsedWorkflow, WorkflowMeta };
 
@@ -43,6 +44,7 @@ export interface RuntimeState {
   pipelineSummaries?: PipelineSummary[] | undefined;
   idGenerator?: IdGenerator | undefined;
   failFast?: boolean | undefined;
+  callCache?: RuntimeCallCache | undefined;
 }
 
 export interface IdGenerator {

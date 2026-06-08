@@ -21,6 +21,8 @@ openflow run <workflow-file>
 --report <pretty|json|jsonl>
 --concurrency <number>
 --timeout-ms <number>
+--resume <run-id-or-path>
+--no-cache
 --dry-run
 --fail-fast
 --verbose
@@ -34,6 +36,8 @@ openflow run workflows/review.ts --provider codex
 openflow run workflows/review.ts --provider mock
 openflow run workflows/review.ts --concurrency 2
 openflow run workflows/review.ts --timeout-ms 600000
+openflow run workflows/review.ts --resume <previous-run-id>
+openflow run workflows/review.ts --no-cache
 openflow run workflows/review.ts --report json
 openflow run workflows/review.ts --report jsonl
 openflow run workflows/review.ts --fail-fast

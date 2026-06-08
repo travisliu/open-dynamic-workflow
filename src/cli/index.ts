@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { runCommand } from "./commands/run.js";
 import { validateCommand } from "./commands/validate.js";
 import { doctorCommand } from "./commands/doctor.js";
@@ -13,13 +16,26 @@ function collectArgs(value: string, previous: string[]): string[] {
   return previous.concat([value]);
 }
 
+async function readPackageVersion(): Promise<string> {
+  try {
+    const packageJsonPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../package.json"
+    );
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+    return typeof packageJson.version === "string" ? packageJson.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 export async function main(argv: string[]): Promise<void> {
   const program = new Command();
 
   program
     .name("openflow")
     .description("Orchestrate coding-agent CLI workflows")
-    .version("0.1.1")
+    .version(await readPackageVersion())
     .exitOverride((err) => {
       if (err.code === "commander.helpDisplayed" || err.code === "commander.help" || err.code === "commander.version") {
         throw err;
@@ -40,6 +56,8 @@ export async function main(argv: string[]): Promise<void> {
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
     .option("--concurrency <number>", "Maximum parallel concurrency")
     .option("--timeout-ms <ms>", "Workflow run timeout in ms")
+    .option("--resume <run-id-or-path>", "Resume from a previous run cache")
+    .option("--no-cache", "Disable resume/cache lookup and cache index updates")
     .option("--dry-run", "Validate and print summary without invoking providers")
     .option("--fail-fast", "Stop immediately on first agent step failure")
     .option("-v, --verbose", "Enable verbose logging")
@@ -96,5 +114,3 @@ export async function main(argv: string[]): Promise<void> {
 
   await program.parseAsync(argv, parseOptions);
 }
-
-

@@ -1,10 +1,9 @@
-import { ErrorCode } from "../../errors/codes.js";
-import { OpenFlowError } from "../../errors/types.js";
 import { loadConfig } from "../../config/load.js";
 import type { ProviderHealthChecker, DoctorResult } from "../../doctors/public.js";
 import { createDefaultProviderRegistry } from "../../agents/registry.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 export interface DoctorCommandDeps {
   providerHealthChecker: ProviderHealthChecker;
@@ -43,6 +42,19 @@ const defaultProviderHealthChecker: ProviderHealthChecker = {
   }
 };
 
+async function readPackageVersion(): Promise<string> {
+  try {
+    const packageJsonPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "../../../package.json"
+    );
+    const packageJson = JSON.parse(await fs.readFile(packageJsonPath, "utf8"));
+    return typeof packageJson.version === "string" ? packageJson.version : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
@@ -59,7 +71,7 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
   }
 
   // openflow package version check
-  console.log("✓ openflow 0.1.1");
+  console.log(`✓ openflow ${await readPackageVersion()}`);
 
   // current working directory is writable check
   let isCwdWritable = false;
@@ -113,9 +125,6 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
       .filter((p) => !p.ok)
       .map((p) => p.provider)
       .join(", ");
-    throw new OpenFlowError(
-      ErrorCode.PROVIDER_UNAVAILABLE,
-      `Provider check failed: ${failedList} is unavailable.`
-    );
+    console.log(`Warning: optional provider CLI unavailable: ${failedList}`);
   }
 }

@@ -194,7 +194,9 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
         timeoutMs: config.timeoutMs,
         dryRun: false,
         failFast: !!rawOptions.failFast,
-        verbose: config.reporting.verbose
+        verbose: config.reporting.verbose,
+        resume: rawOptions.resume,
+        noCache: !!rawOptions.noCache
       },
       signal: abortController.signal
     }, (() => {

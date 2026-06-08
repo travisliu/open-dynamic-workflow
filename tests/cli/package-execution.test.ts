@@ -40,7 +40,7 @@ describe("CLI package execution and installation", () => {
   it("can execute npx . doctor", () => {
     const stdout = execSync("npx . doctor", { cwd: WORKSPACE_DIR, encoding: "utf8" });
     expect(stdout).toContain("Node.js >= 20");
-    expect(stdout).toContain("openflow 0.1.1");
+    expect(stdout).toContain("openflow 0.2.0");
     expect(stdout).toContain("Current directory writable");
   });
 
@@ -70,7 +70,7 @@ describe("CLI package execution and installation", () => {
 
     const doctorStdout = execSync(`"${globalBinPath}" doctor`, { encoding: "utf8" });
     expect(doctorStdout).toContain("Node.js >= 20");
-    expect(doctorStdout).toContain("openflow 0.1.1");
+    expect(doctorStdout).toContain("openflow 0.2.0");
 
     // Run the installed openflow binary with a real workflow and verify output/artifacts
     const runOutDir = path.join(TEMP_NPM_DIR, "out");

@@ -19,19 +19,15 @@ const reviews = await parallel({
     prompt: "Review for security risks."
   }),
 
-  tests: () => agent({
-    id: "test-review",
-    provider: "gemini",
-    prompt: "Review test coverage and missing test cases."
+  tests: () => agent("Review test coverage and missing test cases.", {
+    id: "test-review"
   })
 });
 
 phase("summarize");
 
-const summary = await agent({
+const summary = await agent(`Summarize these reviews:\n${JSON.stringify(reviews, null, 2)}`, {
   id: "summary",
-  provider: "gemini",
-  prompt: `Summarize these reviews:\n${JSON.stringify(reviews, null, 2)}`
 });
 
 export default {

@@ -1,6 +1,6 @@
 # OpenFlow CLI
 
-OpenFlow is a local-first command-line workflow runner for orchestrating coding-agent CLIs such as `codex exec` and `gemini -p`.
+OpenFlow is a local-first command-line workflow runner for Codex-first dynamic workflows.
 
 It lets engineers define constrained JavaScript-like workflows, run agent tasks sequentially or in parallel, capture structured results, and persist durable run artifacts for local debugging and CI automation.
 
@@ -14,7 +14,7 @@ Modern coding agents are useful from the terminal, but larger engineering tasks 
 
 - Split large engineering tasks into repeatable workflow files.
 - Run multiple agent reviews in parallel.
-- Use different providers for different tasks.
+- Run Codex review, analysis, and synthesis steps with repeatable workflow scripts.
 - Validate structured JSON output with JSON Schema.
 - Capture prompts, stdout, stderr, normalized results, reports, and events.
 - Use pretty terminal output locally or JSON/JSONL output in CI.
@@ -48,9 +48,10 @@ OpenFlow supports:
 - JSON Schema validation for structured agent output
 - Pretty, JSON, and JSONL reporters
 - Durable artifact directories under `.openflow/runs/<runId>`
+- Same-workflow resume/cache with `--resume <runId>`
 - Deterministic exit codes
 
-Future roadmap features include plugin providers, retries, worktree/container isolation, resumable runs, approval gates, automatic patch application, and static HTML reports.
+Future roadmap features include plugin providers, retries, worktree/container isolation, approval gates, automatic patch application, and static HTML reports.
 
 ---
 
@@ -63,9 +64,9 @@ Recommended baseline:
 - Node.js 20+
 - npm, pnpm, or yarn
 - Git, when running inside a repository
-- Optional provider CLIs:
-  - Codex CLI for the `codex` provider
-  - Gemini CLI for the `gemini` provider
+- Provider CLI:
+  - Codex CLI for the default `codex` provider
+  - Gemini CLI is still available for explicit `gemini` workflows, but Codex is the default path.
 
 The `mock` provider is intended for tests, examples, and CI workflows that should not require real provider credentials.
 
@@ -119,31 +120,25 @@ Create a workflow file:
 // workflows/review.ts
 export const meta = {
   name: "parallel-review",
-  description: "Review changed files with multiple coding-agent CLIs",
+  description: "Review changed files with parallel Codex agents",
   phases: ["review", "summarize"]
 };
 
 phase("review");
 
 const reviews = await parallel({
-  codex: () => agent({
-    id: "codex-review",
-    provider: "codex",
-    prompt: "Review the changed files for correctness issues."
+  correctness: () => agent("Review the changed files for correctness issues.", {
+    id: "correctness-review"
   }),
-  gemini: () => agent({
-    id: "gemini-review",
-    provider: "gemini",
-    prompt: "Review the changed files for API design issues."
+  security: () => agent("Review the changed files for security issues.", {
+    id: "security-review"
   })
 });
 
 phase("summarize");
 
-const summary = await agent({
+const summary = await agent("Summarize these reviews and deduplicate findings:\n" + JSON.stringify(reviews, null, 2), {
   id: "summary",
-  provider: "codex",
-  prompt: `Summarize these reviews:\n${JSON.stringify(reviews, null, 2)}`
 });
 
 export default {
@@ -223,6 +218,8 @@ Common options:
 --report <pretty|json|jsonl>
 --concurrency <number>
 --timeout-ms <number>
+--resume <run-id-or-path>
+--no-cache
 --dry-run
 --fail-fast
 --verbose
@@ -238,6 +235,7 @@ openflow run workflows/review.ts --timeout-ms 600000
 openflow run workflows/review.ts --report json
 openflow run workflows/review.ts --report jsonl
 openflow run workflows/review.ts --fail-fast
+openflow run workflows/review.ts --resume <previous-run-id>
 ```
 
 ### `openflow validate`
@@ -480,10 +478,10 @@ const result = await agent({
 
 Transport options:
 
-- `auto`: use prompt injection for current providers and keep local validation enabled.
+- `auto`: use Codex native `--output-schema` when available, otherwise use prompt injection and local validation.
 - `prompt`: always inject the schema into the prompt before invoking the provider.
 - `validate-only`: do not inject the schema into the prompt; only validate the returned output locally.
-- `native`: reserved for future provider-native structured output support. Current adapters reject it.
+- `native`: require provider-native structured output support. The default Codex adapter path supports this through `--output-schema`.
 
 When a schema is provided, OpenFlow attempts to normalize provider output in this order:
 

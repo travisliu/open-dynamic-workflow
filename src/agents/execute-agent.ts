@@ -8,6 +8,7 @@ import { runProcess } from "./process-runner.js";
 import { validateJson } from "../structured/validate-json.js";
 import { normalizeAgentOutput } from "../structured/normalize-agent-output.js";
 import { buildProviderEnv, shouldRedactEnvName, redactText, StreamRedactor } from "../security/env.js";
+import * as fs from "node:fs/promises";
 
 const MAX_IN_MEMORY_LOG_SIZE = 1024 * 1024; // 1MB limit for in-memory results
 
@@ -43,8 +44,12 @@ export class DefaultAgentExecutor implements AgentExecutor {
     await this.artifactStore.writeText(`agents/${input.id}/prompt.txt`, input.prompt);
 
     // 2. Write schema.json if schema is provided
+    let absoluteSchemaPath: string | undefined;
     if (input.schema) {
-      await this.artifactStore.writeJson(`agents/${input.id}/schema.json`, input.schema);
+      absoluteSchemaPath = await this.artifactStore.writeJson(
+        `agents/${input.id}/schema.json`,
+        schemaForProviderArtifact(input)
+      );
     }
 
     // Write metadata.json
@@ -58,6 +63,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
     // Initialize empty log files
     await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, "");
     await this.artifactStore.writeText(`agents/${input.id}/stderr.log`, "");
+    const absoluteLastMessagePath = await this.artifactStore.writeText(`agents/${input.id}/last-message.txt`, "");
 
     const secretPatterns = this.config.security?.redactEnv ?? [];
     const secretValues: string[] = [];
@@ -82,6 +88,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       promptPath: `agents/${input.id}/prompt.txt`,
       stdoutPath: `agents/${input.id}/stdout.log`,
       stderrPath: `agents/${input.id}/stderr.log`,
+      lastMessagePath: `agents/${input.id}/last-message.txt`,
       rawResultPath: `agents/${input.id}/raw-result.json`,
       normalizedResultPath: `agents/${input.id}/normalized-result.json`,
       metadataPath: `agents/${input.id}/metadata.json`
@@ -103,6 +110,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
       timeoutMs: input.timeoutMs,
       cwd: input.cwd,
       env: {},
+      schemaPath: absoluteSchemaPath,
+      lastMessagePath: absoluteLastMessagePath,
       metadata: input.metadata
     };
 
@@ -244,6 +253,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
     }
 
     if (exitCode !== null && exitCode !== 0) {
+      const message = providerFailureMessage(stdoutInMemory, stderrInMemory, exitCode);
       const failureResult: AgentFailureResult = {
         ok: false,
         status: "failed",
@@ -258,12 +268,19 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: {
           name: "ProviderProcessFailed",
-          message: stderrInMemory.trim() || `Process exited with code ${exitCode}`,
+          message,
           code: "PROVIDER_PROCESS_FAILED"
         }
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
+    }
+
+    let lastMessage: string | undefined;
+    try {
+      lastMessage = await fs.readFile(absoluteLastMessagePath, "utf8");
+    } catch {
+      lastMessage = undefined;
     }
 
     let parseResult;
@@ -272,7 +289,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         input: runInput,
         stdout: stdoutInMemory,
         stderr: stderrInMemory,
-        exitCode
+        exitCode,
+        lastMessage
       });
     } catch (err: any) {
       const failureResult: AgentFailureResult = {
@@ -438,4 +456,80 @@ export class DefaultAgentExecutor implements AgentExecutor {
       }
     }
   }
+}
+
+function schemaForProviderArtifact(input: AgentExecutionInput): unknown {
+  if (
+    input.provider === "codex" &&
+    input.schema &&
+    ((input.structuredOutput?.transport ?? "auto") === "auto" ||
+      input.structuredOutput?.transport === "native")
+  ) {
+    return withAdditionalPropertiesFalse(input.schema);
+  }
+  return input.schema;
+}
+
+function withAdditionalPropertiesFalse(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(withAdditionalPropertiesFalse);
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const input = value as Record<string, unknown>;
+  const output: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(input)) {
+    output[key] = withAdditionalPropertiesFalse(nested);
+  }
+
+  const isObjectSchema =
+    input.type === "object" ||
+    input.properties !== undefined ||
+    input.patternProperties !== undefined;
+  if (isObjectSchema && output.additionalProperties === undefined) {
+    output.additionalProperties = false;
+  }
+
+  return output;
+}
+
+function providerFailureMessage(stdout: string, stderr: string, exitCode: number): string {
+  const jsonlMessage = extractJsonlFailureMessage(stdout);
+  return jsonlMessage || stderr.trim() || `Process exited with code ${exitCode}`;
+}
+
+function extractJsonlFailureMessage(stdout: string): string | undefined {
+  const messages: string[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      const event = JSON.parse(trimmed);
+      if (event?.type === "error" && typeof event.message === "string") {
+        messages.push(normalizeNestedProviderMessage(event.message));
+      }
+      if (event?.type === "turn.failed" && typeof event.error?.message === "string") {
+        messages.push(normalizeNestedProviderMessage(event.error.message));
+      }
+    } catch {
+      // Ignore non-JSONL output.
+    }
+  }
+  return messages.at(-1);
+}
+
+function normalizeNestedProviderMessage(message: string): string {
+  try {
+    const parsed = JSON.parse(message);
+    if (typeof parsed?.error?.message === "string") {
+      return parsed.error.message;
+    }
+  } catch {
+    // Plain text message.
+  }
+  return message;
 }

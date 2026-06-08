@@ -8,7 +8,7 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
       args,
       cwd,
       stdin,
-      env = {},
+      env,
       timeoutMs,
       signal,
       onStdout,
@@ -31,7 +31,7 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
 
     const child = spawn(command, args, {
       cwd,
-      env,
+      env: env ?? process.env,
       stdio: ["pipe", "pipe", "pipe"]
     });
 

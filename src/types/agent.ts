@@ -18,7 +18,25 @@ export interface AgentCallInput {
   structuredOutput?: StructuredOutputConfig | undefined;
   timeoutMs?: number | undefined;
   cwd?: string | undefined;
+  optional?: boolean | undefined;
   metadata?: Record<string, unknown> | undefined;
+}
+
+export type AgentStringOptions = Omit<AgentCallInput, "prompt"> & {
+  optional?: boolean | undefined;
+};
+
+export type AgentReviewOptions = AgentStringOptions & {
+  uncommitted?: boolean | undefined;
+  base?: string | undefined;
+  commit?: string | undefined;
+  title?: string | undefined;
+};
+
+export interface AgentRuntimeFunction {
+  (input: AgentCallInput): Promise<AgentResult>;
+  (prompt: string, options?: AgentStringOptions): Promise<string | unknown | null>;
+  review(prompt: string, options?: AgentReviewOptions): Promise<string | unknown | null>;
 }
 
 export type AgentTaskState =
@@ -79,6 +97,8 @@ export interface AgentRunInput {
   timeoutMs: number;
   cwd: string;
   env: Record<string, string>;
+  schemaPath?: string | undefined;
+  lastMessagePath?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
 
@@ -105,6 +125,7 @@ export interface ProviderParseInput {
   stdout: string;
   stderr: string;
   exitCode: number | null;
+  lastMessage?: string | undefined;
 }
 
 export interface ProviderParsedResult {

@@ -1,3 +1,4 @@
+defaultProvider: mock
 providers:
   mock:
     responses:

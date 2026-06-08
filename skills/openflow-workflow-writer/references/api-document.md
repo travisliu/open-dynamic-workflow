@@ -48,6 +48,7 @@ OpenFlow exposes these workflow DSL primitives:
 | API          | Purpose                                         |
 | ------------ | ----------------------------------------------- |
 | `agent()`    | Run one provider-backed agent task.             |
+| `agent.review()` | Run Codex review mode through `codex exec review`. |
 | `parallel()` | Run independent async task thunks concurrently. |
 | `pipeline()` | Process many items through ordered stages.      |
 | `phase()`    | Mark the current workflow phase.                |
@@ -69,6 +70,30 @@ const result = await agent({
 });
 ```
 
+### Claude-style string form
+
+```ts
+const text = await agent("Review src/auth.ts for correctness and security issues.", {
+  id: "review-auth"
+});
+```
+
+String form behavior:
+
+* Without `schema`, returns the final text.
+* With `schema`, returns the validated JSON object.
+* With `optional: true`, failed calls return `null`.
+* Without `optional: true`, failed calls throw and fail the workflow.
+
+### Codex review mode
+
+```ts
+const review = await agent.review("Review current uncommitted changes.", {
+  id: "review-uncommitted",
+  uncommitted: true
+});
+```
+
 ### Conceptual input type
 
 ```ts
@@ -84,6 +109,7 @@ type AgentCallInput = {
   };
   timeoutMs?: number;
   cwd?: string;
+  optional?: boolean;
   metadata?: Record<string, unknown>;
 };
 ```
@@ -101,6 +127,7 @@ type AgentCallInput = {
 | `structuredOutput` | No | Controls how a provided schema reaches the provider.           |
 | `timeoutMs` |       No | Per-agent timeout in milliseconds.                                  |
 | `cwd`       |       No | Working directory for the provider call.                            |
+| `optional`  |       No | String form only: failed calls return `null` instead of throwing.    |
 | `metadata`  |       No | Descriptive metadata for reports or artifacts.                      |
 
 ### Structured output
@@ -111,10 +138,10 @@ Use `schema` when downstream workflow steps need machine-readable output. When a
 
 | Transport | Behavior |
 | --------- | -------- |
-| `auto` | Default. Current providers use prompt injection and local validation. |
+| `auto` | Default. Codex default adapter uses native `--output-schema`; other/custom paths may use prompt injection and local validation. |
 | `prompt` | Always inject schema instructions into the provider prompt and validate locally. |
 | `validate-only` | Do not inject the schema; validate whatever the provider returns. |
-| `native` | Reserved for future provider-native structured output. Current `codex`, `gemini`, and `mock` adapters reject it. |
+| `native` | Require provider-native structured output. The default Codex adapter path supports this through `--output-schema`; use `auto` unless you need to force native behavior. |
 
 Recommended defaults:
 
