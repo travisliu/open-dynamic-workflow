@@ -483,4 +483,36 @@ describe("CodexExecAdapter", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  it("does not add write-capable flags when permissions are default or omitted", async () => {
+    const adapter = new CodexExecAdapter();
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "codex",
+      prompt: "generate a test",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.args).not.toContain("--dangerously-bypass-approvals-and-sandbox");
+  });
+
+  it("adds --dangerously-bypass-approvals-and-sandbox when permissions.mode is dangerously-full-access", async () => {
+    const adapter = new CodexExecAdapter();
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "codex",
+      prompt: "generate a test",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" },
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.args).toContain("--dangerously-bypass-approvals-and-sandbox");
+  });
 });

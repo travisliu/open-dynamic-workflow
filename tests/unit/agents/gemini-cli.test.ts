@@ -384,6 +384,81 @@ describe("GeminiCliAdapter", () => {
     }
   });
 
+  it("dangerously-full-access switches Gemini to --approval-mode yolo", async () => {
+    // Simulates the real defaults.ts base args that include --approval-mode plan.
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      args: ["--output-format", "json", "--approval-mode", "plan"]
+    });
+    const input: AgentRunInput = {
+      id: "run-full",
+      provider: "gemini",
+      prompt: "apply the patch",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.command).toBe("gemini");
+    // --approval-mode plan must be replaced by --approval-mode yolo
+    const approvalIdx = cmd.args.indexOf("--approval-mode");
+    expect(approvalIdx).toBeGreaterThan(-1);
+    expect(cmd.args[approvalIdx + 1]).toBe("yolo");
+    // Must not contain plan at all
+    expect(cmd.args).not.toContain("plan");
+    // Exactly one approval-mode flag
+    const count = cmd.args.filter(a => a === "--approval-mode").length;
+    expect(count).toBe(1);
+  });
+
+  it("dangerously-full-access replaces --approval-mode plan with yolo (no duplicates)", async () => {
+    // Explicit config with --approval-mode plan in base args
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      args: ["--output-format", "json", "--approval-mode", "plan"]
+    });
+    const input: AgentRunInput = {
+      id: "run-replace",
+      provider: "gemini",
+      prompt: "do something",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    const approvalModeFlags = cmd.args.filter(a => a === "--approval-mode");
+    expect(approvalModeFlags.length).toBe(1);
+    const idx = cmd.args.indexOf("--approval-mode");
+    expect(cmd.args[idx + 1]).toBe("yolo");
+  });
+
+  it("dangerously-full-access appends --approval-mode yolo when no approval-mode in custom args", async () => {
+    // Config with no approval-mode flag in base args
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      args: ["--output-format", "json"]
+    });
+    const input: AgentRunInput = {
+      id: "run-append",
+      provider: "gemini",
+      prompt: "do something",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    const approvalModeFlags = cmd.args.filter(a => a === "--approval-mode");
+    expect(approvalModeFlags.length).toBe(1);
+    const idx = cmd.args.indexOf("--approval-mode");
+    expect(cmd.args[idx + 1]).toBe("yolo");
+  });
+
   it("builds command with promptMode stdin", async () => {
     const adapter = new GeminiCliAdapter({
       command: "gemini",

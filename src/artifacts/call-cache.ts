@@ -162,6 +162,7 @@ export async function materializeCachedAgentResult(input: {
       stdout: "",
       stderr: "",
       durationMs: 0,
+      permissions: cachedResult.permissions ?? { mode: "default" },
       artifacts: {
         ...cachedResult.artifacts,
         dir: agentDir,
@@ -197,6 +198,7 @@ export async function materializeCachedAgentResult(input: {
     stderr: "",
     exitCode: 0,
     durationMs: 0,
+    permissions: { mode: "default" },
     artifacts: {
       dir: agentDir,
       promptPath: `${agentDir}/prompt.txt`,
