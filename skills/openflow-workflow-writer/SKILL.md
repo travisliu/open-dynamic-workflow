@@ -18,7 +18,7 @@ The right move is often hybrid: scout inline first to discover the work-list, th
 Read only what is needed:
 
 - `references/api-document.md`: exact OpenFlow DSL syntax.
-- `references/cli-commands.md`: run, validate, doctor, resume, and report commands.
+- `references/cli-commands.md`: run, validate, doctor, resume/cache, budget, background, and run observation commands.
 - `references/configuration.md`: config defaults and provider settings.
 - `references/codex-cli-setup.md`: Codex CLI readiness and real-run troubleshooting.
 
