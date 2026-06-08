@@ -4,6 +4,21 @@ import type { SerializedError } from "./errors.js";
 
 export type StructuredOutputTransport = "validate-only" | "prompt" | "native" | "auto";
 
+export interface AgentUsage {
+  inputTokens?: number | undefined;
+  cachedInputTokens?: number | undefined;
+  outputTokens?: number | undefined;
+  reasoningOutputTokens?: number | undefined;
+  totalTokens?: number | undefined;
+}
+
+export interface AgentCacheInfo {
+  hit: boolean;
+  callId: string;
+  previousRunId?: string | undefined;
+  previousAgentId?: string | undefined;
+}
+
 export interface StructuredOutputConfig {
   transport?: StructuredOutputTransport | undefined;
 }
@@ -69,6 +84,10 @@ export interface AgentSuccessResult {
   exitCode: number;
   durationMs: number;
   artifacts: AgentArtifacts;
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
+  cache?: AgentCacheInfo | undefined;
 }
 
 export interface AgentFailureResult {
@@ -84,6 +103,10 @@ export interface AgentFailureResult {
   durationMs: number;
   artifacts: AgentArtifacts;
   error: SerializedError;
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
+  cache?: AgentCacheInfo | undefined;
 }
 
 export interface AgentRunInput {
@@ -134,6 +157,9 @@ export interface ProviderParsedResult {
   structuredJson?: unknown;
   raw?: unknown;
   parseWarnings?: string[];
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentAdapter {

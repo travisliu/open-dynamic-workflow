@@ -87,6 +87,7 @@ export function createDsl(runtime: RuntimeState) {
       const cachedResult = await materializeCachedAgentResult({
         store: runtime.artifactStore,
         previousRunRoot: runtime.callCache.previousRunRoot,
+        previousRunId: runtime.callCache.previousRunId,
         entry: cachedEntry,
         currentAgentId: normalizedId,
         label: input.label,
@@ -94,6 +95,16 @@ export function createDsl(runtime: RuntimeState) {
         model: resolved.model
       });
       runtime.agentResults.push(cachedResult);
+      runtime.eventSink?.emit("agent.cache_hit", {
+        agentId: normalizedId,
+        label: input.label,
+        provider: normalizedProvider,
+        model: resolved.model,
+        callId,
+        previousRunId: runtime.callCache.previousRunId,
+        previousAgentId: cachedEntry.agentId,
+        artifacts: cachedResult.artifacts
+      });
       await recordCall({
         store: runtime.artifactStore,
         cache: runtime.callCache,
@@ -103,6 +114,8 @@ export function createDsl(runtime: RuntimeState) {
       });
       return cachedResult;
     }
+
+    assertLiveAgentBudget(runtime, normalizedId);
 
     const task: ScheduledTask<AgentResult> = {
       id: normalizedId,
@@ -169,6 +182,7 @@ export function createDsl(runtime: RuntimeState) {
 
     const result = await runtime.scheduler.schedule(task, scheduleOptions);
     runtime.agentResults.push(result);
+    observeAgentUsage(runtime, result);
     await recordCall({
       store: runtime.artifactStore,
       cache: runtime.callCache,
@@ -180,6 +194,7 @@ export function createDsl(runtime: RuntimeState) {
     if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
       throw new OpenFlowError(ErrorCode.PROVIDER_UNAVAILABLE, result.error.message);
     }
+    assertObservedTokenBudget(runtime, normalizedId);
 
     return result;
   };
@@ -314,6 +329,54 @@ export function createDsl(runtime: RuntimeState) {
       });
     }
   };
+}
+
+function assertLiveAgentBudget(runtime: RuntimeState, agentId: string): void {
+  const budget = runtime.budget;
+  if (!budget?.maxAgentCalls) {
+    return;
+  }
+  if (budget.liveAgentCalls >= budget.maxAgentCalls) {
+    const error = new OpenFlowError(
+      ErrorCode.BUDGET_EXCEEDED,
+      `Budget exceeded: maxAgentCalls ${budget.maxAgentCalls} reached before starting agent '${agentId}'.`
+    );
+    runtime.scheduler.abort({ type: "budget", message: error.message, source: agentId, cause: "budget" });
+    runtime.abortController.abort(error);
+    throw error;
+  }
+  budget.liveAgentCalls++;
+}
+
+function observeAgentUsage(runtime: RuntimeState, result: AgentResult): void {
+  const usage = result.usage;
+  const summary = runtime.budget?.usageSummary;
+  if (!usage || !summary) {
+    return;
+  }
+  summary.agentCount++;
+  summary.inputTokens = (summary.inputTokens ?? 0) + (usage.inputTokens ?? 0);
+  summary.cachedInputTokens = (summary.cachedInputTokens ?? 0) + (usage.cachedInputTokens ?? 0);
+  summary.outputTokens = (summary.outputTokens ?? 0) + (usage.outputTokens ?? 0);
+  summary.reasoningOutputTokens = (summary.reasoningOutputTokens ?? 0) + (usage.reasoningOutputTokens ?? 0);
+  summary.totalTokens = (summary.totalTokens ?? 0) + (usage.totalTokens ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)));
+}
+
+function assertObservedTokenBudget(runtime: RuntimeState, agentId: string): void {
+  const budget = runtime.budget;
+  if (!budget?.maxObservedTokens) {
+    return;
+  }
+  const observed = budget.usageSummary.totalTokens ?? 0;
+  if (observed > budget.maxObservedTokens) {
+    const error = new OpenFlowError(
+      ErrorCode.BUDGET_EXCEEDED,
+      `Budget exceeded: observed ${observed} tokens after agent '${agentId}', above maxObservedTokens ${budget.maxObservedTokens}.`
+    );
+    runtime.scheduler.abort({ type: "budget", message: error.message, source: agentId, cause: "budget" });
+    runtime.abortController.abort(error);
+    throw error;
+  }
 }
 
 function validateAgentInput(input: AgentCallInput): void {

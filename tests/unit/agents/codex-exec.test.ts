@@ -255,6 +255,31 @@ describe("CodexExecAdapter", () => {
     expect(parsed.structuredJson).toEqual({ from: "last-message" });
     expect((parsed.raw as any).jsonl.threadId).toBe("thread-1");
     expect((parsed.raw as any).jsonl.usage).toEqual({ input_tokens: 10 });
+    expect(parsed.threadId).toBe("thread-1");
+    expect(parsed.usage).toEqual({ inputTokens: 10, totalTokens: 10 });
+  });
+
+  it("normalizes Codex JSONL usage fields without double-counting cached input", async () => {
+    const adapter = new CodexExecAdapter();
+    const parsed = await adapter.parseResult({
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started", "thread_id": "thread-usage"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "done"}}',
+        '{"type": "turn.completed", "usage": {"input_tokens": 10, "cached_input_tokens": 8, "output_tokens": 3, "reasoning_output_tokens": 2}}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    });
+
+    expect(parsed.threadId).toBe("thread-usage");
+    expect(parsed.usage).toEqual({
+      inputTokens: 10,
+      cachedInputTokens: 8,
+      outputTokens: 3,
+      reasoningOutputTokens: 2,
+      totalTokens: 13
+    });
   });
 
   it("parses JSON stdout with text field containing valid JSON", async () => {

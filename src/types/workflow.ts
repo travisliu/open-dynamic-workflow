@@ -1,4 +1,4 @@
-import type { AgentResult, AgentRuntimeFunction } from "./agent.js";
+import type { AgentResult, AgentRuntimeFunction, AgentUsage } from "./agent.js";
 import type { JsonObject, WorkflowStatus } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
@@ -57,5 +57,6 @@ export interface WorkflowRunResult {
   artifactsDir: string;
   reportPath: string;
   eventsPath: string;
+  usageSummary?: AgentUsage & { agentCount: number } | undefined;
   error?: SerializedError;
 }

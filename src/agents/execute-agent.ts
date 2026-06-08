@@ -345,7 +345,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
           name: "ValidationError",
           message: normalized.error.message,
           code: normalized.error.code as any
-        }
+        },
+        usage: parseResult.usage,
+        threadId: parseResult.threadId,
+        providerMetadata: parseResult.providerMetadata
       };
       return failureResult;
     }
@@ -365,7 +368,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
       stderr: stderrInMemory,
       exitCode: exitCode ?? 0,
       durationMs,
-      artifacts: agentArtifacts
+      artifacts: agentArtifacts,
+      usage: parseResult.usage,
+      threadId: parseResult.threadId,
+      providerMetadata: parseResult.providerMetadata
     };
 
     return successResult;

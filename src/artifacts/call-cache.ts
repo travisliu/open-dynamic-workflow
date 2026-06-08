@@ -24,6 +24,7 @@ export interface CallCacheIndex {
 export interface RuntimeCallCache {
   enabled: boolean;
   previousRunRoot?: string;
+  previousRunId?: string;
   previousEntries: Record<string, CallCacheEntry>;
   currentEntries: Record<string, CallCacheEntry>;
 }
@@ -55,11 +56,12 @@ export async function loadRuntimeCallCache(input: {
     );
   }
 
-  const indexPath = path.join(previousRunRoot, "cache-index.json");
-  const index = JSON.parse(await fs.readFile(indexPath, "utf8")) as CallCacheIndex;
+  const previousRunId = typeof manifest.runId === "string" ? manifest.runId : path.basename(previousRunRoot);
+  const index = await loadCacheIndex(previousRunRoot);
   return {
     enabled: true,
     previousRunRoot,
+    previousRunId,
     previousEntries: index.entries ?? {},
     currentEntries: {}
   };
@@ -92,6 +94,7 @@ export function cacheKey(callId: string, fingerprint: string): string {
 export async function materializeCachedAgentResult(input: {
   store: ArtifactStore;
   previousRunRoot: string;
+  previousRunId?: string | undefined;
   entry: CallCacheEntry;
   currentAgentId: string;
   label?: string | undefined;
@@ -100,10 +103,10 @@ export async function materializeCachedAgentResult(input: {
 }): Promise<AgentResult> {
   let cachedResult: AgentResult | undefined;
   if (input.entry.agentResultPath) {
-    cachedResult = JSON.parse(await fs.readFile(path.join(input.previousRunRoot, input.entry.agentResultPath), "utf8"));
+    cachedResult = JSON.parse(await fs.readFile(resolvePreviousRunPath(input.previousRunRoot, input.entry.agentResultPath), "utf8"));
   }
 
-  const normalizedPath = path.join(input.previousRunRoot, input.entry.resultPath);
+  const normalizedPath = resolvePreviousRunPath(input.previousRunRoot, input.entry.resultPath);
   const normalized = JSON.parse(await fs.readFile(normalizedPath, "utf8"));
 
   const agentDir = `agents/${input.currentAgentId}`;
@@ -114,6 +117,7 @@ export async function materializeCachedAgentResult(input: {
   await input.store.writeJson(`${agentDir}/normalized-result.json`, normalized);
   await input.store.writeJson(`${agentDir}/cache-hit.json`, {
     previousAgentId: input.entry.agentId,
+    previousRunId: input.previousRunId,
     callId: input.entry.callId,
     fingerprint: input.entry.fingerprint,
     previousResultPath: input.entry.resultPath
@@ -137,6 +141,12 @@ export async function materializeCachedAgentResult(input: {
         lastMessagePath: `${agentDir}/last-message.txt`,
         rawResultPath: `${agentDir}/raw-result.json`,
         normalizedResultPath: `${agentDir}/normalized-result.json`
+      },
+      cache: {
+        hit: true,
+        callId: input.entry.callId,
+        previousRunId: input.previousRunId,
+        previousAgentId: input.entry.agentId
       }
     };
     await input.store.writeJson(`${agentDir}/raw-result.json`, success);
@@ -164,6 +174,12 @@ export async function materializeCachedAgentResult(input: {
       lastMessagePath: `${agentDir}/last-message.txt`,
       rawResultPath: `${agentDir}/raw-result.json`,
       normalizedResultPath: `${agentDir}/normalized-result.json`
+    },
+    cache: {
+      hit: true,
+      callId: input.entry.callId,
+      previousRunId: input.previousRunId,
+      previousAgentId: input.entry.agentId
     }
   };
   await input.store.writeJson(`${agentDir}/raw-result.json`, success);
@@ -205,13 +221,83 @@ export async function recordCall(input: {
   }
   await input.store.appendJsonl("calls.jsonl", entry);
 
-  if (input.cache && input.result.ok) {
+  if (input.cache?.enabled && input.result.ok) {
     input.cache.currentEntries[cacheKey(input.callId, input.fingerprint)] = entry;
     await input.store.writeJson("cache-index.json", {
       schemaVersion: "openflow.cache-index.v1",
       entries: input.cache.currentEntries
     });
   }
+}
+
+async function loadCacheIndex(previousRunRoot: string): Promise<CallCacheIndex> {
+  const indexPath = path.join(previousRunRoot, "cache-index.json");
+  try {
+    const index = JSON.parse(await fs.readFile(indexPath, "utf8")) as CallCacheIndex;
+    return { schemaVersion: "openflow.cache-index.v1", entries: filterSucceededEntries(index.entries ?? {}) };
+  } catch {
+    return rebuildCacheIndexFromCalls(previousRunRoot);
+  }
+}
+
+async function rebuildCacheIndexFromCalls(previousRunRoot: string): Promise<CallCacheIndex> {
+  const callsPath = path.join(previousRunRoot, "calls.jsonl");
+  const entries: Record<string, CallCacheEntry> = {};
+  let content = "";
+  try {
+    content = await fs.readFile(callsPath, "utf8");
+  } catch {
+    return { schemaVersion: "openflow.cache-index.v1", entries };
+  }
+
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const entry = JSON.parse(trimmed) as CallCacheEntry;
+      if (isUsableCacheEntry(entry)) {
+        entries[cacheKey(entry.callId, entry.fingerprint)] = entry;
+      }
+    } catch {
+      // Ignore malformed audit lines; calls.jsonl is append-only.
+    }
+  }
+  return { schemaVersion: "openflow.cache-index.v1", entries };
+}
+
+function filterSucceededEntries(input: Record<string, CallCacheEntry>): Record<string, CallCacheEntry> {
+  const entries: Record<string, CallCacheEntry> = {};
+  for (const [key, entry] of Object.entries(input)) {
+    if (isUsableCacheEntry(entry)) {
+      entries[key] = entry;
+    }
+  }
+  return entries;
+}
+
+function isUsableCacheEntry(entry: unknown): entry is CallCacheEntry {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return false;
+  const value = entry as CallCacheEntry;
+  return (
+    typeof value.callId === "string" &&
+    typeof value.fingerprint === "string" &&
+    value.status === "succeeded" &&
+    typeof value.resultPath === "string" &&
+    typeof value.agentId === "string" &&
+    (value.agentResultPath === undefined || typeof value.agentResultPath === "string")
+  );
+}
+
+function resolvePreviousRunPath(previousRunRoot: string, relativePath: string): string {
+  const fullPath = path.resolve(previousRunRoot, relativePath);
+  const root = path.resolve(previousRunRoot);
+  if (!fullPath.startsWith(root + path.sep) && fullPath !== root) {
+    throw new OpenFlowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      `Cached artifact path escapes previous run directory: ${relativePath}`
+    );
+  }
+  return fullPath;
 }
 
 function stableStringify(value: unknown): string {

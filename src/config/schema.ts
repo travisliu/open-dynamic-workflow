@@ -173,6 +173,24 @@ export function validateConfig(config: OpenFlowConfig): void {
     );
   }
 
+  if (config.budget !== undefined) {
+    if (typeof config.budget !== "object" || config.budget === null) {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'budget' must be an object."
+      );
+    }
+    for (const key of ["maxAgentCalls", "maxObservedTokens", "maxRunMs"] as const) {
+      const value = config.budget[key];
+      if (value !== undefined && (!Number.isInteger(value) || value <= 0)) {
+        throw new OpenFlowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Config value 'budget.${key}' must be a positive integer.`
+        );
+      }
+    }
+  }
+
   // security validation
   if (typeof config.security !== "object" || config.security === null) {
     throw new OpenFlowError(

@@ -218,8 +218,12 @@ Common options:
 --report <pretty|json|jsonl>
 --concurrency <number>
 --timeout-ms <number>
+--max-agent-calls <number>
+--max-observed-tokens <number>
+--max-run-ms <ms>
 --resume <run-id-or-path>
 --no-cache
+--background
 --dry-run
 --fail-fast
 --verbose
@@ -236,7 +240,14 @@ openflow run workflows/review.ts --report json
 openflow run workflows/review.ts --report jsonl
 openflow run workflows/review.ts --fail-fast
 openflow run workflows/review.ts --resume <previous-run-id>
+openflow run workflows/review.ts --background
 ```
+
+`--timeout-ms` is a per-agent timeout. `--max-run-ms` is a workflow-level wall-clock budget.
+
+Resume/cache only reuses successful agent calls from the same workflow hash. OpenFlow records every call in `calls.jsonl`; if `cache-index.json` is missing or damaged, resume rebuilds safe cache hits from that journal. `--no-cache` disables reads and cache-index writes, but keeps the call journal for debugging.
+
+OpenFlow does not estimate token usage. For Codex runs, it records usage reported by `codex exec --json` and can stop later work with `--max-observed-tokens` after observed usage exceeds the limit.
 
 ### `openflow validate`
 
@@ -259,6 +270,18 @@ Validation checks include:
 - Metadata is statically analyzable.
 - Unsupported imports and restricted APIs are rejected.
 - `pipeline()` stage configuration and structure are verified.
+
+### Run observation commands
+
+```bash
+openflow list --out .openflow/runs
+openflow inspect <runId>
+openflow watch <runId>
+openflow watch <runId> --jsonl
+openflow kill <runId>
+```
+
+Background runs use the same artifact files as foreground runs. `watch` follows `events.jsonl`; `inspect` reads `report.json`, `manifest.json`, and `process.json`.
 
 ### `openflow doctor`
 
@@ -642,6 +665,9 @@ Every run creates a local artifact directory.
   workflow.input.ts
   config.resolved.json
   events.jsonl
+  calls.jsonl
+  cache-index.json
+  process.json
   report.json
   agents/
     <agentId>/
@@ -650,6 +676,7 @@ Every run creates a local artifact directory.
       stderr.log
       raw-result.json
       normalized-result.json
+      cache-hit.json
       schema.json
       validation-error.json
 ```

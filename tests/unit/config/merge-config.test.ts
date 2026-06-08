@@ -24,6 +24,19 @@ describe("Merge Config", () => {
     expect(merged.reporting.mode).toBe("jsonl");
   });
 
+  it("CLI budget values override config budget values", () => {
+    const merged = mergeConfig(
+      DEFAULT_CONFIG,
+      { budget: { maxAgentCalls: 5, maxObservedTokens: 100, maxRunMs: 1000 } },
+      { maxAgentCalls: 2, maxObservedTokens: 50 }
+    );
+    expect(merged.budget).toEqual({
+      maxAgentCalls: 2,
+      maxObservedTokens: 50,
+      maxRunMs: 1000
+    });
+  });
+
   it("provider configs merge instead of replace all providers", () => {
     const fileConfig: Partial<OpenFlowConfig> = {
       providers: {

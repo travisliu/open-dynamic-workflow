@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { runCommand } from "./commands/run.js";
 import { validateCommand } from "./commands/validate.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { inspectCommand, killCommand, listCommand, watchCommand } from "./commands/runs.js";
 import { exitCodeForError } from "../errors/exit-codes.js";
 import { serializeError } from "../errors/serialize.js";
 import { OpenFlowError } from "../errors/types.js";
@@ -56,8 +57,14 @@ export async function main(argv: string[]): Promise<void> {
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
     .option("--concurrency <number>", "Maximum parallel concurrency")
     .option("--timeout-ms <ms>", "Workflow run timeout in ms")
+    .option("--max-agent-calls <number>", "Maximum live provider agent calls for this run")
+    .option("--max-observed-tokens <number>", "Maximum observed provider-reported tokens for this run")
+    .option("--max-run-ms <ms>", "Workflow run wall-clock budget in ms")
     .option("--resume <run-id-or-path>", "Resume from a previous run cache")
     .option("--no-cache", "Disable resume/cache lookup and cache index updates")
+    .option("--background", "Run workflow in a detached background worker")
+    .option("--background-worker", "Internal background worker mode")
+    .option("--run-id <id>", "Internal run id override")
     .option("--dry-run", "Validate and print summary without invoking providers")
     .option("--fail-fast", "Stop immediately on first agent step failure")
     .option("-v, --verbose", "Enable verbose logging")
@@ -75,6 +82,46 @@ export async function main(argv: string[]): Promise<void> {
         throw new OpenFlowError(ErrorCode.CLI_USAGE_ERROR, "--retry is not supported in the MVP.");
       }
       await runCommand({ workflowFile, rawOptions: options });
+    });
+
+  program
+    .command("list")
+    .option("-o, --out <path>", "Runs artifact directory")
+    .option("--cwd <path>", "Custom working directory")
+    .option("--json", "Print JSON")
+    .action(async (options) => {
+      await listCommand({ rawOptions: options });
+    });
+
+  program
+    .command("inspect")
+    .argument("<run-id-or-path>", "Run id or run artifact path")
+    .option("-o, --out <path>", "Runs artifact directory")
+    .option("--cwd <path>", "Custom working directory")
+    .option("--json", "Print JSON")
+    .action(async (runIdOrPath, options) => {
+      await inspectCommand({ runIdOrPath, rawOptions: options });
+    });
+
+  program
+    .command("watch")
+    .argument("<run-id-or-path>", "Run id or run artifact path")
+    .option("-o, --out <path>", "Runs artifact directory")
+    .option("--cwd <path>", "Custom working directory")
+    .option("--jsonl", "Print raw event JSONL")
+    .action(async (runIdOrPath, options) => {
+      await watchCommand({ runIdOrPath, rawOptions: options });
+    });
+
+  program
+    .command("kill")
+    .argument("<run-id-or-path>", "Run id or run artifact path")
+    .option("-o, --out <path>", "Runs artifact directory")
+    .option("--cwd <path>", "Custom working directory")
+    .option("--signal <signal>", "Signal to send", "SIGTERM")
+    .option("--json", "Print JSON")
+    .action(async (runIdOrPath, options) => {
+      await killCommand({ runIdOrPath, rawOptions: options });
     });
 
   program

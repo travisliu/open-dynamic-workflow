@@ -121,6 +121,25 @@ Controls visual outputs and terminal formatting.
 
 ---
 
+### `budget` Settings
+
+Soft workflow limits. OpenFlow does not predict or tokenize prompts; Codex token limits use only usage reported by `codex exec --json`.
+
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `maxAgentCalls` | `number` | `undefined` | Positive integer. | Maximum live provider calls started by the run. Cache hits do not count. |
+| `maxObservedTokens` | `number` | `undefined` | Positive integer. | Stop after provider-reported observed tokens exceed this value. |
+| `maxRunMs` | `number` | `undefined` | Positive integer. | Whole workflow wall-clock budget. |
+
+```yaml
+budget:
+  maxAgentCalls: 20
+  maxObservedTokens: 100000
+  maxRunMs: 1800000
+```
+
+---
+
 ## 3. Override Resolution Precedence
 
 When evaluating configuration keys (like `model` or `timeoutMs`), the runtime resolves properties using the following hierarchy (highest precedence first):

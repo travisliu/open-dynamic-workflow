@@ -44,6 +44,11 @@ export interface OpenFlowConfig {
     mode: ReporterMode;
     verbose: boolean;
   };
+  budget?: {
+    maxAgentCalls?: number;
+    maxObservedTokens?: number;
+    maxRunMs?: number;
+  };
   failFast?: boolean;
 }
 

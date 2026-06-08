@@ -21,8 +21,12 @@ openflow run <workflow-file>
 --report <pretty|json|jsonl>
 --concurrency <number>
 --timeout-ms <number>
+--max-agent-calls <number>
+--max-observed-tokens <number>
+--max-run-ms <ms>
 --resume <run-id-or-path>
 --no-cache
+--background
 --dry-run
 --fail-fast
 --verbose
@@ -38,10 +42,31 @@ openflow run workflows/review.ts --concurrency 2
 openflow run workflows/review.ts --timeout-ms 600000
 openflow run workflows/review.ts --resume <previous-run-id>
 openflow run workflows/review.ts --no-cache
+openflow run workflows/review.ts --max-observed-tokens 50000
+openflow run workflows/review.ts --background
 openflow run workflows/review.ts --report json
 openflow run workflows/review.ts --report jsonl
 openflow run workflows/review.ts --fail-fast
 ```
+
+Notes:
+
+* `--timeout-ms` is per agent; `--max-run-ms` is the whole workflow wall-clock budget.
+* Resume/cache reuses only successful agent calls from the same workflow hash.
+* OpenFlow does not estimate tokens. It only records Codex JSONL usage after Codex reports it.
+
+---
+
+## Observe runs
+
+```bash
+openflow list [--out <dir>] [--json]
+openflow inspect <run-id-or-path> [--out <dir>] [--json]
+openflow watch <run-id-or-path> [--out <dir>] [--jsonl]
+openflow kill <run-id-or-path> [--out <dir>] [--signal SIGTERM]
+```
+
+`watch` follows `events.jsonl`. `inspect` reads artifacts and works for running, completed, failed, and cancelled runs.
 
 ---
 

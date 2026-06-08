@@ -61,6 +61,13 @@ export interface OpenFlowConfig {
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
   reporting: ReportingConfig;
+  budget?: BudgetConfig | undefined;
+}
+
+export interface BudgetConfig {
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
 }
 
 export interface ResolvedConfig extends OpenFlowConfig {
@@ -81,6 +88,9 @@ export interface CliRunOptions {
   report?: ReporterMode;
   concurrency?: number;
   timeoutMs?: number;
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
   dryRun: boolean;
   failFast: boolean;
   verbose: boolean;

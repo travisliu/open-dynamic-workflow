@@ -37,6 +37,19 @@ async function readOnlyRunReport(runRoot: string): Promise<any> {
   return JSON.parse(await fs.readFile(reportPath, "utf8"));
 }
 
+async function readRunReport(runRoot: string, runId: string): Promise<any> {
+  const reportPath = path.join(runRoot, runId, "report.json");
+  return JSON.parse(await fs.readFile(reportPath, "utf8"));
+}
+
+async function listRunDirs(runRoot: string): Promise<string[]> {
+  const entries = await fs.readdir(runRoot, { withFileTypes: true });
+  return entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+}
+
 async function git(cwd: string, args: string[]): Promise<void> {
   await execFileAsync("git", args, { cwd });
 }
@@ -73,6 +86,9 @@ export default result;
     const report = await readOnlyRunReport(runsDir);
     expect(report.status).toBe("succeeded");
     expect(String(report.result).toLowerCase()).toContain("openflow-codex-ok");
+    expect(report.agents[0].threadId).toBeTruthy();
+    expect(report.agents[0].usage.totalTokens).toBeGreaterThan(0);
+    expect(report.usageSummary.totalTokens).toBeGreaterThan(0);
   }, 180000);
 
   runIfEnabled("runs a real Codex schema workflow", async () => {
@@ -152,4 +168,105 @@ export default review;
     expect(typeof report.result).toBe("string");
     expect(report.result.length).toBeGreaterThan(0);
   }, 240000);
+
+  runIfEnabled("stops a real Codex workflow after observed token budget is exceeded", async () => {
+    const workflowPath = path.join(TEMP_DIR, "budget.workflow.js");
+    const runsDir = path.join(TEMP_DIR, "runs-budget");
+    await fs.writeFile(workflowPath, `
+export const meta = { name: "codex-e2e-budget", description: "Real Codex budget smoke test" };
+await agent("Reply with exactly: first-budget-step", { id: "budget-first" });
+await agent("Reply with exactly: second-budget-step", { id: "budget-second" });
+export default "done";
+`, "utf8");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--out",
+      runsDir,
+      "--timeout-ms",
+      "240000",
+      "--max-observed-tokens",
+      "1"
+    ]);
+
+    expect(result.error).toMatchObject({ code: "BUDGET_EXCEEDED" });
+    const report = await readOnlyRunReport(runsDir);
+    expect(report.status).toBe("failed");
+    expect(report.agents).toHaveLength(1);
+    expect(report.agents[0].id).toBe("budget-first");
+    expect(report.usageSummary.totalTokens).toBeGreaterThan(1);
+  }, 240000);
+
+  runIfEnabled("reuses a real Codex result through resume/cache without launching the provider again", async () => {
+    const workflowPath = path.join(TEMP_DIR, "resume.workflow.js");
+    const brokenConfigPath = path.join(TEMP_DIR, "broken-codex.config.yaml");
+    const runsDir = path.join(TEMP_DIR, "runs-resume");
+
+    await fs.writeFile(workflowPath, `
+export const meta = { name: "codex-e2e-resume-cache", description: "Real Codex resume/cache smoke test" };
+const result = await agent("Reply with exactly: openflow-real-cache-ok", { id: "real-cache-agent" });
+export default result;
+`, "utf8");
+
+    await fs.writeFile(brokenConfigPath, `
+defaultProvider: codex
+providers:
+  codex:
+    command: openflow-nonexistent-codex-provider-for-cache
+    defaultModel: null
+security:
+  allowShell: false
+  allowWorkflowImports: false
+  passEnv: []
+  redactEnv: []
+reporting:
+  mode: json
+  verbose: false
+`, "utf8");
+
+    const first = await runCli([
+      "run",
+      workflowPath,
+      "--out",
+      runsDir,
+      "--timeout-ms",
+      "240000"
+    ]);
+    expect(first.error).toBeNull();
+    const [firstRunId] = await listRunDirs(runsDir);
+    expect(firstRunId).toBeDefined();
+    const firstReport = await readRunReport(runsDir, firstRunId!);
+    expect(firstReport.status).toBe("succeeded");
+    expect(String(firstReport.result).toLowerCase()).toContain("openflow-real-cache-ok");
+
+    const second = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      brokenConfigPath,
+      "--out",
+      runsDir,
+      "--resume",
+      firstRunId!
+    ]);
+    expect(second.error).toBeNull();
+
+    const runIds = await listRunDirs(runsDir);
+    expect(runIds).toHaveLength(2);
+    const secondRunId = runIds.find((id) => id !== firstRunId)!;
+    const secondReport = await readRunReport(runsDir, secondRunId);
+    expect(secondReport.status).toBe("succeeded");
+    expect(String(secondReport.result).toLowerCase()).toContain("openflow-real-cache-ok");
+    expect(secondReport.agents[0].cache).toMatchObject({
+      hit: true,
+      callId: "real-cache-agent",
+      previousAgentId: "real-cache-agent"
+    });
+
+    const cacheHit = JSON.parse(
+      await fs.readFile(path.join(runsDir, secondRunId, "agents/real-cache-agent/cache-hit.json"), "utf8")
+    );
+    expect(cacheHit.previousRunId).toBe(firstRunId);
+  }, 300000);
 });

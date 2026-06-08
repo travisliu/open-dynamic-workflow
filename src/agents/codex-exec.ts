@@ -1,5 +1,6 @@
 import type {
   AgentAdapter,
+  AgentUsage,
   ProviderHealth,
   AgentRunInput,
   ProviderCommand,
@@ -104,11 +105,12 @@ export class CodexExecAdapter implements AgentAdapter {
   async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult> {
     const lastMessage = input.lastMessage?.trim();
     if (lastMessage) {
+      const summary = summarizeCodexEvents(input.stdout);
       return resultFromMessageText(lastMessage, {
         format: "codex-last-message",
         lastMessage,
-        jsonl: summarizeCodexEvents(input.stdout)
-      });
+        jsonl: summary
+      }, undefined, metadataFromSummary(summary));
     }
 
     const trimmed = input.stdout.trim();
@@ -147,6 +149,7 @@ export class CodexExecAdapter implements AgentAdapter {
         const structured = selectStructuredCandidate(messages);
         if (structured) {
           const parsedJson = tryParseEmbeddedJson(structured.text);
+          const summary = extractCodexEventSummary(events);
           const result: ProviderParsedResult = {
             text: structured.text,
             json: parsedJson,
@@ -156,8 +159,9 @@ export class CodexExecAdapter implements AgentAdapter {
               events,
               selectedEventIndex: structured.index,
               selectedMessageText: structured.text,
-              ...extractCodexEventSummary(events)
-            }
+              ...summary
+            },
+            ...metadataFromSummary(summary)
           };
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
@@ -168,6 +172,7 @@ export class CodexExecAdapter implements AgentAdapter {
         // Rule 4. For plain-text scenarios, prefer the last non-empty agent_message
         const plaintext = selectPlaintextCandidate(messages);
         if (plaintext) {
+          const summary = extractCodexEventSummary(events);
           const result: ProviderParsedResult = {
             text: plaintext.text,
             raw: {
@@ -175,8 +180,9 @@ export class CodexExecAdapter implements AgentAdapter {
               events,
               selectedEventIndex: plaintext.index,
               selectedMessageText: plaintext.text,
-              ...extractCodexEventSummary(events)
-            }
+              ...summary
+            },
+            ...metadataFromSummary(summary)
           };
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
@@ -186,14 +192,16 @@ export class CodexExecAdapter implements AgentAdapter {
 
         // Edge case 2: JSONL stream with no agent_message
         const finalWarnings = [...warnings, "No agent_message event found in JSONL stream"];
+        const summary = extractCodexEventSummary(events);
         const result: ProviderParsedResult = {
           text: input.stdout,
           raw: {
             format: "codex-jsonl",
             events,
-            ...extractCodexEventSummary(events)
+            ...summary
           },
-          parseWarnings: finalWarnings
+          parseWarnings: finalWarnings,
+          ...metadataFromSummary(summary)
         };
         return result;
       }
@@ -298,7 +306,12 @@ function shouldUseNativeSchema(input: AgentRunInput): boolean {
   return transport === "auto" || transport === "native";
 }
 
-function resultFromMessageText(text: string, raw: unknown, jsonOverride?: unknown): ProviderParsedResult {
+function resultFromMessageText(
+  text: string,
+  raw: unknown,
+  jsonOverride?: unknown,
+  metadata?: Pick<ProviderParsedResult, "usage" | "threadId" | "providerMetadata">
+): ProviderParsedResult {
   const structured = tryParseEmbeddedJson(text);
   const result: ProviderParsedResult = {
     text,
@@ -312,10 +325,13 @@ function resultFromMessageText(text: string, raw: unknown, jsonOverride?: unknow
   if (structured !== undefined) {
     result.structuredJson = structured;
   }
+  if (metadata?.usage !== undefined) result.usage = metadata.usage;
+  if (metadata?.threadId !== undefined) result.threadId = metadata.threadId;
+  if (metadata?.providerMetadata !== undefined) result.providerMetadata = metadata.providerMetadata;
   return result;
 }
 
-function summarizeCodexEvents(stdout: string): unknown {
+function summarizeCodexEvents(stdout: string): Record<string, unknown> | undefined {
   const jsonlResult = tryParseJsonLines(stdout.trim());
   if (!jsonlResult) {
     return undefined;
@@ -355,9 +371,61 @@ function extractCodexEventSummary(events: unknown[]): Record<string, unknown> {
   const summary: Record<string, unknown> = {};
   if (threadId !== undefined) summary.threadId = threadId;
   if (usage !== undefined) summary.usage = usage;
+  const normalizedUsage = normalizeCodexUsage(usage);
+  if (normalizedUsage !== undefined) summary.normalizedUsage = normalizedUsage;
   if (failures.length > 0) summary.failures = failures;
   if (errors.length > 0) summary.errors = errors;
   return summary;
+}
+
+function metadataFromSummary(summary: Record<string, unknown> | undefined): Pick<ProviderParsedResult, "usage" | "threadId" | "providerMetadata"> {
+  const metadata: Pick<ProviderParsedResult, "usage" | "threadId" | "providerMetadata"> = {};
+  if (!summary) return metadata;
+
+  if (typeof summary.threadId === "string") {
+    metadata.threadId = summary.threadId;
+  }
+  if (summary.normalizedUsage && typeof summary.normalizedUsage === "object" && !Array.isArray(summary.normalizedUsage)) {
+    metadata.usage = summary.normalizedUsage as AgentUsage;
+  }
+
+  const providerMetadata: Record<string, unknown> = {};
+  if (summary.usage !== undefined) providerMetadata.usage = summary.usage;
+  if (summary.failures !== undefined) providerMetadata.failures = summary.failures;
+  if (summary.errors !== undefined) providerMetadata.errors = summary.errors;
+  if (Object.keys(providerMetadata).length > 0) {
+    metadata.providerMetadata = providerMetadata;
+  }
+  return metadata;
+}
+
+export function normalizeCodexUsage(usage: unknown): AgentUsage | undefined {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+    return undefined;
+  }
+  const raw = usage as Record<string, unknown>;
+  const inputTokens = numberFromUnknown(raw.input_tokens ?? raw.inputTokens);
+  const cachedInputTokens = numberFromUnknown(raw.cached_input_tokens ?? raw.cachedInputTokens);
+  const outputTokens = numberFromUnknown(raw.output_tokens ?? raw.outputTokens);
+  const reasoningOutputTokens = numberFromUnknown(raw.reasoning_output_tokens ?? raw.reasoningOutputTokens);
+  const totalTokens = numberFromUnknown(raw.total_tokens ?? raw.totalTokens);
+
+  const normalized: AgentUsage = {};
+  if (inputTokens !== undefined) normalized.inputTokens = inputTokens;
+  if (cachedInputTokens !== undefined) normalized.cachedInputTokens = cachedInputTokens;
+  if (outputTokens !== undefined) normalized.outputTokens = outputTokens;
+  if (reasoningOutputTokens !== undefined) normalized.reasoningOutputTokens = reasoningOutputTokens;
+  if (totalTokens !== undefined) {
+    normalized.totalTokens = totalTokens;
+  } else if (inputTokens !== undefined || outputTokens !== undefined) {
+    normalized.totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function numberFromUnknown(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function tryParseJsonLines(stdout: string): { events: unknown[]; warnings: string[] } | null {

@@ -12,6 +12,7 @@ export type EventType =
   | "agent.queued"
   | "agent.started"
   | "agent.output"
+  | "agent.cache_hit"
   | "agent.completed"
   | "agent.failed"
   | "agent.timed_out"
@@ -96,6 +97,17 @@ export interface AgentOutputPayload {
   agentId: string;
   stream: "stdout" | "stderr";
   data: string;
+}
+
+export interface AgentCacheHitPayload {
+  agentId: string;
+  label?: string;
+  provider: string;
+  model?: string;
+  callId: string;
+  previousRunId?: string;
+  previousAgentId?: string;
+  artifacts: AgentArtifacts;
 }
 
 export interface AgentCompletedPayload {
