@@ -119,6 +119,74 @@ export function validateWorkflow(
               }
             }
           }
+        } else if (calleeText === "agent") {
+          const firstArg = node.arguments[0];
+          if (firstArg && ts.isObjectLiteralExpression(firstArg)) {
+            for (const prop of firstArg.properties) {
+              if (ts.isPropertyAssignment(prop)) {
+                const propName = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : prop.name.getText();
+                if (propName === "permissions") {
+                  const init = prop.initializer;
+                  if (ts.isObjectLiteralExpression(init)) {
+                    let hasMode = false;
+                    let modeValue: string | undefined;
+                    let hasDynamicProp = false;
+                    const allowedKeys = ["mode"];
+                    for (const innerProp of init.properties) {
+                      if (ts.isPropertyAssignment(innerProp)) {
+                        const innerName = ts.isIdentifier(innerProp.name) || ts.isStringLiteral(innerProp.name) ? innerProp.name.text : innerProp.name.getText();
+                        if (!allowedKeys.includes(innerName)) {
+                          report(innerProp, `agent() permissions contain unsupported key '${innerName}'.`);
+                        }
+                        if (innerName === "mode") {
+                          hasMode = true;
+                          const val = innerProp.initializer;
+                          if (ts.isStringLiteral(val)) {
+                            modeValue = val.text;
+                          } else if (
+                            ts.isNumericLiteral(val) ||
+                            ts.isBigIntLiteral(val) ||
+                            ts.isObjectLiteralExpression(val) ||
+                            ts.isArrayLiteralExpression(val) ||
+                            val.kind === ts.SyntaxKind.TrueKeyword ||
+                            val.kind === ts.SyntaxKind.FalseKeyword ||
+                            val.kind === ts.SyntaxKind.NullKeyword
+                          ) {
+                            report(val, "agent() permissions.mode must be a string literal.");
+                          }
+                        }
+                      } else if (ts.isShorthandPropertyAssignment(innerProp)) {
+                        const innerName = innerProp.name.text;
+                        if (!allowedKeys.includes(innerName)) {
+                          report(innerProp, `agent() permissions contain unsupported key '${innerName}'.`);
+                        }
+                        if (innerName === "mode") {
+                          hasMode = true;
+                        }
+                      } else {
+                        hasDynamicProp = true;
+                      }
+                    }
+                    if (!hasMode && !hasDynamicProp) {
+                      report(init, "agent() permissions must include a 'mode' property.");
+                    } else if (hasMode && modeValue !== undefined && modeValue !== "dangerously-full-access") {
+                      report(init, "agent() permissions.mode must be 'dangerously-full-access'.");
+                    }
+                  } else if (
+                    ts.isStringLiteral(init) ||
+                    ts.isNumericLiteral(init) ||
+                    ts.isBigIntLiteral(init) ||
+                    ts.isArrayLiteralExpression(init) ||
+                    init.kind === ts.SyntaxKind.TrueKeyword ||
+                    init.kind === ts.SyntaxKind.FalseKeyword ||
+                    init.kind === ts.SyntaxKind.NullKeyword
+                  ) {
+                    report(init, "agent() permissions must be an object literal.");
+                  }
+                }
+              }
+            }
+          }
         } else if (["read", "write"].includes(calleeText)) {
           report(node, `${calleeText}() is not supported in the MVP.`);
         } else if (calleeText === "fetch") {

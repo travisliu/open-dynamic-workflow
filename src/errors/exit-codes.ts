@@ -44,6 +44,7 @@ export function exitCodeForError(error: unknown): ExitCode {
       return ExitCode.Timeout;
     case ErrorCode.PROVIDER_PROCESS_FAILED:
     case ErrorCode.SCHEMA_VALIDATION_FAILED:
+    case ErrorCode.UNSUPPORTED_CAPABILITY:
       return ExitCode.WorkflowFailed;
     default:
       return ExitCode.InternalError;

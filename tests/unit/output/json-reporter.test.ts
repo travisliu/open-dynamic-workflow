@@ -79,4 +79,26 @@ describe("JsonReporter", () => {
     expect(getStdout()).toBe("");
     expect(getStderr()).toBe("warning: low disk\n");
   });
+
+  it("finish() output includes agent permissions", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new JsonReporter(streams);
+
+    const resultWithPermissions = {
+      ...dummyResult,
+      agents: [
+        {
+          id: "agent-1",
+          status: "succeeded",
+          permissions: { mode: "dangerously-full-access" }
+        }
+      ]
+    };
+
+    reporter.finish(resultWithPermissions as any);
+
+    const output = getStdout();
+    const parsed = JSON.parse(output.trim());
+    expect(parsed.agents[0].permissions).toEqual({ mode: "dangerously-full-access" });
+  });
 });

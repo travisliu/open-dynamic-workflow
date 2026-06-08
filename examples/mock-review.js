@@ -30,7 +30,10 @@ const reviews = await parallel({
   billing: () => agent({
     id: "review-billing",
     provider: "mock",
-    prompt: "Review src/billing.ts for API design issues."
+    prompt: "Review src/billing.ts for API design issues.",
+    permissions: {
+      mode: "dangerously-full-access"
+    }
   })
 });
 

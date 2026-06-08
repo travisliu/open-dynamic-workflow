@@ -85,6 +85,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       model: "mock-model",
       timeoutMs: 5000,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -136,6 +137,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       model: "mock-model",
       timeoutMs: 100,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -177,6 +179,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       model: "mock-model",
       timeoutMs: 5000,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -220,6 +223,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       model: "mock-model",
       timeoutMs: 100,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -260,6 +264,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       model: "mock-model",
       timeoutMs: 5000,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -312,6 +317,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       prompt,
       timeoutMs: 5000,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -362,6 +368,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       structuredOutput: { transport: "native" },
       timeoutMs: 5000,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -438,6 +445,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       model: "fake-model",
       timeoutMs: 5000,
       cwd: process.cwd(),
+      permissions: { mode: "default" },
       signal: new AbortController().signal,
       metadata: {}
     });
@@ -468,5 +476,229 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     expect(rawResultJson.ok).toBe(false);
     expect(rawResultJson.error.code).toBe("CLI_USAGE_ERROR");
     expect(rawResultJson.error.message).toBe("Validation failed in buildCommand");
+  });
+
+  it("persists permissions metadata and creates permissions.json", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "perm-agent": { text: "perm success" }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-perm";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "perm-agent",
+      label: "Perm Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {},
+      permissions: { mode: "dangerously-full-access" }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.permissions).toEqual({ mode: "dangerously-full-access" });
+    expect(result.artifacts.permissionsPath).toBe("agents/perm-agent/permissions.json");
+
+    const agentDir = path.join(runOutDir, "agents/perm-agent");
+    const permissionsJson = JSON.parse(await fs.readFile(path.join(agentDir, "permissions.json"), "utf8"));
+    expect(permissionsJson).toEqual({ mode: "dangerously-full-access" });
+
+    const metadataJson = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
+    expect(metadataJson.permissions).toEqual({ mode: "dangerously-full-access" });
+  });
+
+  it("merges permissions directly into raw result if it is a non-array object", async () => {
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps) => {
+      const registry = new registryModule.ProviderRegistry();
+      registry.register({
+        name: "mock",
+        lookupResponse: () => ({
+          stdout: "success",
+          exitCode: 0
+        }),
+        buildCommand: async () => ({ command: "mock", args: [] }),
+        parseResult: async () => {
+          return {
+            text: "success",
+            raw: { foo: "bar" }
+          };
+        }
+      });
+      return registry;
+    });
+
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {}
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-object-raw";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "object-raw-agent",
+      label: "Object Raw Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      permissions: { mode: "dangerously-full-access" },
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    spy.mockRestore();
+
+    expect(result.ok).toBe(true);
+    const agentDir = path.join(runOutDir, "agents/object-raw-agent");
+    const rawResultJson = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
+    expect(rawResultJson).toEqual({
+      foo: "bar",
+      permissions: { mode: "dangerously-full-access" }
+    });
+  });
+
+  it("wraps raw result in an envelope if it is a primitive string or array", async () => {
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps) => {
+      const registry = new registryModule.ProviderRegistry();
+      registry.register({
+        name: "mock",
+        lookupResponse: () => ({
+          stdout: "success",
+          exitCode: 0
+        }),
+        buildCommand: async () => ({ command: "mock", args: [] }),
+        parseResult: async () => {
+          return {
+            text: "success",
+            raw: "primitive string"
+          };
+        }
+      });
+      return registry;
+    });
+
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {}
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-primitive-raw";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "primitive-raw-agent",
+      label: "Primitive Raw Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      permissions: { mode: "dangerously-full-access" },
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    spy.mockRestore();
+
+    expect(result.ok).toBe(true);
+    const agentDir = path.join(runOutDir, "agents/primitive-raw-agent");
+    const rawResultJson = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
+    expect(rawResultJson).toEqual({
+      raw: "primitive string",
+      permissions: { mode: "dangerously-full-access" }
+    });
+  });
+
+  it("wraps raw result in an envelope if it is a primitive array", async () => {
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps) => {
+      const registry = new registryModule.ProviderRegistry();
+      registry.register({
+        name: "mock",
+        lookupResponse: () => ({
+          stdout: "success",
+          exitCode: 0
+        }),
+        buildCommand: async () => ({ command: "mock", args: [] }),
+        parseResult: async () => {
+          return {
+            text: "success",
+            raw: ["item1", "item2"]
+          };
+        }
+      });
+      return registry;
+    });
+
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {}
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-array-raw";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "array-raw-agent",
+      label: "Array Raw Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      permissions: { mode: "dangerously-full-access" },
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    spy.mockRestore();
+
+    expect(result.ok).toBe(true);
+    const agentDir = path.join(runOutDir, "agents/array-raw-agent");
+    const rawResultJson = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
+    expect(rawResultJson).toEqual({
+      raw: ["item1", "item2"],
+      permissions: { mode: "dangerously-full-access" }
+    });
   });
 });

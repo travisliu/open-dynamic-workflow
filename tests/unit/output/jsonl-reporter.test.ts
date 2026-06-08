@@ -87,4 +87,25 @@ describe("JsonlReporter", () => {
 
     expect(getStderr()).toBe("");
   });
+
+  it("emitted event lines include permissions", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new JsonlReporter(streams);
+
+    const eventWithPerms: EventEnvelope = {
+      ...dummyEvent,
+      type: "agent.started",
+      payload: {
+        agentId: "agent-1",
+        provider: "mock",
+        permissions: { mode: "dangerously-full-access" }
+      } as any
+    };
+
+    reporter.handle(eventWithPerms);
+
+    const output = getStdout();
+    const parsed = JSON.parse(output.trim());
+    expect(parsed.payload.permissions).toEqual({ mode: "dangerously-full-access" });
+  });
 });

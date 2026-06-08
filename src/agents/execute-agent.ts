@@ -1,7 +1,7 @@
 import type { AgentExecutor, AgentExecutionInput } from "./execution-types.js";
-import type { AgentResult, AgentSuccessResult, AgentFailureResult, AgentRunInput } from "../types/agent.js";
+import type { AgentResult, AgentSuccessResult, AgentFailureResult, AgentRunInput, AgentPermissions } from "../types/agent.js";
 import type { ResolvedConfig } from "../types/config.js";
-import type { ArtifactStore } from "../types/artifacts.js";
+import type { ArtifactStore, AgentArtifacts } from "../types/artifacts.js";
 import { EventBus } from "../orchestration/event-bus.js";
 import { createDefaultProviderRegistry } from "./registry.js";
 import { runProcess } from "./process-runner.js";
@@ -38,6 +38,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
   async execute(input: AgentExecutionInput): Promise<AgentResult> {
     const registry = createDefaultProviderRegistry({ config: this.config });
     const adapter = registry.get(input.provider);
+    const resolvedPerms = input.permissions || { mode: "default" };
 
     // 1. Write prompt.txt
     await this.artifactStore.writeText(`agents/${input.id}/prompt.txt`, input.prompt);
@@ -51,9 +52,13 @@ export class DefaultAgentExecutor implements AgentExecutor {
     const metadataJson = {
       model: input.model,
       resolutionSource: input.metadata?.modelResolutionSource || "provider-default",
-      structuredOutputTransport: input.schema ? input.structuredOutput?.transport ?? "auto" : undefined
+      structuredOutputTransport: input.schema ? input.structuredOutput?.transport ?? "auto" : undefined,
+      permissions: resolvedPerms
     };
     await this.artifactStore.writeJson(`agents/${input.id}/metadata.json`, metadataJson);
+
+    // Write permissions.json
+    await this.artifactStore.writeJson(`agents/${input.id}/permissions.json`, resolvedPerms);
 
     // Initialize empty log files
     await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, "");
@@ -77,15 +82,16 @@ export class DefaultAgentExecutor implements AgentExecutor {
     let timedOut = false;
     let cancelled = false;
 
-    const agentArtifacts = {
+    const agentArtifacts: AgentArtifacts = {
       dir: `agents/${input.id}`,
       promptPath: `agents/${input.id}/prompt.txt`,
       stdoutPath: `agents/${input.id}/stdout.log`,
       stderrPath: `agents/${input.id}/stderr.log`,
       rawResultPath: `agents/${input.id}/raw-result.json`,
       normalizedResultPath: `agents/${input.id}/normalized-result.json`,
+      permissionsPath: `agents/${input.id}/permissions.json`,
       metadataPath: `agents/${input.id}/metadata.json`
-    } as any;
+    };
 
     if (input.schema) {
       agentArtifacts.schemaPath = `agents/${input.id}/schema.json`;
@@ -103,6 +109,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       timeoutMs: input.timeoutMs,
       cwd: input.cwd,
       env: {},
+      permissions: resolvedPerms,
       metadata: input.metadata
     };
 
@@ -168,7 +175,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode: null,
         durationMs,
         artifacts: agentArtifacts,
-        error: errorPayload
+        error: errorPayload,
+        permissions: resolvedPerms
       };
 
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
@@ -217,7 +225,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode: null,
         durationMs,
         artifacts: agentArtifacts,
-        error: errPayload
+        error: errPayload,
+        permissions: resolvedPerms
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
@@ -237,7 +246,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode: null,
         durationMs,
         artifacts: agentArtifacts,
-        error: errPayload
+        error: errPayload,
+        permissions: resolvedPerms
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
@@ -260,7 +270,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
           name: "ProviderProcessFailed",
           message: stderrInMemory.trim() || `Process exited with code ${exitCode}`,
           code: "PROVIDER_PROCESS_FAILED"
-        }
+        },
+        permissions: resolvedPerms
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
@@ -291,13 +302,27 @@ export class DefaultAgentExecutor implements AgentExecutor {
           name: "ParseError",
           message: `Parser crashed: ${err.message}`,
           code: "INTERNAL_ERROR"
-        }
+        },
+        permissions: resolvedPerms
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
     }
 
-    await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, parseResult.raw ?? parseResult);
+    const rawResult = parseResult.raw ?? parseResult;
+    let savedRawResult: any;
+    if (rawResult && typeof rawResult === "object" && !Array.isArray(rawResult)) {
+      savedRawResult = {
+        ...rawResult,
+        permissions: resolvedPerms
+      };
+    } else {
+      savedRawResult = {
+        raw: rawResult,
+        permissions: resolvedPerms
+      };
+    }
+    await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, savedRawResult);
 
     const normalized = await normalizeAgentOutput({
       schema: input.schema,
@@ -327,7 +352,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
           name: "ValidationError",
           message: normalized.error.message,
           code: normalized.error.code as any
-        }
+        },
+        permissions: resolvedPerms
       };
       return failureResult;
     }
@@ -347,7 +373,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
       stderr: stderrInMemory,
       exitCode: exitCode ?? 0,
       durationMs,
-      artifacts: agentArtifacts
+      artifacts: agentArtifacts,
+      permissions: resolvedPerms
     };
 
     return successResult;

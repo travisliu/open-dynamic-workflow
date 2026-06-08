@@ -180,4 +180,38 @@ describe("PrettyReporter", () => {
 
     expect(getStdout()).toBe("✓ Pipeline pipeline-1 completed successfully 1.2s\n  Artifacts: pipelines/pipeline-1/pipeline.json\n");
   });
+
+  it("agent.started prints label and provider with [dangerously-full-access] if mode matches", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.handle({
+      type: "agent.started",
+      payload: {
+        agentId: "agent-1",
+        label: "my-label",
+        provider: "mock",
+        permissions: { mode: "dangerously-full-access" }
+      }
+    } as any);
+
+    expect(getStdout()).toBe("▶ my-label started [mock] [dangerously-full-access]\n");
+  });
+
+  it("agent.completed prints success mark with [dangerously-full-access] if mode matches", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.handle({
+      type: "agent.completed",
+      payload: {
+        agentId: "agent-1",
+        provider: "mock",
+        durationMs: 1500,
+        permissions: { mode: "dangerously-full-access" }
+      }
+    } as any);
+
+    expect(getStdout()).toBe("✓ agent-1 succeeded [mock] 1.5s [dangerously-full-access]\n");
+  });
 });

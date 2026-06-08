@@ -26,7 +26,8 @@ class FakeAgentExecutor implements AgentExecutor {
           exitCode: 1,
           durationMs: 5,
           artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
-          error: { name: "AgentFailure", message: "Simulated execution failure", code: "PROVIDER_PROCESS_FAILED" }
+          error: { name: "AgentFailure", message: "Simulated execution failure", code: "PROVIDER_PROCESS_FAILED" },
+          permissions: input.permissions
         };
       }
       return {
@@ -38,7 +39,8 @@ class FakeAgentExecutor implements AgentExecutor {
         stderr: "",
         exitCode: 0,
         durationMs: 5,
-        artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" }
+        artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
+        permissions: input.permissions
       };
     } finally {
       this.active -= 1;
@@ -342,5 +344,30 @@ describe("DefaultRuntimeRunner", () => {
     expect(result.agents.length).toBe(2);
     expect(result.agents[0].status).toBe("failed");
     expect(result.agents[1].status).toBe("skipped");
+  });
+
+  it("retains resolved permissions on final agent results", async () => {
+    const runner = new DefaultRuntimeRunner();
+    const parsedWorkflow: ParsedWorkflow = {
+      meta: { name: "permissions-test", description: "permissions-test" },
+      body: `
+        const res1 = await agent({ prompt: "hello", permissions: { mode: "dangerously-full-access" } });
+        const res2 = await agent({ prompt: "world" });
+        export default [res1, res2];
+      `,
+      sourcePath: "workflow.js",
+      sourceText: "",
+      sourceHash: "123"
+    };
+
+    const result = await runner.run(
+      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(result.agents).toHaveLength(2);
+    expect(result.agents[0]!.permissions).toEqual({ mode: "dangerously-full-access" });
+    expect(result.agents[1]!.permissions).toEqual({ mode: "default" });
   });
 });

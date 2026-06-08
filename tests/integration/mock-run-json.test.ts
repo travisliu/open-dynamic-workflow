@@ -116,4 +116,42 @@ describe("Integration - mock run json mode", () => {
     // stdout should still be valid JSON even if stderr has content
     expect(() => JSON.parse(result.stdout.trim())).not.toThrow();
   });
+
+  it("JSON report includes resolved permissions (AC-09)", async () => {
+    const result = await runCli([
+      "run",
+      "tests/fixtures/workflows/dangerously-full-access-valid.workflow.js",
+      "--config",
+      "tests/fixtures/config/mock.config.yaml",
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json"
+    ]);
+
+    expect(result.error).toBeNull();
+
+    // stdout should be valid JSON
+    const stdout = result.stdout.trim();
+    expect(stdout).toBeTruthy();
+
+    const report = JSON.parse(stdout);
+    expect(report.status).toBe("succeeded");
+    expect(report.agents).toHaveLength(1);
+
+    const agentResult = report.agents[0];
+    expect(agentResult.permissions).toEqual({ mode: "dangerously-full-access" });
+
+    // stdout should not contain progress symbols or debug logs
+    expect(stdout).not.toContain("◇");
+    expect(stdout).not.toContain("✓");
+
+    // Verify persisted report.json matches the stdout report
+    const runs = await fs.readdir(TEMP_DIR);
+    expect(runs.length).toBe(1);
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const reportJson = await fs.readFile(path.join(runDir, "report.json"), "utf8");
+    const persistedReport = JSON.parse(reportJson);
+    expect(persistedReport.agents[0].permissions).toEqual({ mode: "dangerously-full-access" });
+  });
 });

@@ -369,6 +369,7 @@ type AgentCallInput = {
   schema?: JsonSchema;
   timeoutMs?: number;
   cwd?: string;
+  permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
 };
 ```
@@ -675,6 +676,8 @@ Every run creates a local artifact directory.
       normalized-result.json
       schema.json
       validation-error.json
+      permissions.json
+      metadata.json
 ```
 
 Artifacts are always enabled so failed or partial runs remain debuggable.
@@ -708,8 +711,30 @@ Default security behavior:
 - Environment variables are not passed unless allowlisted.
 - Secret-like values are redacted from terminal output, events, reports, and persisted logs where feasible.
 - Provider prompts and outputs are stored as artifacts.
-- Patches are never applied automatically.
 - Provider CLIs may still access files, network, and credentials according to their own behavior and permissions.
+
+### Agent Permissions & Write Access
+
+Workflows can request write-capable access for specific agents:
+
+```ts
+agent({
+  id: "apply-patch",
+  provider: "codex",
+  prompt: "Apply the review findings to src/auth.ts.",
+  permissions: {
+    mode: "dangerously-full-access"
+  }
+})
+```
+
+#### Safety & System Context:
+- **No Scoped Sandbox:** The `dangerously-full-access` mode is **not** a sandbox or a scoped-write system. It grants full permission mapping to the underlying provider CLI, bypassing safety boundaries in that provider context.
+- **Provider Support Behavior:**
+  - `codex`: Maps `dangerously-full-access` to the Codex write-capable flag (`--dangerously-bypass-approvals-and-sandbox`).
+  - `gemini`: Supports `dangerously-full-access`. By default, Gemini runs in read-only `--approval-mode plan`. Specifying `dangerously-full-access` switches Gemini to `--approval-mode yolo`, enabling write-capable execution. This is the explicit opt-in; Gemini's own trust and sandbox rules still apply.
+  - `mock`: Accepts `dangerously-full-access` without changing its deterministic mock behavior (useful for dry runs and testing).
+  - Workflows that omit the `permissions` field default to `{ mode: "default" }` (which does not pass any write-enabling flags to the provider).
 
 Be careful before sharing `.openflow/runs/<runId>` artifacts, because they may contain prompts, source snippets, stdout, stderr, and model outputs.
 
