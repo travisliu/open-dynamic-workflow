@@ -145,6 +145,7 @@ describe("Model Events, Reports, and Artifacts", () => {
       metadata: {
         modelResolutionSource: "cli"
       },
+      permissions: { mode: "default" },
       signal: new AbortController().signal
     });
 
@@ -154,7 +155,8 @@ describe("Model Events, Reports, and Artifacts", () => {
     const metadata = writtenFiles.get("agents/agent-test-run/metadata.json");
     expect(metadata).toEqual({
       model: "custom-resolved-model",
-      resolutionSource: "cli"
+      resolutionSource: "cli",
+      permissions: { mode: "default" }
     });
   });
 });

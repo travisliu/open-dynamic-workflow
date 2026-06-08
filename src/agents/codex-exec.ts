@@ -61,6 +61,10 @@ export class CodexExecAdapter implements AgentAdapter {
     const command = this.config.command ?? "codex";
     const baseArgs = this.config.args ?? ["exec", "--json", "--ephemeral"];
     const args = [...baseArgs];
+
+    if (input.permissions?.mode === "dangerously-full-access") {
+      args.push("--dangerously-bypass-approvals-and-sandbox");
+    }
     const structuredPrompt = resolveStructuredOutputPrompt({
       prompt: input.prompt,
       schema: input.schema,

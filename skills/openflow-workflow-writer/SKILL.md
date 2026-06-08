@@ -72,27 +72,34 @@ When using this skill:
    - Do not use `transport: "native"` for current `codex`, `gemini`, or `mock` workflows; current adapters reject it.
    - Ask agents to return exactly one JSON object when a schema is required.
 
-7. Make concurrency and failure behavior explicit when it matters.
+7. Set `permissions` only when the workflow requires autonomous execution.
+   - Omit `permissions` for most workflows. Providers run with their configured approval behaviour by default.
+   - Use `permissions: { mode: "dangerously-full-access" }` only when the agent must apply changes, write files, or execute commands without approval prompts.
+   - Document the reason in a workflow comment when using `dangerously-full-access`.
+   - Note the concrete per-provider effect: `codex` appends `--dangerously-bypass-approvals-and-sandbox`; `gemini` switches to `--approval-mode yolo`; `mock` records the field but has no runtime effect.
+
+8. Make concurrency and failure behavior explicit when it matters.
    - Document expected `--concurrency`, `--timeout-ms`, and `--fail-fast` usage for CLI runs.
    - For `pipeline()`, choose `strategy`, `concurrency`, and `failFast` based on whether partial item failure should be tolerated.
    - Prefer item-tolerant behavior for analysis pipelines unless the user wants strict gating.
 
-8. Add run instructions.
+9. Add run instructions.
    - Include `openflow validate <workflow-file>` before `openflow run <workflow-file>`.
    - Include local commands and CI-friendly commands when relevant.
    - Suggest `--report json` for final machine-readable reports and `--report jsonl` for event streams.
    - Suggest `openflow doctor` when provider availability or config may be uncertain.
 
-9. Review the workflow before finalizing.
+10. Review the workflow before finalizing.
    - Check metadata placement.
    - Check that all agent calls return promises correctly.
    - Check that `parallel()` receives functions.
    - Check that `pipeline()` stages are named objects.
    - Check that pipeline stages use `ctx.agent()`.
    - Check for secrets in prompts/logs.
+   - Check that `permissions` is only present where autonomous execution is explicitly intended, and that a comment explains why.
    - Check that the final result is exported.
 
-10. Provide a concise explanation of how to use or adapt the workflow.
+11. Provide a concise explanation of how to use or adapt the workflow.
 
 # Rules
 
@@ -105,6 +112,7 @@ When using this skill:
 - Do not call global `agent()` from inside a pipeline stage; use `ctx.agent()`.
 - Do not assume automatic patch application, automatic commits, automatic merge, approval gates, DAG pipelines, retries, worktree isolation, container isolation, distributed execution, or resumable runs are available unless explicitly implemented.
 - Do not log secrets, tokens, credentials, full private source dumps, or unnecessary raw provider output.
+- Only set `permissions: { mode: "dangerously-full-access" }` when the workflow explicitly requires autonomous execution without approval prompts. Document the reason in a workflow comment adjacent to the agent call.
 - Prefer explicit, reusable workflow files over vague prompts.
 - Prefer validation and dry-run commands before real provider execution.
 - Keep workflow scripts provider-agnostic except for intentional provider selection in `agent()` calls.
@@ -146,6 +154,12 @@ For each issue:
 - Problem:
 - Why it matters:
 - Suggested fix:
+
+When reviewing security-related issues, explicitly check:
+
+- Secrets or sensitive values in prompts or `log()` calls.
+- Use of `permissions: { mode: "dangerously-full-access" }` without a documented reason.
+- Provider choices that do not match the task risk level.
 
 ## Corrected workflow
 
@@ -336,6 +350,7 @@ Before returning a final OpenFlow workflow, confirm:
 - Provider choices are intentional and explainable.
 - Structured output schemas are valid JSON Schema objects.
 - Structured output uses a supported transport: `auto`, `prompt`, or `validate-only`.
+- `permissions: { mode: "dangerously-full-access" }` is only present where autonomous execution is explicitly intended, and a comment in the workflow explains why.
 - CLI commands include validation before execution.
 - Config assumptions are stated clearly.
 - No unsupported APIs or out-of-scope capabilities are used.

@@ -1,5 +1,6 @@
 import type { AgentArtifacts } from "../types/artifacts.js";
 import type { SerializedError } from "../types/errors.js";
+import type { AgentPermissions } from "../types/agent.js";
 
 export type EventType =
   | "workflow.started"
@@ -82,6 +83,7 @@ export interface AgentQueuedPayload {
   label?: string;
   provider: string;
   model?: string;
+  permissions: AgentPermissions;
 }
 
 export interface AgentStartedPayload {
@@ -90,6 +92,7 @@ export interface AgentStartedPayload {
   provider: string;
   model?: string;
   cwd: string;
+  permissions: AgentPermissions;
 }
 
 export interface AgentOutputPayload {
@@ -107,6 +110,7 @@ export interface AgentCompletedPayload {
   durationMs: number;
   exitCode: number;
   artifacts: AgentArtifacts;
+  permissions: AgentPermissions;
 }
 
 export interface AgentFailedPayload {
@@ -119,6 +123,7 @@ export interface AgentFailedPayload {
   exitCode: number | null;
   error: SerializedError;
   artifacts: AgentArtifacts;
+  permissions: AgentPermissions;
 }
 
 export interface AgentTimedOutPayload {
@@ -130,6 +135,7 @@ export interface AgentTimedOutPayload {
   durationMs: number;
   error: SerializedError;
   artifacts: AgentArtifacts;
+  permissions: AgentPermissions;
 }
 
 export interface AgentCancelledPayload {
@@ -141,6 +147,7 @@ export interface AgentCancelledPayload {
   durationMs: number;
   error?: SerializedError;
   artifacts?: AgentArtifacts;
+  permissions: AgentPermissions;
 }
 
 export interface PipelineStartedPayload {

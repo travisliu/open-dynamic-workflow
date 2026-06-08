@@ -7,6 +7,8 @@ export interface AgentArtifacts {
   normalizedResultPath?: string;
   schemaPath?: string;
   validationErrorPath?: string;
+  permissionsPath?: string;
+  metadataPath?: string;
 }
 
 export interface RunManifest {

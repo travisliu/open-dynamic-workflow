@@ -1,5 +1,6 @@
-import type { AgentCallInput, AgentResult } from "../types/agent.js";
+import type { AgentCallInput, AgentResult, AgentPermissions } from "../types/agent.js";
 import type { ScheduledTask, ScheduleOptions } from "../types/scheduler.js";
+import type { AgentExecutionInput } from "../agents/execution-types.js";
 import type { RuntimeState } from "./types.js";
 import { resolveAgentModel } from "../agents/resolve-model.js";
 import { InvalidDslCallError } from "./errors.js";
@@ -75,6 +76,26 @@ export function createDsl(runtime: RuntimeState) {
         );
       }
 
+      if (input.permissions !== undefined) {
+        if (typeof input.permissions !== "object" || input.permissions === null || Array.isArray(input.permissions)) {
+          throw new InvalidDslCallError("agent() permissions must be an object.");
+        }
+        if (!("mode" in input.permissions)) {
+          throw new InvalidDslCallError("agent() permissions must include a 'mode' property.");
+        }
+        if ((input.permissions as any).mode !== "dangerously-full-access") {
+          throw new InvalidDslCallError("agent() permissions.mode must be 'dangerously-full-access'.");
+        }
+        const extraKeys = Object.keys(input.permissions).filter(k => k !== "mode");
+        if (extraKeys.length > 0) {
+          throw new InvalidDslCallError("agent() permissions object cannot contain extra keys.");
+        }
+      }
+
+      const resolvedPermissions: AgentPermissions = input.permissions
+        ? { mode: "dangerously-full-access" }
+        : { mode: "default" };
+
       // Normalization
       let normalizedId = input.id;
       const activePipeline = getActivePipelineContext();
@@ -111,6 +132,7 @@ export function createDsl(runtime: RuntimeState) {
         id: normalizedId,
         provider: normalizedProvider,
         model: resolved.model,
+        permissions: resolvedPermissions,
         run: async (schedulerSignal: AbortSignal) => {
           let finalSignal = schedulerSignal;
           let onAbort: (() => void) | undefined;
@@ -131,12 +153,13 @@ export function createDsl(runtime: RuntimeState) {
             finalSignal = combinedController.signal;
           }
 
-          const execInput: any = {
+          const execInput: AgentExecutionInput = {
             id: normalizedId,
             provider: normalizedProvider,
             prompt: input.prompt,
             timeoutMs: normalizedTimeoutMs,
             cwd: normalizedCwd,
+            permissions: resolvedPermissions,
             signal: finalSignal,
             metadata: {
               ...input.metadata,

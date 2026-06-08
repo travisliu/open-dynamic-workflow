@@ -2,7 +2,7 @@ import * as path from "node:path";
 import * as vm from "node:vm";
 import type { ParsedWorkflow, WorkflowRunResult, WorkflowMeta } from "../types/workflow.js";
 import type { ResolvedConfig, CliRunOptions } from "../types/config.js";
-import type { AgentResult } from "../types/agent.js";
+import type { AgentResult, AgentFailureResult } from "../types/agent.js";
 import type { SerializedError } from "../types/errors.js";
 import type { ArtifactStore } from "../types/artifacts.js";
 import type { AgentExecutor } from "../agents/execution-types.js";
@@ -172,6 +172,29 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           }
           return result;
         }
+        }
+
+        // Check if any agent failed with UNSUPPORTED_CAPABILITY
+        const unsupportedAgent = runtime.agentResults.find(a => !a.ok && a.error?.code === ErrorCode.UNSUPPORTED_CAPABILITY) as AgentFailureResult | undefined;
+        if (unsupportedAgent) {
+          const result = buildFailedRunResult(
+            runtime,
+            new OpenFlowError(ErrorCode.UNSUPPORTED_CAPABILITY, unsupportedAgent.error.message),
+            durationMs,
+            finishTime.toISOString(),
+            deps.artifactStore
+          );
+          if (deps.eventSink) {
+            deps.eventSink.emit("workflow.failed", {
+              status: "failed",
+              durationMs,
+              error: result.error!
+            });
+          }
+          if (deps.artifactStore) {
+            await deps.artifactStore.updateManifest("failed", result.error);
+          }
+          return result;
         }
 
         // Build succeeded run result

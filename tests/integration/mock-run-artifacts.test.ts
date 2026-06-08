@@ -96,6 +96,10 @@ describe("Integration - mock run artifact layout", () => {
     expect(await fileExists(path.join(reviewAuthDir, "stderr.log"))).toBe(true);
     expect(await fileExists(path.join(reviewAuthDir, "raw-result.json"))).toBe(true);
     expect(await fileExists(path.join(reviewAuthDir, "normalized-result.json"))).toBe(true);
+    expect(await fileExists(path.join(reviewAuthDir, "permissions.json"))).toBe(true);
+
+    const permissions = JSON.parse(await fs.readFile(path.join(reviewAuthDir, "permissions.json"), "utf8"));
+    expect(permissions).toEqual({ mode: "default" });
 
     // Verify prompt content
     const prompt = await fs.readFile(path.join(reviewAuthDir, "prompt.txt"), "utf8");
@@ -165,5 +169,11 @@ describe("Integration - mock run artifact layout", () => {
 
     const metadata = JSON.parse(await fs.readFile(path.join(reviewAuthDir, "metadata.json"), "utf8"));
     expect(metadata.structuredOutputTransport).toBe("prompt");
+
+    // review-billing uses dangerously-full-access
+    const reviewBillingDir = path.join(runDir, "agents/review-billing");
+    expect(await fileExists(path.join(reviewBillingDir, "permissions.json"))).toBe(true);
+    const billingPermissions = JSON.parse(await fs.readFile(path.join(reviewBillingDir, "permissions.json"), "utf8"));
+    expect(billingPermissions).toEqual({ mode: "dangerously-full-access" });
   });
 });

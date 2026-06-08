@@ -24,6 +24,11 @@ if (args.subcase === "04.01") {
     "fail-quick": () => agent({ label: "fail-quick", provider: "mock", prompt: "Quick failure" }),
     "success-slow": () => agent({ label: "success-slow", provider: "mock", prompt: "Slow success" })
   });
+} else if (args.subcase === "04.04") {
+  results = await parallel({
+    agent1: () => agent({ id: "agent-default", provider: "mock", prompt: "Task default" }),
+    agent2: () => agent({ id: "agent-full-access", provider: "mock", prompt: "Task full access", permissions: { mode: "dangerously-full-access" } })
+  });
 }
 
-export default (args.subcase === "04.01") ? { results } : results;
+export default (args.subcase === "04.01" || args.subcase === "04.04") ? { results } : results;

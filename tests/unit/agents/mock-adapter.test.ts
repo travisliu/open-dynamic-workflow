@@ -18,7 +18,8 @@ describe("MockAdapter", () => {
       prompt: "hello",
       cwd: "/root",
       timeoutMs: 1000,
-      env: {}
+      env: {},
+      permissions: { mode: "default" }
     };
 
     const cmd = await adapter.buildCommand(input);
@@ -50,7 +51,8 @@ describe("MockAdapter", () => {
       structuredOutput: { transport: "native" },
       cwd: "/root",
       timeoutMs: 1000,
-      env: {}
+      env: {},
+      permissions: { mode: "default" }
     };
 
     await expect(adapter.buildCommand(input)).rejects.toThrow(
@@ -71,7 +73,8 @@ describe("MockAdapter", () => {
       prompt: "hello",
       cwd: "/root",
       timeoutMs: 1000,
-      env: {}
+      env: {},
+      permissions: { mode: "default" }
     };
 
     const parseInput: ProviderParseInput = {
@@ -98,7 +101,8 @@ describe("MockAdapter", () => {
       prompt: "hello",
       cwd: "/root",
       timeoutMs: 1000,
-      env: {}
+      env: {},
+      permissions: { mode: "default" }
     };
 
     const parseInput: ProviderParseInput = {
@@ -127,7 +131,8 @@ describe("MockAdapter", () => {
       prompt: "hello",
       cwd: "/root",
       timeoutMs: 1000,
-      env: {}
+      env: {},
+      permissions: { mode: "default" }
     };
 
     const parseInput: ProviderParseInput = {
@@ -152,7 +157,8 @@ describe("MockAdapter", () => {
       prompt: "hello",
       cwd: "/root",
       timeoutMs: 1000,
-      env: {}
+      env: {},
+      permissions: { mode: "default" }
     };
 
     const parseInput: ProviderParseInput = {
@@ -164,5 +170,31 @@ describe("MockAdapter", () => {
 
     const parsed = await adapter.parseResult(parseInput);
     expect(parsed.text).toBe("default fallback response");
+  });
+
+  it("accepts resolved permissions without changing deterministic behavior", async () => {
+    const adapter = new MockAdapter();
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "mock",
+      prompt: "hello",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.command).toBe("mock-process");
+
+    const parseInput: ProviderParseInput = {
+      input,
+      stdout: "",
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe("mock response");
   });
 });

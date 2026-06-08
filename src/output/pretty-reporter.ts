@@ -46,14 +46,16 @@ export class PrettyReporter implements Reporter {
         if (this.verbose) {
           const label = displayAgentLabel(payload);
           const providerStr = payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
-          this.stdout.write(`• ${label} queued [${providerStr}]\n`);
+          const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
+          this.stdout.write(`• ${label} queued [${providerStr}]${permStr}\n`);
         }
         break;
       }
       case "agent.started": {
         const label = displayAgentLabel(payload);
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
-        this.stdout.write(`▶ ${label} started [${providerStr}]\n`);
+        const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
+        this.stdout.write(`▶ ${label} started [${providerStr}]${permStr}\n`);
         break;
       }
       case "agent.output": {
@@ -66,28 +68,32 @@ export class PrettyReporter implements Reporter {
         const label = displayAgentLabel(payload);
         const dur = formatDuration(payload.durationMs);
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
-        this.stdout.write(`✓ ${label} succeeded [${providerStr}] ${dur}\n`);
+        const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
+        this.stdout.write(`✓ ${label} succeeded [${providerStr}] ${dur}${permStr}\n`);
         break;
       }
       case "agent.failed": {
         const label = displayAgentLabel(payload);
         const errMsg = payload.error?.message || "Unknown error";
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
-        this.stdout.write(`✕ ${label} failed [${providerStr}] ${errMsg}\n`);
+        const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
+        this.stdout.write(`✕ ${label} failed [${providerStr}] ${errMsg}${permStr}\n`);
         break;
       }
       case "agent.timed_out": {
         const label = displayAgentLabel(payload);
         const errMsg = payload.error?.message || "Timed out";
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
-        this.stdout.write(`✕ ${label} timed out [${providerStr}] ${errMsg}\n`);
+        const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
+        this.stdout.write(`✕ ${label} timed out [${providerStr}] ${errMsg}${permStr}\n`);
         break;
       }
       case "agent.cancelled": {
         const label = displayAgentLabel(payload);
         const errMsg = payload.error?.message || "Cancelled";
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
-        this.stdout.write(`✕ ${label} cancelled [${providerStr}] ${errMsg}\n`);
+        const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
+        this.stdout.write(`✕ ${label} cancelled [${providerStr}] ${errMsg}${permStr}\n`);
         break;
       }
       case "pipeline.started": {

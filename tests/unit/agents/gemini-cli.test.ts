@@ -11,13 +11,36 @@ describe("GeminiCliAdapter", () => {
       prompt: "generate a test",
       cwd: "/root",
       timeoutMs: 1000,
-      env: { PATH: "/bin" }
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
     };
 
     const cmd = await adapter.buildCommand(input);
     expect(cmd.command).toBe("gemini");
     expect(cmd.args).toEqual(["-p", "generate a test", "--output-format", "json"]);
     expect(cmd.stdin).toBeUndefined();
+  });
+
+  it("default mode builds read-only command (no --approval-mode yolo)", async () => {
+    // Default adapter uses the defaults.ts base args which include --approval-mode plan.
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      args: ["--output-format", "json", "--approval-mode", "plan"]
+    });
+    const input: AgentRunInput = {
+      id: "run-default",
+      provider: "gemini",
+      prompt: "review this",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "default" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.args).toContain("--approval-mode");
+    expect(cmd.args).toContain("plan");
+    expect(cmd.args).not.toContain("yolo");
   });
 
   it("builds command with configured output format and model", async () => {
@@ -33,7 +56,8 @@ describe("GeminiCliAdapter", () => {
       prompt: "generate a test",
       cwd: "/root",
       timeoutMs: 1000,
-      env: { PATH: "/bin" }
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
     };
 
     const cmd = await adapter.buildCommand(input);
@@ -56,7 +80,8 @@ describe("GeminiCliAdapter", () => {
       },
       cwd: "/root",
       timeoutMs: 1000,
-      env: { PATH: "/bin" }
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
     };
 
     const cmd = await adapter.buildCommand(input);
@@ -81,7 +106,8 @@ describe("GeminiCliAdapter", () => {
       structuredOutput: { transport: "validate-only" },
       cwd: "/root",
       timeoutMs: 1000,
-      env: { PATH: "/bin" }
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
     };
 
     const cmd = await adapter.buildCommand(input);
@@ -104,7 +130,8 @@ describe("GeminiCliAdapter", () => {
       structuredOutput: { transport: "native" },
       cwd: "/root",
       timeoutMs: 1000,
-      env: { PATH: "/bin" }
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
     };
 
     await expect(adapter.buildCommand(input)).rejects.toThrow(
@@ -125,7 +152,8 @@ describe("GeminiCliAdapter", () => {
       model: "gemini-ultra",
       cwd: "/root",
       timeoutMs: 1000,
-      env: { PATH: "/bin" }
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
     };
 
     const cmd = await adapter.buildCommand(input);
@@ -141,7 +169,8 @@ describe("GeminiCliAdapter", () => {
         prompt: "test",
         cwd: "",
         timeoutMs: 1,
-        env: {}
+        env: {},
+        permissions: { mode: "default" }
       },
       stdout: '{"text": "hello from gemini", "tokens": 12}',
       stderr: "",
@@ -162,7 +191,8 @@ describe("GeminiCliAdapter", () => {
         prompt: "test",
         cwd: "",
         timeoutMs: 1,
-        env: {}
+        env: {},
+        permissions: { mode: "default" }
       },
       stdout: '{"output": "ok", "items": [1, 2]}',
       stderr: "",
@@ -183,7 +213,8 @@ describe("GeminiCliAdapter", () => {
         prompt: "test",
         cwd: "",
         timeoutMs: 1,
-        env: {}
+        env: {},
+        permissions: { mode: "default" }
       },
       stdout: "some raw output text",
       stderr: "",
@@ -207,6 +238,81 @@ describe("GeminiCliAdapter", () => {
     expect(health.message).toContain("is not available");
   });
 
+  it("dangerously-full-access switches Gemini to --approval-mode yolo", async () => {
+    // Simulates the real defaults.ts base args that include --approval-mode plan.
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      args: ["--output-format", "json", "--approval-mode", "plan"]
+    });
+    const input: AgentRunInput = {
+      id: "run-full",
+      provider: "gemini",
+      prompt: "apply the patch",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.command).toBe("gemini");
+    // --approval-mode plan must be replaced by --approval-mode yolo
+    const approvalIdx = cmd.args.indexOf("--approval-mode");
+    expect(approvalIdx).toBeGreaterThan(-1);
+    expect(cmd.args[approvalIdx + 1]).toBe("yolo");
+    // Must not contain plan at all
+    expect(cmd.args).not.toContain("plan");
+    // Exactly one approval-mode flag
+    const count = cmd.args.filter(a => a === "--approval-mode").length;
+    expect(count).toBe(1);
+  });
+
+  it("dangerously-full-access replaces --approval-mode plan with yolo (no duplicates)", async () => {
+    // Explicit config with --approval-mode plan in base args
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      args: ["--output-format", "json", "--approval-mode", "plan"]
+    });
+    const input: AgentRunInput = {
+      id: "run-replace",
+      provider: "gemini",
+      prompt: "do something",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    const approvalModeFlags = cmd.args.filter(a => a === "--approval-mode");
+    expect(approvalModeFlags.length).toBe(1);
+    const idx = cmd.args.indexOf("--approval-mode");
+    expect(cmd.args[idx + 1]).toBe("yolo");
+  });
+
+  it("dangerously-full-access appends --approval-mode yolo when no approval-mode in custom args", async () => {
+    // Config with no approval-mode flag in base args
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      args: ["--output-format", "json"]
+    });
+    const input: AgentRunInput = {
+      id: "run-append",
+      provider: "gemini",
+      prompt: "do something",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "dangerously-full-access" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    const approvalModeFlags = cmd.args.filter(a => a === "--approval-mode");
+    expect(approvalModeFlags.length).toBe(1);
+    const idx = cmd.args.indexOf("--approval-mode");
+    expect(cmd.args[idx + 1]).toBe("yolo");
+  });
+
   it("builds command with promptMode stdin", async () => {
     const adapter = new GeminiCliAdapter({
       command: "gemini",
@@ -219,7 +325,8 @@ describe("GeminiCliAdapter", () => {
       prompt: "generate a test",
       cwd: "/root",
       timeoutMs: 1000,
-      env: { PATH: "/bin" }
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
     };
 
     const cmd = await adapter.buildCommand(input);
@@ -237,7 +344,8 @@ describe("GeminiCliAdapter", () => {
         prompt: "test",
         cwd: "",
         timeoutMs: 1,
-        env: {}
+        env: {},
+        permissions: { mode: "default" }
       },
       stdout: '{"response": "hello from gemini via response", "stats": {}}',
       stderr: "",
@@ -253,7 +361,7 @@ describe("GeminiCliAdapter", () => {
     it("envelope with text containing valid JSON", async () => {
       const adapter = new GeminiCliAdapter();
       const parseInput: ProviderParseInput = {
-        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
         stdout: '{"text": "{\\"value\\": \\"hello\\"}"}',
         stderr: "",
         exitCode: 0
@@ -268,7 +376,7 @@ describe("GeminiCliAdapter", () => {
     it("envelope with text containing fenced JSON", async () => {
       const adapter = new GeminiCliAdapter();
       const parseInput: ProviderParseInput = {
-        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
         stdout: '{"text": "```json\\n{\\"value\\": \\"hello\\"}\\n```"}',
         stderr: "",
         exitCode: 0
@@ -283,7 +391,7 @@ describe("GeminiCliAdapter", () => {
     it("envelope with response containing valid JSON", async () => {
       const adapter = new GeminiCliAdapter();
       const parseInput: ProviderParseInput = {
-        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
         stdout: '{"response": "{\\"value\\": \\"helloresponse\\"}"}',
         stderr: "",
         exitCode: 0
@@ -298,7 +406,7 @@ describe("GeminiCliAdapter", () => {
     it("envelope with response containing fenced JSON", async () => {
       const adapter = new GeminiCliAdapter();
       const parseInput: ProviderParseInput = {
-        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
         stdout: '{"response": "```json\\n{\\"value\\": \\"helloresponse\\"}\\n```", "stats": {}}',
         stderr: "",
         exitCode: 0
@@ -313,7 +421,7 @@ describe("GeminiCliAdapter", () => {
     it("direct JSON payload object without text or response", async () => {
       const adapter = new GeminiCliAdapter();
       const parseInput: ProviderParseInput = {
-        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
         stdout: '{"value": "hello", "extra": true}',
         stderr: "",
         exitCode: 0
@@ -328,7 +436,7 @@ describe("GeminiCliAdapter", () => {
     it("envelope with non-JSON text", async () => {
       const adapter = new GeminiCliAdapter();
       const parseInput: ProviderParseInput = {
-        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+        input: { id: "1", provider: "gemini", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
         stdout: '{"text": "not valid json"}',
         stderr: "",
         exitCode: 0

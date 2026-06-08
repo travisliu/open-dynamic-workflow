@@ -237,4 +237,32 @@ providers:
       expect(fromStdout).toEqual(persisted);
     }
   });
+
+  it("Pretty reporter visibly marks dangerous write mode (AC-11)", async () => {
+    const result = await runCli([
+      "run",
+      "tests/fixtures/workflows/dangerously-full-access-valid.workflow.js",
+      "--config",
+      "tests/fixtures/config/mock.config.yaml",
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "pretty"
+    ]);
+
+    expect(result.error).toBeNull();
+
+    // Assert: Output stays human-readable and doesn't crash
+    const stdout = result.stdout;
+    expect(stdout).toBeTruthy();
+
+    // Assert: The agent line visibly marks dangerous write mode
+    expect(stdout).toContain("[dangerously-full-access]");
+
+    // Assert: The output still includes normal progress and final artifact location
+    expect(stdout).toContain("dangerously-full-access-valid"); // Workflow name
+    expect(stdout).toContain("succeeded");
+    expect(stdout).toContain("Artifacts:");
+    expect(stdout).toContain(TEMP_DIR);
+  });
 });
