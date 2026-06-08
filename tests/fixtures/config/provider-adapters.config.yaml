@@ -12,6 +12,15 @@ providers:
         stdout: "Mock stdout for review-1"
         stderr: "Mock stderr for review-1"
         exitCode: 0
+  gemini:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-gemini-cli.mjs
+      - --output-format
+      - json
+      - --approval-mode
+      - plan
+    promptMode: stdin
 
 security:
   passEnv: []

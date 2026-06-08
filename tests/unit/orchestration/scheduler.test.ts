@@ -115,4 +115,38 @@ describe("DefaultScheduler", () => {
     expect(r1.ok).toBe(false);
     expect(r1.status).toBe("cancelled");
   });
+
+  it("emits events containing permissions", async () => {
+    const events: Array<{ type: string; payload: any }> = [];
+    const eventSink = {
+      emit: (type: string, payload: any) => {
+        events.push({ type, payload });
+      }
+    };
+    const scheduler = new DefaultScheduler({ concurrency: 1 }, { eventSink });
+
+    const taskFn = async () => {
+      return { ok: true, status: "succeeded" } as AgentResult;
+    };
+
+    const task = {
+      id: "t1",
+      permissions: { mode: "dangerously-full-access" as const },
+      run: taskFn
+    };
+
+    await scheduler.schedule(task);
+
+    const queuedEvent = events.find((e) => e.type === "agent.queued");
+    expect(queuedEvent).toBeDefined();
+    expect(queuedEvent?.payload.permissions).toEqual({ mode: "dangerously-full-access" });
+
+    const startedEvent = events.find((e) => e.type === "agent.started");
+    expect(startedEvent).toBeDefined();
+    expect(startedEvent?.payload.permissions).toEqual({ mode: "dangerously-full-access" });
+
+    const completedEvent = events.find((e) => e.type === "agent.completed");
+    expect(completedEvent).toBeDefined();
+    expect(completedEvent?.payload.permissions).toEqual({ mode: "dangerously-full-access" });
+  });
 });

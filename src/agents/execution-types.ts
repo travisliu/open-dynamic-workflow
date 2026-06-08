@@ -1,4 +1,4 @@
-import type { AgentResult } from "../types/agent.js";
+import type { AgentResult, AgentPermissions } from "../types/agent.js";
 import type { JsonSchema, ProviderName } from "../types/common.js";
 import type { StructuredOutputConfig } from "../types/agent.js";
 
@@ -12,6 +12,7 @@ export interface AgentExecutionInput {
   structuredOutput?: StructuredOutputConfig;
   timeoutMs: number;
   cwd: string;
+  permissions: AgentPermissions;
   metadata?: Record<string, unknown>;
   signal: AbortSignal;
 }
@@ -19,3 +20,4 @@ export interface AgentExecutionInput {
 export interface AgentExecutor {
   execute(input: AgentExecutionInput): Promise<AgentResult>;
 }
+

@@ -6,6 +6,6 @@ openflow-workflow-author/
     cli-commands.md
     configuration.md
   assets/
-    basic-workflow.template.ts
-    parallel-workflow.template.ts
-    pipeline-workflow.template.ts
+    basic-workflow.template.js
+    parallel-workflow.template.js
+    pipeline-workflow.template.js

@@ -73,6 +73,7 @@ describe("Timeout handling (Unit)", () => {
         prompt: "test prompt",
         timeoutMs: timeoutMs,
         cwd: process.cwd(),
+        permissions: { mode: "default" },
         signal,
         metadata: {}
       })

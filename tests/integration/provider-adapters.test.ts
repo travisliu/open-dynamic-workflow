@@ -164,4 +164,52 @@ describe("Provider adapter execution", () => {
         expect(agentFolders.length).toBe(0);
     }
   });
+
+  it("Gemini provider succeeds with dangerously-full-access using --approval-mode yolo", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json",
+      "--arg",
+      "subcase=03.02"
+    ]);
+
+    // Run must succeed (no error thrown)
+    expect(result.error).toBeNull();
+
+    const runs = await fs.readdir(TEMP_DIR);
+    expect(runs.length).toBe(1);
+    const runId = runs[0]!;
+    const runDir = path.join(TEMP_DIR, runId);
+
+    // Manifest records success
+    const manifestPath = path.join(runDir, "manifest.json");
+    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+    expect(manifest.status).toBe("succeeded");
+
+    // Agent artifacts exist
+    const agentDir = path.join(runDir, "agents/gemini-full-access");
+
+    // permissions.json records the resolved mode
+    const permissionsJson = JSON.parse(await fs.readFile(path.join(agentDir, "permissions.json"), "utf8"));
+    expect(permissionsJson).toEqual({ mode: "dangerously-full-access" });
+
+    // metadata.json also records permissions
+    const metadataJson = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
+    expect(metadataJson.permissions).toEqual({ mode: "dangerously-full-access" });
+
+    // The fake gemini echoes received argv to stderr.log; assert --approval-mode yolo was used.
+    const stderrLog = await fs.readFile(path.join(agentDir, "stderr.log"), "utf8");
+    expect(stderrLog).toContain("--approval-mode");
+    expect(stderrLog).toContain("yolo");
+    expect(stderrLog).not.toContain("plan");
+  });
 });

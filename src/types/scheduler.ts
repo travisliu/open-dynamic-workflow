@@ -1,4 +1,5 @@
 import type { MaybePromise, ProviderName } from "./common.js";
+import type { AgentPermissions } from "./agent.js";
 
 export interface AbortReason {
   type: "fail-fast" | "user" | "timeout" | "other";
@@ -12,6 +13,7 @@ export interface ScheduledTask<T> {
   label?: string | undefined;
   provider?: ProviderName | undefined;
   model?: string | undefined;
+  permissions?: AgentPermissions | undefined;
   run: (signal: AbortSignal) => MaybePromise<T>;
 }
 

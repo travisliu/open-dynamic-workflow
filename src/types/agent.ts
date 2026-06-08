@@ -8,6 +8,14 @@ export interface StructuredOutputConfig {
   transport?: StructuredOutputTransport | undefined;
 }
 
+export interface AgentPermissionsInput {
+  mode: "dangerously-full-access";
+}
+
+export type AgentPermissions =
+  | { mode: "default" }
+  | { mode: "dangerously-full-access" };
+
 export interface AgentCallInput {
   id?: string | undefined;
   label?: string | undefined;
@@ -18,6 +26,7 @@ export interface AgentCallInput {
   structuredOutput?: StructuredOutputConfig | undefined;
   timeoutMs?: number | undefined;
   cwd?: string | undefined;
+  permissions?: AgentPermissionsInput | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
 
@@ -51,7 +60,11 @@ export interface AgentSuccessResult {
   exitCode: number;
   durationMs: number;
   artifacts: AgentArtifacts;
+<<<<<<< HEAD
   cache?: AgentResultCacheInfo | undefined;
+=======
+  permissions: AgentPermissions;
+>>>>>>> ba8754c (feat: implement dangerously-full-access permission mode)
 }
 
 export interface AgentFailureResult {
@@ -67,6 +80,7 @@ export interface AgentFailureResult {
   durationMs: number;
   artifacts: AgentArtifacts;
   error: SerializedError;
+  permissions: AgentPermissions;
   cache?: AgentResultCacheInfo | undefined;
 }
 
@@ -88,6 +102,7 @@ export interface AgentRunInput {
   timeoutMs: number;
   cwd: string;
   env: Record<string, string>;
+  permissions: AgentPermissions;
   metadata?: Record<string, unknown> | undefined;
 }
 

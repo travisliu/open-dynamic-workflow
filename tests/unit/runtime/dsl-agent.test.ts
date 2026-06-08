@@ -28,7 +28,8 @@ function makeSuccessResult(id: string, provider = "mock"): AgentResult {
     stderr: "",
     exitCode: 0,
     durationMs: 5,
-    artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" }
+    artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
+    permissions: { mode: "default" }
   };
 }
 
@@ -43,7 +44,8 @@ function makeFailureResult(id: string, provider = "mock"): AgentResult {
     exitCode: 1,
     durationMs: 5,
     artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
-    error: { name: "AgentFailure", message: "Agent failed", code: "PROVIDER_PROCESS_FAILED" }
+    error: { name: "AgentFailure", message: "Agent failed", code: "PROVIDER_PROCESS_FAILED" },
+    permissions: { mode: "default" }
   };
 }
 
@@ -385,5 +387,105 @@ describe("DSL: agent()", () => {
     expect(ids).toContain("agent-1");
     expect(ids).toContain("agent-2");
     expect(ids[0]).not.toBe(ids[1]);
+  });
+
+  describe("agent() permissions validation and normalization", () => {
+    it("accepts permissions: { mode: 'dangerously-full-access' }", async () => {
+      const scheduler = makeSchedulerWithResult(makeSuccessResult("agent-1"));
+      const runtime = makeRuntimeState({ scheduler: scheduler as any });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        prompt: "hello",
+        permissions: { mode: "dangerously-full-access" }
+      });
+
+      expect(scheduler.schedule).toHaveBeenCalledTimes(1);
+      const task = scheduler.schedule.mock.calls[0]![0];
+      expect(task.permissions).toEqual({ mode: "dangerously-full-access" });
+    });
+
+    it("normalizes omitted permissions to { mode: 'default' }", async () => {
+      const scheduler = makeSchedulerWithResult(makeSuccessResult("agent-1"));
+      const runtime = makeRuntimeState({ scheduler: scheduler as any });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({ prompt: "hello" });
+
+      expect(scheduler.schedule).toHaveBeenCalledTimes(1);
+      const task = scheduler.schedule.mock.calls[0]![0];
+      expect(task.permissions).toEqual({ mode: "default" });
+    });
+
+    it("rejects non-object permissions", async () => {
+      const runtime = makeRuntimeState();
+      const dsl = createDsl(runtime);
+
+      await expect(dsl.agent({
+        prompt: "hello",
+        permissions: "dangerously-full-access" as any
+      })).rejects.toThrow("agent() permissions must be an object.");
+    });
+
+    it("rejects array permissions", async () => {
+      const runtime = makeRuntimeState();
+      const dsl = createDsl(runtime);
+
+      await expect(dsl.agent({
+        prompt: "hello",
+        permissions: [{ mode: "dangerously-full-access" }] as any
+      })).rejects.toThrow("agent() permissions must be an object.");
+    });
+
+    it("rejects missing mode property", async () => {
+      const runtime = makeRuntimeState();
+      const dsl = createDsl(runtime);
+
+      await expect(dsl.agent({
+        prompt: "hello",
+        permissions: {} as any
+      })).rejects.toThrow("agent() permissions must include a 'mode' property.");
+    });
+
+    it("rejects invalid mode value", async () => {
+      const runtime = makeRuntimeState();
+      const dsl = createDsl(runtime);
+
+      await expect(dsl.agent({
+        prompt: "hello",
+        permissions: { mode: "yolo" } as any
+      })).rejects.toThrow("agent() permissions.mode must be 'dangerously-full-access'.");
+    });
+
+    it("rejects extra keys in permissions object", async () => {
+      const runtime = makeRuntimeState();
+      const dsl = createDsl(runtime);
+
+      await expect(dsl.agent({
+        prompt: "hello",
+        permissions: { mode: "dangerously-full-access", approval: "never" } as any
+      })).rejects.toThrow("agent() permissions object cannot contain extra keys.");
+    });
+
+    it("passes resolved permissions to the executor input", async () => {
+      const executor = {
+        execute: vi.fn().mockResolvedValue(makeSuccessResult("agent-1"))
+      };
+      const scheduler = makeExecutingScheduler();
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any
+      });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        prompt: "hello",
+        permissions: { mode: "dangerously-full-access" }
+      });
+
+      expect(executor.execute).toHaveBeenCalledTimes(1);
+      const execInput = executor.execute.mock.calls[0]![0];
+      expect(execInput.permissions).toEqual({ mode: "dangerously-full-access" });
+    });
   });
 });

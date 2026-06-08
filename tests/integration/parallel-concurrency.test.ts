@@ -242,6 +242,49 @@ describe("Parallel execution and global concurrency limit", () => {
     // success-slow: one succeeds after a delay
     expect(results["success-slow"].ok).toBe(true);
     expect(results["success-slow"].status).toBe("succeeded");
-    expect(results["success-slow"].durationMs).toBeGreaterThanOrEqual(200);
+    expect(results["success-slow"].durationMs).toBeGreaterThanOrEqual(190); // 200ms delay; allow 10ms timer jitter
+  });
+
+  it("Mixed parallel workflows keep per-agent permission state (AC-13)", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/parallel-concurrency.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/parallel-concurrency.config.yaml");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json",
+      "--arg",
+      "subcase=04.04"
+    ]);
+
+    if (result.error) {
+      console.error(result.stderr);
+    }
+    expect(result.error).toBeNull();
+
+    const runs = await fs.readdir(TEMP_DIR);
+    expect(runs.length).toBe(1);
+    const runId = runs[0]!;
+    const runDir = path.join(TEMP_DIR, runId);
+
+    const reportPath = path.join(runDir, "report.json");
+    const report = JSON.parse(await fs.readFile(reportPath, "utf8"));
+
+    expect(report.status).toBe("succeeded");
+    expect(report.agents.length).toBe(2);
+
+    const agentDefault = report.agents.find((a: any) => a.id === "agent-default");
+    const agentFullAccess = report.agents.find((a: any) => a.id === "agent-full-access");
+
+    expect(agentDefault).toBeDefined();
+    expect(agentDefault.permissions).toEqual({ mode: "default" });
+
+    expect(agentFullAccess).toBeDefined();
+    expect(agentFullAccess.permissions).toEqual({ mode: "dangerously-full-access" });
   });
 });

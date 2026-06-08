@@ -84,24 +84,26 @@ type AgentCallInput = {
   };
   timeoutMs?: number;
   cwd?: string;
+  permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
 };
 ```
 
 ### Fields
 
-| Field       | Required | Description                                                         |
-| ----------- | -------: | ------------------------------------------------------------------- |
-| `id`        |       No | Stable identifier for the agent call and artifacts.                 |
-| `label`     |       No | Human-readable label for output.                                    |
-| `provider`  |       No | Provider to use: `codex`, `gemini`, `mock`, or configured provider. |
-| `prompt`    |      Yes | Prompt sent to the provider.                                        |
-| `model`     |       No | Model override for this call.                                       |
-| `schema`    |       No | JSON Schema used to validate structured output.                     |
-| `structuredOutput` | No | Controls how a provided schema reaches the provider.           |
-| `timeoutMs` |       No | Per-agent timeout in milliseconds.                                  |
-| `cwd`       |       No | Working directory for the provider call.                            |
-| `metadata`  |       No | Descriptive metadata for reports or artifacts.                      |
+| Field             | Required | Description                                                                    |
+| ----------------- | -------: | ------------------------------------------------------------------------------ |
+| `id`              |       No | Stable identifier for the agent call and artifacts.                            |
+| `label`           |       No | Human-readable label for output.                                               |
+| `provider`        |       No | Provider to use: `codex`, `gemini`, `mock`, or configured provider.            |
+| `prompt`          |      Yes | Prompt sent to the provider.                                                   |
+| `model`           |       No | Model override for this call.                                                  |
+| `schema`          |       No | JSON Schema used to validate structured output.                                |
+| `structuredOutput`|       No | Controls how a provided schema reaches the provider.                           |
+| `timeoutMs`       |       No | Per-agent timeout in milliseconds.                                             |
+| `cwd`             |       No | Working directory for the provider call.                                       |
+| `permissions`     |       No | Permission mode for this agent call. Omit for default sandboxed behaviour.    |
+| `metadata`        |       No | Descriptive metadata for reports or artifacts.                                 |
 
 ### Structured output
 
@@ -152,6 +154,41 @@ const result = await agent({
   structuredOutput: {
     transport: "auto"
   }
+});
+```
+
+### Permissions
+
+The `permissions` field controls the approval and sandbox mode passed to the provider CLI.
+
+When omitted, OpenFlow uses `{ mode: "default" }` and providers run with their configured approval behaviour (e.g., `--approval-mode plan` for Gemini).
+
+Only one mode is currently supported:
+
+| Mode | Behaviour |
+| ---- | --------- |
+| `"dangerously-full-access"` | Runs the provider without approval prompts or sandbox restrictions. Use only when the workflow explicitly requires fully autonomous execution. |
+
+Per-provider effect:
+
+| Provider | Effect of `dangerously-full-access` |
+| -------- | ----------------------------------- |
+| `codex`  | Appends `--dangerously-bypass-approvals-and-sandbox` to the provider command. |
+| `gemini` | Replaces `--approval-mode <value>` with `--approval-mode yolo` in the provider command. |
+| `mock`   | Field is accepted and recorded but has no effect on mock execution. |
+
+> **Security note:** `dangerously-full-access` allows the agent to read, write, and execute without confirmation prompts. Only use it when the task explicitly requires autonomous multi-step execution and the risk is understood and documented.
+
+#### Example with permissions
+
+```ts
+const result = await agent({
+  id: "autonomous-task",
+  provider: "codex",
+  // dangerously-full-access: codex runs without approval prompts or sandbox.
+  // Use only when autonomous multi-step execution is intentional.
+  permissions: { mode: "dangerously-full-access" },
+  prompt: "Refactor src/auth.ts to use the new token interface. Apply changes directly."
 });
 ```
 
@@ -427,6 +464,16 @@ Built-in providers:
 | `gemini` | Test strategy, operational review, broad synthesis, summarization. |
 
 Provider behavior should not leak into workflow semantics. Workflows should call `agent()` and let the runtime, scheduler, and adapter handle provider execution.
+
+### Provider permissions behaviour
+
+The `permissions` field on `agent()` affects provider CLI arguments at the adapter level.
+
+| Provider | Default approval mode | `dangerously-full-access` effect |
+| -------- | --------------------- | -------------------------------- |
+| `codex`  | Ephemeral sandbox with approvals | Appends `--dangerously-bypass-approvals-and-sandbox` |
+| `gemini` | `--approval-mode plan` (or config default) | Replaces `--approval-mode <value>` with `--approval-mode yolo` |
+| `mock`   | No subprocess approval concept | Field is accepted and recorded; no runtime effect |
 
 ---
 
@@ -712,6 +759,46 @@ Good:
 ```ts
 const results = await parallel({
   correctness: () => agent({ id: "correctness", prompt: "Check correctness" })
+});
+```
+
+Bad: using an unsupported `permissions.mode` value.
+
+```ts
+const result = await agent({
+  id: "task",
+  prompt: "Do something.",
+  permissions: { mode: "read-only" }  // ❌ Only "dangerously-full-access" is supported.
+});
+```
+
+Good:
+
+```ts
+const result = await agent({
+  id: "task",
+  prompt: "Do something.",
+  permissions: { mode: "dangerously-full-access" }  // ✅ Only valid mode.
+});
+```
+
+Bad: including extra keys in the `permissions` object.
+
+```ts
+const result = await agent({
+  id: "task",
+  prompt: "Do something.",
+  permissions: { mode: "dangerously-full-access", scope: "write" }  // ❌ Extra keys are rejected.
+});
+```
+
+Good:
+
+```ts
+const result = await agent({
+  id: "task",
+  prompt: "Do something.",
+  permissions: { mode: "dangerously-full-access" }  // ✅ Only 'mode' is allowed.
 });
 ```
 

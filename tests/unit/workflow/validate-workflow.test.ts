@@ -153,4 +153,62 @@ describe("Validate Workflow Restrictions", () => {
     const issues = validateWorkflow(parsed, options);
     expect(issues.some(i => i.message.includes("Access to 'constructor' is not allowed"))).toBe(true);
   });
+
+  it("accepts agent() with valid permissions literal", () => {
+    const parsed = createParsed(`
+      await agent({ prompt: "hello", permissions: { mode: "dangerously-full-access" } });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues).toHaveLength(0);
+  });
+
+  it("flags agent() with invalid mode in permissions literal", () => {
+    const parsed = createParsed(`
+      await agent({ prompt: "hello", permissions: { mode: "yolo" } });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("agent() permissions.mode must be 'dangerously-full-access'"))).toBe(true);
+  });
+
+  it("flags agent() with missing mode in permissions literal", () => {
+    const parsed = createParsed(`
+      await agent({ prompt: "hello", permissions: {} });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("agent() permissions must include a 'mode' property"))).toBe(true);
+  });
+
+  it("flags agent() with extra keys in permissions literal", () => {
+    const parsed = createParsed(`
+      await agent({ prompt: "hello", permissions: { mode: "dangerously-full-access", approval: "never" } });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("agent() permissions contain unsupported key 'approval'"))).toBe(true);
+  });
+
+  it("flags agent() with non-object permissions literal", () => {
+    const parsed = createParsed(`
+      await agent({ prompt: "hello", permissions: "dangerously-full-access" });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("agent() permissions must be an object literal"))).toBe(true);
+  });
+
+  it("accepts agent() with dynamic permissions variable", () => {
+    const parsed = createParsed(`
+      const myPerms = { mode: "dangerously-full-access" };
+      await agent({ prompt: "hello", permissions: myPerms });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues).toHaveLength(0);
+  });
+
+  it("accepts agent() with dynamic mode variable", () => {
+    const parsed = createParsed(`
+      const myMode = "dangerously-full-access";
+      await agent({ prompt: "hello", permissions: { mode: myMode } });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues).toHaveLength(0);
+  });
 });
