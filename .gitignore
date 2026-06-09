@@ -5,4 +5,5 @@ coverage/
 *.log
 .DS_Store
 .antigravitycli/
+GEMINI.md
 docs/

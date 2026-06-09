@@ -5,6 +5,7 @@ import type { ProviderHealthChecker, DoctorResult } from "../../doctors/public.j
 import { createDefaultProviderRegistry } from "../../agents/registry.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { getPackageVersion } from "../package-info.js";
 
 export interface DoctorCommandDeps {
   providerHealthChecker: ProviderHealthChecker;
@@ -59,7 +60,7 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
   }
 
   // openflow package version check
-  console.log("✓ openflow 0.1.1");
+  console.log(`✓ openflow ${await getPackageVersion()}`);
 
   // current working directory is writable check
   let isCwdWritable = false;

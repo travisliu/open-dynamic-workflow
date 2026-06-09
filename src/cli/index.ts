@@ -4,10 +4,9 @@ import { Command } from "commander";
 import { runCommand } from "./commands/run.js";
 import { validateCommand } from "./commands/validate.js";
 import { doctorCommand } from "./commands/doctor.js";
-import { exitCodeForError } from "../errors/exit-codes.js";
-import { serializeError } from "../errors/serialize.js";
 import { OpenFlowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { getPackageVersion } from "./package-info.js";
 
 function collectArgs(value: string, previous: string[]): string[] {
   return previous.concat([value]);
@@ -15,11 +14,12 @@ function collectArgs(value: string, previous: string[]): string[] {
 
 export async function main(argv: string[]): Promise<void> {
   const program = new Command();
+  const version = await getPackageVersion();
 
   program
     .name("openflow")
     .description("Orchestrate coding-agent CLI workflows")
-    .version("0.1.1")
+    .version(version)
     .exitOverride((err) => {
       if (err.code === "commander.helpDisplayed" || err.code === "commander.help" || err.code === "commander.version") {
         throw err;
@@ -96,5 +96,4 @@ export async function main(argv: string[]): Promise<void> {
 
   await program.parseAsync(argv, parseOptions);
 }
-
 

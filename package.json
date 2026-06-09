@@ -9,11 +9,12 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "openflow": "./dist/index.js"
+    "openflow": "dist/index.js"
   },
   "files": [
     "dist",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "repository": {
@@ -40,12 +41,14 @@
     "postbuild": "node scripts/fix-bin-permissions.mjs",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
+    "typecheck": "npm run check",
     "check": "tsc --noEmit",
+    "lint": "npm run check",
     "test": "vitest run",
     "prepack": "npm run clean && npm run build",
     "pack:local": "npm pack",
     "publish:dry-run": "npm publish --dry-run",
-    "release:check": "npm run check && npm test && npm run build && npm pack --dry-run"
+    "release:check": "npm run typecheck && npm run lint && npm test && npm run build && npm pack --dry-run"
   },
   "engines": {
     "node": ">=20"

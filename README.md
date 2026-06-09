@@ -857,9 +857,10 @@ Suggested local development commands:
 
 ```bash
 npm install
+npm run typecheck
+npm run lint
 npm run build
 npm test
-npm run lint
 ```
 
 Recommended test coverage:
@@ -879,14 +880,14 @@ Recommended test coverage:
 
 ## Agent Skills
 
-For AI/coding agents developing workflows in this repository, a pre-configured skill is located at [skills/openflow-workflow-writer/](file:///root/projects/execflow/skills/openflow-workflow-writer/). 
+For AI/coding agents developing workflows in this repository, a pre-configured skill is located at [skills/openflow-workflow-writer/](skills/openflow-workflow-writer/).
 
 This directory contains:
-- [SKILL.md](file:///root/projects/execflow/skills/openflow-workflow-writer/SKILL.md): Instructions and guidelines for AI agents to write, validate, and troubleshoot OpenFlow workflows.
-- Reference documentation under [references/](file:///root/projects/execflow/skills/openflow-workflow-writer/references/):
-  - [api-document.md](file:///root/projects/execflow/skills/openflow-workflow-writer/references/api-document.md): Complete guide on workflow syntax, DSL primitives (`agent`, `parallel`, `pipeline`), structured outputs, and exit codes.
-  - [cli-commands.md](file:///root/projects/execflow/skills/openflow-workflow-writer/references/cli-commands.md): Detailed usage details for the `run`, `validate`, and `doctor` commands.
-  - [configuration.md](file:///root/projects/execflow/skills/openflow-workflow-writer/references/configuration.md): Schema structure, precedence rules, and model customization guidelines for `.openflow/config.yaml`.
+- [SKILL.md](skills/openflow-workflow-writer/SKILL.md): Instructions and guidelines for AI agents to write, validate, and troubleshoot OpenFlow workflows.
+- Reference documentation under [references/](skills/openflow-workflow-writer/references/):
+  - [api-document.md](skills/openflow-workflow-writer/references/api-document.md): Complete guide on workflow syntax, DSL primitives (`agent`, `parallel`, `pipeline`), structured outputs, and exit codes.
+  - [cli-commands.md](skills/openflow-workflow-writer/references/cli-commands.md): Detailed usage details for the `run`, `validate`, and `doctor` commands.
+  - [configuration.md](skills/openflow-workflow-writer/references/configuration.md): Schema structure, precedence rules, and model customization guidelines for `.openflow/config.yaml`.
 - Reusable templates under `assets/` for building new workflows.
 
 ---

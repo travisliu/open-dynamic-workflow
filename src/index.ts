@@ -2,17 +2,53 @@
 
 import { main } from "./cli/index.js";
 import { exitCodeForError } from "./errors/exit-codes.js";
+import { OpenFlowError } from "./errors/types.js";
+
+function objectCode(value: unknown): string | undefined {
+  if (value && typeof value === "object" && "code" in value && typeof value.code === "string") {
+    return value.code;
+  }
+  return undefined;
+}
+
+function errorCause(value: unknown): unknown {
+  if (value && typeof value === "object" && "cause" in value) {
+    return value.cause;
+  }
+  return undefined;
+}
+
+function isCommanderControlError(error: unknown): boolean {
+  const code = objectCode(error);
+  const causeCode = objectCode(errorCause(error));
+  return (
+    code === "commander.helpDisplayed" ||
+    code === "commander.help" ||
+    code === "commander.version" ||
+    causeCode === "commander.helpDisplayed" ||
+    causeCode === "commander.help" ||
+    causeCode === "commander.version"
+  );
+}
+
+function isCommanderUsageError(error: unknown): boolean {
+  if (!(error instanceof OpenFlowError)) {
+    return false;
+  }
+  const causeCode = objectCode(error.cause);
+  return typeof causeCode === "string" && causeCode.startsWith("commander.");
+}
 
 main(process.argv.slice(2)).catch((error) => {
-  if (error && typeof error === "object") {
-    const errObj = error as any;
-    if (errObj.code === "commander.helpDisplayed" || errObj.code === "commander.help" || errObj.code === "commander.version" ||
-        (errObj.cause && (errObj.cause.code === "commander.helpDisplayed" || errObj.cause.code === "commander.help" || errObj.cause.code === "commander.version"))) {
-      process.exitCode = 0;
-      return;
-    }
+  if (isCommanderControlError(error)) {
+    process.exitCode = 0;
+    return;
   }
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
+
+  if (!isCommanderUsageError(error)) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+  }
+
   process.exitCode = exitCodeForError(error);
 });
