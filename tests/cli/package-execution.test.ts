@@ -2,10 +2,11 @@ import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { execSync } from "node:child_process";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 const WORKSPACE_DIR = path.resolve(process.cwd());
 const TEMP_NPM_DIR = path.resolve(WORKSPACE_DIR, "tests/temp-npm-prefix");
+const PACKAGE_VERSION = JSON.parse(readFileSync(path.join(WORKSPACE_DIR, "package.json"), "utf8")).version;
 let packedTarballPath = "";
 
 describe("CLI package execution and installation", () => {
@@ -19,7 +20,7 @@ describe("CLI package execution and installation", () => {
 
     // Pack the package
     const packOutput = execSync("npm pack", { cwd: WORKSPACE_DIR, encoding: "utf8" }).trim();
-    const tarballName = packOutput.split("\n").pop() || "prmflow-openflow-0.1.1.tgz";
+    const tarballName = packOutput.split("\n").pop() || `prmflow-openflow-${PACKAGE_VERSION}.tgz`;
     packedTarballPath = path.resolve(WORKSPACE_DIR, tarballName);
   });
 
@@ -40,7 +41,7 @@ describe("CLI package execution and installation", () => {
   it("can execute npx . doctor", () => {
     const stdout = execSync("npx . doctor", { cwd: WORKSPACE_DIR, encoding: "utf8" });
     expect(stdout).toContain("Node.js >= 20");
-    expect(stdout).toContain("openflow 0.1.1");
+    expect(stdout).toContain(`openflow ${PACKAGE_VERSION}`);
     expect(stdout).toContain("Current directory writable");
   });
 
@@ -70,7 +71,7 @@ describe("CLI package execution and installation", () => {
 
     const doctorStdout = execSync(`"${globalBinPath}" doctor`, { encoding: "utf8" });
     expect(doctorStdout).toContain("Node.js >= 20");
-    expect(doctorStdout).toContain("openflow 0.1.1");
+    expect(doctorStdout).toContain(`openflow ${PACKAGE_VERSION}`);
 
     // Run the installed openflow binary with a real workflow and verify output/artifacts
     const runOutDir = path.join(TEMP_NPM_DIR, "out");
