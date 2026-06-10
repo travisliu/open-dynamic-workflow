@@ -850,6 +850,10 @@ Recommended test coverage:
 - Provider command construction
 - Mock provider integration workflows
 
+## Design Documents
+
+- [Agent CLI Adapter Protocol](docs/agent-cli-adapter-protocol.md): Proposal for a provider-neutral adapter capability model covering structured output, usage reporting, sessions, permissions, and provider-reported failures.
+
 ---
 
 ## Agent Skills
