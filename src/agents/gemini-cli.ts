@@ -59,6 +59,29 @@ export class GeminiCliAdapter implements AgentAdapter {
     }
   }
 
+  capabilities() {
+    return {
+      prompt: {
+        transports: ["stdin" as const, "argv" as const]
+      },
+      output: {
+        formats: ["text" as const, "json" as const]
+      },
+      structuredOutput: {
+        modes: ["prompt" as const, "validate-only" as const]
+      },
+      usage: {
+        source: "none" as const
+      },
+      sessions: {
+        modes: ["none" as const]
+      },
+      permissions: {
+        modes: ["none" as const]
+      }
+    };
+  }
+
   async buildCommand(input: AgentRunInput): Promise<ProviderCommand> {
     const command = this.config.command ?? "gemini";
     const promptFlag = this.config.promptFlag ?? "-p";

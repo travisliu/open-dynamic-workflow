@@ -5,6 +5,7 @@ import type {
   ProviderCommand,
   ProviderParseInput,
   ProviderParsedResult,
+  AgentUsage,
   ProviderConfig
 } from "./types.js";
 import { runProcess } from "./process-runner.js";
@@ -55,6 +56,29 @@ export class CodexExecAdapter implements AgentAdapter {
         supportsModelSelection: this.config.modelArg !== false
       };
     }
+  }
+
+  capabilities() {
+    return {
+      prompt: {
+        transports: ["stdin" as const, "argv" as const]
+      },
+      output: {
+        formats: ["text" as const, "json" as const, "jsonl" as const]
+      },
+      structuredOutput: {
+        modes: ["prompt" as const, "validate-only" as const]
+      },
+      usage: {
+        source: "final-event" as const
+      },
+      sessions: {
+        modes: ["ephemeral" as const]
+      },
+      permissions: {
+        modes: ["none" as const]
+      }
+    };
   }
 
   async buildCommand(input: AgentRunInput): Promise<ProviderCommand> {
@@ -142,6 +166,24 @@ export class CodexExecAdapter implements AgentAdapter {
       const jsonlResult = tryParseJsonLines(trimmed);
       if (jsonlResult) {
         const { events, warnings } = jsonlResult;
+        const summary = extractCodexEventSummary(events);
+        const failure = extractCodexFailure(events);
+        if (failure) {
+          const result: ProviderParsedResult = {
+            text: input.stdout,
+            raw: {
+              format: "codex-jsonl",
+              events
+            },
+            failure,
+            ...summary
+          };
+          if (warnings.length > 0) {
+            result.parseWarnings = warnings;
+          }
+          return result;
+        }
+
         const messages = extractAgentMessageTexts(events);
 
         // Rule 3. For structured-output scenarios, prefer the last JSON-shaped agent_message
@@ -157,7 +199,8 @@ export class CodexExecAdapter implements AgentAdapter {
               events,
               selectedEventIndex: structured.index,
               selectedMessageText: structured.text
-            }
+            },
+            ...summary
           };
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
@@ -175,7 +218,8 @@ export class CodexExecAdapter implements AgentAdapter {
               events,
               selectedEventIndex: plaintext.index,
               selectedMessageText: plaintext.text
-            }
+            },
+            ...summary
           };
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
@@ -191,7 +235,8 @@ export class CodexExecAdapter implements AgentAdapter {
             format: "codex-jsonl",
             events
           },
-          parseWarnings: finalWarnings
+          parseWarnings: finalWarnings,
+          ...summary
         };
         return result;
       }
@@ -203,6 +248,115 @@ export class CodexExecAdapter implements AgentAdapter {
       };
     }
   }
+}
+
+function extractCodexEventSummary(events: unknown[]): Pick<ProviderParsedResult, "usage" | "providerThreadId" | "providerMetadata"> {
+  let providerThreadId: string | undefined;
+  let rawUsage: unknown;
+
+  for (const event of events) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      continue;
+    }
+    const record = event as Record<string, unknown>;
+    if (record.type === "thread.started" && typeof record.thread_id === "string") {
+      providerThreadId = record.thread_id;
+    }
+    if (record.type === "turn.completed" && record.usage !== undefined) {
+      rawUsage = record.usage;
+    }
+  }
+
+  const usage = normalizeCodexUsage(rawUsage);
+  const summary: Pick<ProviderParsedResult, "usage" | "providerThreadId" | "providerMetadata"> = {};
+  if (usage !== undefined) {
+    summary.usage = usage;
+  }
+  if (providerThreadId !== undefined) {
+    summary.providerThreadId = providerThreadId;
+  }
+  if (rawUsage !== undefined) {
+    summary.providerMetadata = { usage: rawUsage };
+  }
+  return summary;
+}
+
+function normalizeCodexUsage(usage: unknown): AgentUsage | undefined {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+    return undefined;
+  }
+  const record = usage as Record<string, unknown>;
+  const normalized: AgentUsage = {};
+  const inputTokens = readNumber(record.input_tokens, record.inputTokens);
+  const cachedInputTokens = readNumber(record.cached_input_tokens, record.cachedInputTokens);
+  const outputTokens = readNumber(record.output_tokens, record.outputTokens);
+  const reasoningOutputTokens = readNumber(record.reasoning_output_tokens, record.reasoningOutputTokens);
+  const totalTokens = readNumber(record.total_tokens, record.totalTokens);
+
+  if (inputTokens !== undefined) normalized.inputTokens = inputTokens;
+  if (cachedInputTokens !== undefined) normalized.cachedInputTokens = cachedInputTokens;
+  if (outputTokens !== undefined) normalized.outputTokens = outputTokens;
+  if (reasoningOutputTokens !== undefined) normalized.reasoningOutputTokens = reasoningOutputTokens;
+  if (totalTokens !== undefined) {
+    normalized.totalTokens = totalTokens;
+  } else if (inputTokens !== undefined || outputTokens !== undefined) {
+    normalized.totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function readNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function extractCodexFailure(events: unknown[]): ProviderParsedResult["failure"] | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      continue;
+    }
+    const record = event as Record<string, unknown>;
+    const type = typeof record.type === "string" ? record.type : "";
+    if (!isCodexFailureEventType(type)) {
+      continue;
+    }
+    return {
+      name: "ProviderReportedFailure",
+      message: extractFailureMessage(record) ?? `Codex reported terminal event '${type}'.`,
+      code: "PROVIDER_REPORTED_FAILURE",
+      raw: record
+    };
+  }
+  return undefined;
+}
+
+function isCodexFailureEventType(type: string): boolean {
+  return type === "error" || type === "turn.failed" || type === "turn.error" || type.endsWith(".failed") || type.endsWith(".error");
+}
+
+function extractFailureMessage(record: Record<string, unknown>): string | undefined {
+  if (typeof record.message === "string") {
+    return record.message;
+  }
+  if (record.error && typeof record.error === "object" && !Array.isArray(record.error)) {
+    const error = record.error as Record<string, unknown>;
+    if (typeof error.message === "string") {
+      return error.message;
+    }
+    if (typeof error.error === "string") {
+      return error.error;
+    }
+  }
+  if (typeof record.error === "string") {
+    return record.error;
+  }
+  return undefined;
 }
 
 function tryParseJsonLines(stdout: string): { events: unknown[]; warnings: string[] } | null {

@@ -1,11 +1,11 @@
 # Agent CLI Adapter Protocol
 
-Status: proposal
+Status: minimum implementation slice
 
-This document proposes a provider-neutral adapter protocol for coding-agent
-CLIs. It is intentionally a design note, not an implementation patch. The goal
-is to make future provider work easier to review by first agreeing on the small
-set of concepts OpenFlow needs from any external agent CLI.
+This document describes a provider-neutral adapter protocol for coding-agent
+CLIs. The current implementation lands the minimum slice: capability
+declarations, provider-reported usage/session metadata, provider-reported
+terminal failures, and compatible mock/Gemini/Codex adapters.
 
 ## Motivation
 
@@ -31,8 +31,8 @@ different combinations of capabilities:
 - terminal error events that may appear even when the process exits with code 0
 - background or server modes that are not always appropriate for a one-shot run
 
-The proposed protocol keeps workflow code provider-neutral while allowing each
-adapter to declare what it can actually support.
+The protocol keeps workflow code provider-neutral while allowing each adapter to
+declare what it can actually support.
 
 ## Design Goals
 
@@ -70,7 +70,7 @@ promise.
 
 ## Proposed Types
 
-The existing `AgentAdapter` can remain the entry point. The main addition is a
+The existing `AgentAdapter` remains the entry point. The main addition is a
 capability declaration and a richer parsed result.
 
 ```ts
@@ -159,8 +159,7 @@ Recommended precedence:
 4. schema validation failure
 5. success
 
-The exact precedence can be adjusted during implementation, but provider
-terminal errors must not be hidden by a zero exit code.
+Provider terminal errors must not be hidden by a zero exit code.
 
 ## Structured Output
 
@@ -171,16 +170,17 @@ OpenFlow should model structured output in layers:
 3. `validate-only`: OpenFlow validates whatever structured JSON the adapter
    can parse, without modifying the prompt.
 
-Adapters declare which modes they support. OpenFlow can choose the best mode
-for `structuredOutput.transport = "auto"` and reject unsupported explicit modes.
+Adapters declare which modes they support. The current implementation preserves
+existing structured-output behavior: mock, Gemini, and Codex support `prompt`
+and `validate-only`; provider-native JSON Schema remains a follow-up.
 
 ## Usage and Budgets
 
 Adapters should only report observed provider facts. They should not estimate
 tokens.
 
-OpenFlow can aggregate `AgentUsage` into a workflow-level summary and implement
-soft budgets:
+OpenFlow can later aggregate `AgentUsage` into a workflow-level summary and
+implement soft budgets:
 
 - max observed tokens: checked after an agent reports usage
 - max agent calls: checked before scheduling a new provider call
@@ -210,21 +210,19 @@ OpenFlow cache:
 The adapter protocol should expose provider session identifiers as metadata, but
 cache reads/writes should stay in OpenFlow.
 
-## Implementation Plan
+## Implemented Slice
 
-If this direction is accepted, the first implementation PR should implement the
-protocol as a complete minimum slice:
+The first implementation PR includes:
 
-1. Add capability types, usage types, provider failure types, and result
+1. Capability types, usage types, provider failure types, and result
    metadata fields.
-2. Update `DefaultAgentExecutor` to parse provider output before final success
+2. `DefaultAgentExecutor` parsing provider output before final success
    classification when needed.
-3. Add a fake adapter test suite covering text output, JSONL output, terminal
-   error events, usage events, native-schema capability negotiation, and missing
-   capabilities.
-4. Keep existing mock, Codex, and Gemini behavior compatible.
-5. Add one real adapter improvement, preferably Codex, as the first proof that
-   the protocol is useful.
+3. Stable capabilities for mock, Codex, and Gemini.
+4. Mock support for test-only usage/thread/failure simulation.
+5. Codex JSONL extraction for final agent messages, thread id, usage, and
+   terminal failure events.
+6. Tests covering compatible existing behavior plus the new protocol metadata.
 
 Follow-up PRs can then add OpenCode, Pi, or more advanced provider support
 without redesigning the executor contract.
@@ -233,7 +231,6 @@ without redesigning the executor contract.
 
 - capability declarations are stable and serializable
 - unsupported explicit structured-output modes fail with a CLI usage error
-- `auto` structured-output mode chooses native schema when available
 - provider terminal error events become failed agent results
 - zero exit with provider failure does not report success
 - non-zero exit without provider parsed failure remains a process failure

@@ -20,6 +20,34 @@ function isMockAdapter(adapter: any): adapter is MockAdapterWithLookup {
   return typeof adapter.lookupResponse === "function";
 }
 
+function buildProcessFailureResult(input: {
+  input: AgentExecutionInput;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  durationMs: number;
+  artifacts: any;
+}): AgentFailureResult {
+  return {
+    ok: false,
+    status: "failed",
+    id: input.input.id,
+    label: input.input.label,
+    provider: input.input.provider,
+    model: input.input.model,
+    stdout: input.stdout,
+    stderr: input.stderr,
+    exitCode: input.exitCode,
+    durationMs: input.durationMs,
+    artifacts: input.artifacts,
+    error: {
+      name: "ProviderProcessFailed",
+      message: input.stderr.trim() || `Process exited with code ${input.exitCode}`,
+      code: "PROVIDER_PROCESS_FAILED"
+    }
+  };
+}
+
 export class DefaultAgentExecutor implements AgentExecutor {
   private readonly config: ResolvedConfig;
   private readonly artifactStore: ArtifactStore;
@@ -243,29 +271,6 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    if (exitCode !== null && exitCode !== 0) {
-      const failureResult: AgentFailureResult = {
-        ok: false,
-        status: "failed",
-        id: input.id,
-        label: input.label,
-        provider: input.provider,
-        model: input.model,
-        stdout: stdoutInMemory,
-        stderr: stderrInMemory,
-        exitCode,
-        durationMs,
-        artifacts: agentArtifacts,
-        error: {
-          name: "ProviderProcessFailed",
-          message: stderrInMemory.trim() || `Process exited with code ${exitCode}`,
-          code: "PROVIDER_PROCESS_FAILED"
-        }
-      };
-      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
-      return failureResult;
-    }
-
     let parseResult;
     try {
       parseResult = await adapter.parseResult({
@@ -275,6 +280,19 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode
       });
     } catch (err: any) {
+      if (exitCode !== null && exitCode !== 0) {
+        const failureResult = buildProcessFailureResult({
+          input,
+          stdout: stdoutInMemory,
+          stderr: stderrInMemory,
+          exitCode,
+          durationMs,
+          artifacts: agentArtifacts
+        });
+        await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+        return failureResult;
+      }
+
       const failureResult: AgentFailureResult = {
         ok: false,
         status: "failed",
@@ -293,6 +311,47 @@ export class DefaultAgentExecutor implements AgentExecutor {
           code: "INTERNAL_ERROR"
         }
       };
+      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+      return failureResult;
+    }
+
+    const providerThreadId = parseResult.providerThreadId ?? parseResult.providerSessionId;
+
+    if (parseResult.failure) {
+      const failureResult: AgentFailureResult = {
+        ok: false,
+        status: "failed",
+        id: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode,
+        durationMs,
+        artifacts: agentArtifacts,
+        error: {
+          name: parseResult.failure.name,
+          message: parseResult.failure.message,
+          code: parseResult.failure.code
+        },
+        usage: parseResult.usage,
+        threadId: providerThreadId,
+        providerMetadata: parseResult.providerMetadata
+      };
+      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, parseResult.raw ?? parseResult);
+      return failureResult;
+    }
+
+    if (exitCode !== null && exitCode !== 0) {
+      const failureResult = buildProcessFailureResult({
+        input,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode,
+        durationMs,
+        artifacts: agentArtifacts
+      });
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
     }
@@ -327,7 +386,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
           name: "ValidationError",
           message: normalized.error.message,
           code: normalized.error.code as any
-        }
+        },
+        usage: parseResult.usage,
+        threadId: providerThreadId,
+        providerMetadata: parseResult.providerMetadata
       };
       return failureResult;
     }
@@ -347,7 +409,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
       stderr: stderrInMemory,
       exitCode: exitCode ?? 0,
       durationMs,
-      artifacts: agentArtifacts
+      artifacts: agentArtifacts,
+      usage: parseResult.usage,
+      threadId: providerThreadId,
+      providerMetadata: parseResult.providerMetadata
     };
 
     return successResult;

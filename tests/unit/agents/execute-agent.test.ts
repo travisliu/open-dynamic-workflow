@@ -325,6 +325,151 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     expect(stdoutLog).toBe(prompt);
   });
 
+  it("treats provider-reported failure as failed even when exit code is zero", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "reported-failure-agent": {
+              text: "partial output",
+              exitCode: 0,
+              usage: { inputTokens: 8, outputTokens: 2, totalTokens: 10 },
+              providerThreadId: "mock-thread-failure",
+              providerMetadata: { surface: "mock" },
+              failure: {
+                name: "MockTerminalFailure",
+                message: "mock provider reported a terminal failure",
+                code: "PROVIDER_REPORTED_FAILURE"
+              }
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-provider-reported-failure";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "reported-failure-agent",
+      label: "Reported Failure Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("failed");
+    expect(result.exitCode).toBe(0);
+    expect(result.error).toEqual({
+      name: "MockTerminalFailure",
+      message: "mock provider reported a terminal failure",
+      code: "PROVIDER_REPORTED_FAILURE"
+    });
+    expect(result.usage).toEqual({ inputTokens: 8, outputTokens: 2, totalTokens: 10 });
+    expect(result.threadId).toBe("mock-thread-failure");
+    expect(result.providerMetadata).toEqual({ surface: "mock" });
+  });
+
+  it("persists parsed usage and provider thread metadata on success", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "metadata-agent": {
+              text: "metadata success",
+              usage: { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
+              providerSessionId: "mock-session-success",
+              providerMetadata: { mode: "success" }
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-provider-metadata-success";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "metadata-agent",
+      label: "Metadata Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.usage).toEqual({ inputTokens: 12, outputTokens: 4, totalTokens: 16 });
+    expect(result.threadId).toBe("mock-session-success");
+    expect(result.providerMetadata).toEqual({ mode: "success" });
+  });
+
+  it("preserves parsed usage and provider thread metadata on schema validation failure", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "schema-metadata-agent": {
+              json: { value: 123 },
+              usage: { inputTokens: 5, outputTokens: 1, totalTokens: 6 },
+              providerThreadId: "mock-thread-schema",
+              providerMetadata: { mode: "schema-failure" }
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-provider-metadata-schema-failure";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const result = await executor.execute({
+      id: "schema-metadata-agent",
+      label: "Schema Metadata Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      schema: {
+        type: "object",
+        properties: {
+          value: { type: "string" }
+        },
+        required: ["value"]
+      },
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      signal: new AbortController().signal,
+      metadata: {}
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("failed");
+    expect(result.error.code).toBe("SCHEMA_VALIDATION_FAILED");
+    expect(result.usage).toEqual({ inputTokens: 5, outputTokens: 1, totalTokens: 6 });
+    expect(result.threadId).toBe("mock-thread-schema");
+    expect(result.providerMetadata).toEqual({ mode: "schema-failure" });
+  });
+
   it("handles mock native structured output validation failure and writes raw-result.json", async () => {
     const config: any = {
       defaultProvider: "mock",

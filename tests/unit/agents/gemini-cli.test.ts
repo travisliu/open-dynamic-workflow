@@ -3,6 +3,18 @@ import { GeminiCliAdapter } from "../../../src/agents/gemini-cli.js";
 import type { AgentRunInput, ProviderParseInput } from "../../../src/agents/types.js";
 
 describe("GeminiCliAdapter", () => {
+  it("declares provider-neutral capabilities", () => {
+    const adapter = new GeminiCliAdapter();
+    expect(adapter.capabilities()).toEqual({
+      prompt: { transports: ["stdin", "argv"] },
+      output: { formats: ["text", "json"] },
+      structuredOutput: { modes: ["prompt", "validate-only"] },
+      usage: { source: "none" },
+      sessions: { modes: ["none"] },
+      permissions: { modes: ["none"] }
+    });
+  });
+
   it("builds default command", async () => {
     const adapter = new GeminiCliAdapter();
     const input: AgentRunInput = {
