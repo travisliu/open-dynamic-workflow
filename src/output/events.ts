@@ -6,12 +6,14 @@ export type EventType =
   | "workflow.completed"
   | "workflow.failed"
   | "workflow.cancelled"
+  | "workflow.pending"
   | "phase.started"
   | "phase.completed"
   | "workflow.log"
   | "agent.queued"
   | "agent.started"
   | "agent.output"
+  | "agent.cache_hit"
   | "agent.completed"
   | "agent.failed"
   | "agent.timed_out"
@@ -63,6 +65,17 @@ export interface WorkflowCancelledPayload {
   reason?: string;
 }
 
+export interface WorkflowPendingPayload {
+  status: "pending";
+  durationMs: number;
+  pause: {
+    id: string;
+    message: string;
+    data?: unknown;
+    artifacts?: unknown;
+  };
+}
+
 export interface PhaseStartedPayload {
   name: string;
 }
@@ -96,6 +109,17 @@ export interface AgentOutputPayload {
   agentId: string;
   stream: "stdout" | "stderr";
   data: string;
+}
+
+export interface AgentCacheHitPayload {
+  agentId: string;
+  label?: string;
+  provider: string;
+  model?: string;
+  callId: string;
+  previousRunId?: string;
+  previousAgentId?: string;
+  artifacts: AgentArtifacts;
 }
 
 export interface AgentCompletedPayload {

@@ -3,6 +3,7 @@ export interface AgentArtifacts {
   promptPath: string;
   stdoutPath: string;
   stderrPath: string;
+  lastMessagePath?: string;
   rawResultPath?: string;
   normalizedResultPath?: string;
   schemaPath?: string;
@@ -12,7 +13,7 @@ export interface AgentArtifacts {
 export interface RunManifest {
   schemaVersion: "openflow.manifest.v1";
   runId: string;
-  status: "running" | "succeeded" | "failed" | "cancelled";
+  status: "running" | "succeeded" | "failed" | "cancelled" | "pending";
   createdAt: string;
   updatedAt: string;
   workflowPath: string;
@@ -42,6 +43,8 @@ export interface RunArtifacts {
   workflowInputPath: string;
   resolvedConfigPath: string;
   eventsPath: string;
+  callsPath: string;
+  cacheIndexPath: string;
   reportPath: string;
   agentDir(agentId: string): string;
 }
@@ -53,7 +56,7 @@ export interface ArtifactStore {
   writeJson(relativePath: string, value: unknown): Promise<string>;
   appendJsonl(relativePath: string, value: unknown): Promise<string>;
   writeFinalReport(value: unknown): Promise<string>;
-  updateManifest(status: "succeeded" | "failed" | "cancelled", error?: any): Promise<string>;
+  updateManifest(status: "succeeded" | "failed" | "cancelled" | "pending", error?: any): Promise<string>;
   getRunArtifacts(): RunArtifacts;
   isRunCreated(): boolean;
 }

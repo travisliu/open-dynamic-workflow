@@ -24,7 +24,24 @@ function makeSuccessResult(id: string, provider = "mock"): AgentResult {
     status: "succeeded",
     id,
     provider,
+    text: `response for ${id}`,
     stdout: `response for ${id}`,
+    stderr: "",
+    exitCode: 0,
+    durationMs: 5,
+    artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" }
+  };
+}
+
+function makeJsonSuccessResult(id: string, json: unknown, provider = "mock"): AgentResult {
+  return {
+    ok: true,
+    status: "succeeded",
+    id,
+    provider,
+    text: JSON.stringify(json),
+    json,
+    stdout: JSON.stringify(json),
     stderr: "",
     exitCode: 0,
     durationMs: 5,
@@ -385,5 +402,78 @@ describe("DSL: agent()", () => {
     expect(ids).toContain("agent-1");
     expect(ids).toContain("agent-2");
     expect(ids[0]).not.toBe(ids[1]);
+  });
+
+  it("string form returns text for successful plain agent calls", async () => {
+    const successResult = makeSuccessResult("agent-1");
+    const scheduler = makeSchedulerWithResult(successResult);
+    const runtime = makeRuntimeState({ scheduler: scheduler as any });
+    const dsl = createDsl(runtime);
+
+    const result = await dsl.agent("hello");
+
+    expect(result).toBe("response for agent-1");
+  });
+
+  it("string form returns json when the agent result has json", async () => {
+    const successResult = makeJsonSuccessResult("agent-1", { ok: true });
+    const scheduler = makeSchedulerWithResult(successResult);
+    const runtime = makeRuntimeState({ scheduler: scheduler as any });
+    const dsl = createDsl(runtime);
+
+    const result = await dsl.agent("return json", { schema: { type: "object" } });
+
+    expect(result).toEqual({ ok: true });
+  });
+
+  it("string form throws on failed agent by default", async () => {
+    const failResult = makeFailureResult("agent-fail");
+    const scheduler = makeSchedulerWithResult(failResult);
+    const runtime = makeRuntimeState({ scheduler: scheduler as any });
+    const dsl = createDsl(runtime);
+
+    await expect(dsl.agent("fail please")).rejects.toThrow("Agent failed");
+  });
+
+  it("string form returns null for optional failed agents", async () => {
+    const failResult = makeFailureResult("agent-fail");
+    const scheduler = makeSchedulerWithResult(failResult);
+    const runtime = makeRuntimeState({ scheduler: scheduler as any });
+    const dsl = createDsl(runtime);
+
+    const result = await dsl.agent("fail please", { optional: true });
+
+    expect(result).toBeNull();
+  });
+
+  it("agent.review routes through codex exec review metadata", async () => {
+    const agentExecutor = { execute: vi.fn().mockResolvedValue(makeSuccessResult("review-1", "codex")) };
+    const scheduler = makeExecutingScheduler();
+    const runtime = makeRuntimeState({
+      scheduler: scheduler as any,
+      agentExecutor: agentExecutor as any
+    });
+    const dsl = createDsl(runtime);
+
+    await dsl.agent.review("review current changes", {
+      id: "review-1",
+      uncommitted: true,
+      base: "main",
+      title: "Review title"
+    });
+
+    expect(agentExecutor.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: "codex",
+        metadata: expect.objectContaining({
+          codexMode: "review",
+          codexReview: {
+            uncommitted: true,
+            base: "main",
+            title: "Review title"
+          }
+        })
+      })
+    );
   });
 });

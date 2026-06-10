@@ -13,7 +13,10 @@ import { DefaultAgentExecutor } from "../../agents/execute-agent.js";
 import { createReporter } from "../../output/reporter.js";
 import { EventBus } from "../../orchestration/event-bus.js";
 import * as path from "node:path";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { resolveUserPath } from "../paths.js";
+import { writeProcessMetadata, updateProcessMetadata } from "../../artifacts/run-control.js";
 
 export interface RunCommandDeps {
   runtimeRunner: RuntimeRunner;
@@ -58,6 +61,15 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   const timeoutMs = rawOptions.timeoutMs !== undefined
     ? parsePositiveInteger(rawOptions.timeoutMs, "--timeout-ms")
     : undefined;
+  const maxAgentCalls = rawOptions.maxAgentCalls !== undefined
+    ? parsePositiveInteger(rawOptions.maxAgentCalls, "--max-agent-calls")
+    : undefined;
+  const maxObservedTokens = rawOptions.maxObservedTokens !== undefined
+    ? parsePositiveInteger(rawOptions.maxObservedTokens, "--max-observed-tokens")
+    : undefined;
+  const maxRunMs = rawOptions.maxRunMs !== undefined
+    ? parsePositiveInteger(rawOptions.maxRunMs, "--max-run-ms")
+    : undefined;
   const reportMode = rawOptions.report !== undefined
     ? parseReportMode(rawOptions.report)
     : undefined;
@@ -74,11 +86,24 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   if (rawOptions.model !== undefined) cliOverrides.model = rawOptions.model;
   if (concurrency !== undefined) cliOverrides.concurrency = concurrency;
   if (timeoutMs !== undefined) cliOverrides.timeoutMs = timeoutMs;
+  if (maxAgentCalls !== undefined) cliOverrides.maxAgentCalls = maxAgentCalls;
+  if (maxObservedTokens !== undefined) cliOverrides.maxObservedTokens = maxObservedTokens;
+  if (maxRunMs !== undefined) cliOverrides.maxRunMs = maxRunMs;
   if (reportMode !== undefined) cliOverrides.report = reportMode;
   if (rawOptions.verbose !== undefined) cliOverrides.verbose = !!rawOptions.verbose;
 
   // Load config
-  const config = await loadConfig({
+  const config = rawOptions.resolvedConfig ? {
+    ...rawOptions.resolvedConfig,
+    ...(reportMode !== undefined || rawOptions.verbose !== undefined ? {
+      reporting: {
+        ...rawOptions.resolvedConfig.reporting,
+        ...(reportMode !== undefined ? { mode: reportMode } : {}),
+        ...(rawOptions.verbose !== undefined ? { verbose: !!rawOptions.verbose } : {})
+      }
+    } : {}),
+    ...(rawOptions.failFast !== undefined ? { failFast: !!rawOptions.failFast } : {})
+  } : await loadConfig({
     cwd,
     configPath: rawOptions.config,
     outDir: rawOptions.out,
@@ -123,8 +148,28 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     return;
   }
 
-  const runIdGenerated = crypto.randomUUID();
+  const runIdGenerated = rawOptions.runId || crypto.randomUUID();
   const runOutDir = path.join(config.outDir, runIdGenerated);
+
+  if (rawOptions.background && !rawOptions.backgroundWorker) {
+    const pid = await launchBackgroundWorker({
+      runId: runIdGenerated,
+      runOutDir,
+      workflowPath: loaded.sourcePath,
+      workflowSource: loaded.sourceText || "",
+      workflowHash: parsed.sourceHash,
+      config,
+      rawOptions,
+      cwd
+    });
+    if (config.reporting.mode === "json") {
+      process.stdout.write(JSON.stringify({ runId: runIdGenerated, pid, artifactsDir: runOutDir }, null, 2) + "\n");
+    } else {
+      process.stdout.write(`Started background run ${runIdGenerated}\nPID: ${pid}\nArtifacts: ${runOutDir}\n`);
+    }
+    return;
+  }
+
   const artifactStore = new FileSystemArtifactStore({ rootDir: config.outDir });
 
   // Initialize artifact store before running so it's ready regardless of which runner is used.
@@ -138,6 +183,17 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     openflowVersion: parsed.meta.version || "0.0.0",
     cwd,
     configPath: rawOptions.config
+  });
+
+  await writeProcessMetadata(runOutDir, {
+    schemaVersion: "openflow.process.v1",
+    runId: runIdGenerated,
+    pid: process.pid,
+    mode: rawOptions.backgroundWorker ? "background" : "foreground",
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    command: process.argv,
+    status: "running"
   });
 
   const reporter = createReporter({
@@ -173,10 +229,13 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   const runner = input.deps?.runtimeRunner ?? defaultRunner;
 
   const abortController = new AbortController();
-  const sigIntHandler = () => {
-    abortController.abort("SIGINT received");
+  const signalHandler = (signal: string) => {
+    abortController.abort(`${signal} received`);
   };
+  const sigIntHandler = () => signalHandler("SIGINT");
+  const sigTermHandler = () => signalHandler("SIGTERM");
   process.on("SIGINT", sigIntHandler);
+  process.on("SIGTERM", sigTermHandler);
 
   try {
     const result = await runner.run({
@@ -192,9 +251,15 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
         report: config.reporting.mode,
         concurrency: config.concurrency,
         timeoutMs: config.timeoutMs,
+        maxAgentCalls,
+        maxObservedTokens,
+        maxRunMs,
         dryRun: false,
         failFast: !!rawOptions.failFast,
-        verbose: config.reporting.verbose
+        verbose: config.reporting.verbose,
+        resume: rawOptions.resume,
+        noCache: rawOptions.noCache === true || rawOptions.cache === false,
+        pauseResponses: rawOptions.pauseResponses
       },
       signal: abortController.signal
     }, (() => {
@@ -223,6 +288,11 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     }
     await reporter.finish(result);
 
+    await updateProcessMetadata(runOutDir, {
+      status: result.status,
+      exitCode: result.status === "succeeded" ? 0 : result.status === "pending" ? 9 : 1
+    });
+
     if (result.status === "failed") {
       const agents = result.agents || [];
       const hasTimeout = agents.some((a) => a.status === "timed_out");
@@ -242,8 +312,99 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
       throw new OpenFlowError(errorCode, errMessage, { cause: result.error });
     } else if (result.status === "cancelled") {
       throw new OpenFlowError(ErrorCode.USER_CANCELLED, "Workflow run was cancelled");
+    } else if (result.status === "pending") {
+      const pauseId = result.pendingPause?.id ?? "pause";
+      throw new OpenFlowError(ErrorCode.WORKFLOW_PENDING, `Workflow is pending at pause '${pauseId}'.`);
     }
   } finally {
     process.off("SIGINT", sigIntHandler);
+    process.off("SIGTERM", sigTermHandler);
   }
+}
+
+async function launchBackgroundWorker(input: {
+  runId: string;
+  runOutDir: string;
+  workflowPath: string;
+  workflowSource: string;
+  workflowHash: string;
+  config: any;
+  rawOptions: any;
+  cwd: string;
+}): Promise<number> {
+  const artifactStore = new FileSystemArtifactStore({ rootDir: input.config.outDir });
+  await artifactStore.createRun({
+    runId: input.runId,
+    outDir: input.runOutDir,
+    workflowPath: input.workflowPath,
+    workflowSource: input.workflowSource,
+    workflowHash: input.workflowHash,
+    resolvedConfig: input.config,
+    openflowVersion: "0.0.0",
+    cwd: input.cwd,
+    configPath: input.rawOptions.config
+  });
+
+  const args = buildBackgroundWorkerArgs(input);
+  await writeProcessMetadata(input.runOutDir, {
+    schemaVersion: "openflow.process.v1",
+    runId: input.runId,
+    pid: -1,
+    mode: "background",
+    startedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    command: [process.execPath, ...args],
+    status: "starting"
+  });
+
+  const child = spawn(process.execPath, args, {
+    cwd: input.cwd,
+    detached: true,
+    stdio: "ignore"
+  });
+  child.unref();
+
+  await updateProcessMetadata(input.runOutDir, {
+    pid: child.pid ?? -1,
+    command: [process.execPath, ...args]
+  });
+  return child.pid ?? -1;
+}
+
+function buildBackgroundWorkerArgs(input: {
+  runId: string;
+  workflowPath: string;
+  config: any;
+  rawOptions: any;
+  cwd: string;
+}): string[] {
+  const cliEntry = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../index.js");
+  const raw = input.rawOptions;
+  const args = [
+    cliEntry,
+    "run",
+    input.workflowPath,
+    "--cwd",
+    input.config.cwd,
+    "--out",
+    input.config.outDir,
+    "--background-worker",
+    "--run-id",
+    input.runId
+  ];
+  if (raw.config) args.push("--config", resolveUserPath(raw.config, input.cwd));
+  if (raw.provider) args.push("--provider", raw.provider);
+  if (raw.model) args.push("--model", raw.model);
+  for (const arg of raw.arg || []) args.push("--arg", arg);
+  if (raw.report) args.push("--report", raw.report);
+  if (raw.concurrency) args.push("--concurrency", String(raw.concurrency));
+  if (raw.timeoutMs) args.push("--timeout-ms", String(raw.timeoutMs));
+  if (raw.maxAgentCalls) args.push("--max-agent-calls", String(raw.maxAgentCalls));
+  if (raw.maxObservedTokens) args.push("--max-observed-tokens", String(raw.maxObservedTokens));
+  if (raw.maxRunMs) args.push("--max-run-ms", String(raw.maxRunMs));
+  if (raw.resume) args.push("--resume", raw.resume);
+  if (raw.noCache || raw.cache === false) args.push("--no-cache");
+  if (raw.failFast) args.push("--fail-fast");
+  if (raw.verbose) args.push("--verbose");
+  return args;
 }

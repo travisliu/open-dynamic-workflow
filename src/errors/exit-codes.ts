@@ -10,7 +10,8 @@ export const ExitCode = {
   SecurityPolicyViolation: 5,
   UserCancelled: 6,
   Timeout: 7,
-  InternalError: 8
+  InternalError: 8,
+  WorkflowPending: 9
 } as const;
 
 export type ExitCode = (typeof ExitCode)[keyof typeof ExitCode];
@@ -40,10 +41,13 @@ export function exitCodeForError(error: unknown): ExitCode {
       return ExitCode.SecurityPolicyViolation;
     case ErrorCode.USER_CANCELLED:
       return ExitCode.UserCancelled;
+    case ErrorCode.WORKFLOW_PENDING:
+      return ExitCode.WorkflowPending;
     case ErrorCode.PROCESS_TIMEOUT:
       return ExitCode.Timeout;
     case ErrorCode.PROVIDER_PROCESS_FAILED:
     case ErrorCode.SCHEMA_VALIDATION_FAILED:
+    case ErrorCode.BUDGET_EXCEEDED:
       return ExitCode.WorkflowFailed;
     default:
       return ExitCode.InternalError;

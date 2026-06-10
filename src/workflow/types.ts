@@ -6,6 +6,9 @@ import type { Scheduler } from "../types/scheduler.js";
 import type { AgentExecutor } from "../agents/execution-types.js";
 import type { RuntimeEventSink } from "../orchestration/scheduler.js";
 import type { PipelineSummary } from "../pipeline/types.js";
+import type { RuntimeCallCache } from "../artifacts/call-cache.js";
+import type { WorkflowPause } from "../artifacts/pause-control.js";
+import type { AgentUsage } from "../types/agent.js";
 
 export type { ParsedWorkflow, WorkflowMeta };
 
@@ -43,8 +46,21 @@ export interface RuntimeState {
   pipelineSummaries?: PipelineSummary[] | undefined;
   idGenerator?: IdGenerator | undefined;
   failFast?: boolean | undefined;
+  callCache?: RuntimeCallCache | undefined;
+  budget?: RuntimeBudgetState | undefined;
+  pauseResponses?: Record<string, unknown> | undefined;
+  pendingPause?: WorkflowPause | undefined;
+  parallelDepth?: number | undefined;
 }
 
 export interface IdGenerator {
   nextId(prefix: string): string;
+}
+
+export interface RuntimeBudgetState {
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
+  liveAgentCalls: number;
+  usageSummary: AgentUsage & { agentCount: number };
 }

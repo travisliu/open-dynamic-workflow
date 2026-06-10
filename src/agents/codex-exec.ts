@@ -1,5 +1,6 @@
 import type {
   AgentAdapter,
+  AgentUsage,
   ProviderHealth,
   AgentRunInput,
   ProviderCommand,
@@ -59,23 +60,19 @@ export class CodexExecAdapter implements AgentAdapter {
 
   async buildCommand(input: AgentRunInput): Promise<ProviderCommand> {
     const command = this.config.command ?? "codex";
-    const baseArgs = this.config.args ?? ["exec", "--json", "--ephemeral"];
-    const args = [...baseArgs];
-    const structuredPrompt = resolveStructuredOutputPrompt({
-      prompt: input.prompt,
-      schema: input.schema,
-      structuredOutput: input.structuredOutput
-    });
+    const reviewMode = input.metadata?.codexMode === "review";
+    const usesDefaultArgs = this.config.args === undefined;
+    const baseArgs = this.config.args ?? (reviewMode ? ["exec", "review", "--json"] : ["exec", "--json"]);
+    const args = usesDefaultArgs ? buildCodexArgsPrefix(input, this.config) : [];
+    args.push(...baseArgs);
 
-    if (structuredPrompt.nativeRequested) {
-      throw new OpenFlowError(
-        ErrorCode.CLI_USAGE_ERROR,
-        'Codex does not support structuredOutput.transport="native" yet.'
-      );
-    }
+    const structuredPrompt = resolveCodexStructuredPrompt(input, usesDefaultArgs);
 
     const model = input.model ?? this.config.defaultModel ?? undefined;
     appendModelArg(args, model, this.config.modelArg, "--model");
+    if (usesDefaultArgs) {
+      appendCodexRunOptions(args, input, this.config);
+    }
 
     const promptMode = this.config.promptMode ?? "stdin";
     let stdin: string | undefined = undefined;
@@ -106,6 +103,16 @@ export class CodexExecAdapter implements AgentAdapter {
   }
 
   async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult> {
+    const lastMessage = input.lastMessage?.trim();
+    if (lastMessage) {
+      const summary = summarizeCodexEvents(input.stdout);
+      return resultFromMessageText(lastMessage, {
+        format: "codex-last-message",
+        lastMessage,
+        jsonl: summary
+      }, undefined, metadataFromSummary(summary));
+    }
+
     const trimmed = input.stdout.trim();
     if (!trimmed) {
       return {
@@ -119,13 +126,7 @@ export class CodexExecAdapter implements AgentAdapter {
       const parsed = JSON.parse(trimmed);
       if (parsed && typeof parsed === "object") {
         if (typeof parsed.text === "string") {
-          const structured = tryParseEmbeddedJson(parsed.text);
-          return {
-            text: parsed.text,
-            json: parsed,
-            structuredJson: structured,
-            raw: parsed
-          };
+          return resultFromMessageText(parsed.text, parsed, parsed);
         }
         return {
           json: parsed,
@@ -148,6 +149,7 @@ export class CodexExecAdapter implements AgentAdapter {
         const structured = selectStructuredCandidate(messages);
         if (structured) {
           const parsedJson = tryParseEmbeddedJson(structured.text);
+          const summary = extractCodexEventSummary(events);
           const result: ProviderParsedResult = {
             text: structured.text,
             json: parsedJson,
@@ -156,8 +158,10 @@ export class CodexExecAdapter implements AgentAdapter {
               format: "codex-jsonl",
               events,
               selectedEventIndex: structured.index,
-              selectedMessageText: structured.text
-            }
+              selectedMessageText: structured.text,
+              ...summary
+            },
+            ...metadataFromSummary(summary)
           };
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
@@ -168,14 +172,17 @@ export class CodexExecAdapter implements AgentAdapter {
         // Rule 4. For plain-text scenarios, prefer the last non-empty agent_message
         const plaintext = selectPlaintextCandidate(messages);
         if (plaintext) {
+          const summary = extractCodexEventSummary(events);
           const result: ProviderParsedResult = {
             text: plaintext.text,
             raw: {
               format: "codex-jsonl",
               events,
               selectedEventIndex: plaintext.index,
-              selectedMessageText: plaintext.text
-            }
+              selectedMessageText: plaintext.text,
+              ...summary
+            },
+            ...metadataFromSummary(summary)
           };
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
@@ -185,13 +192,16 @@ export class CodexExecAdapter implements AgentAdapter {
 
         // Edge case 2: JSONL stream with no agent_message
         const finalWarnings = [...warnings, "No agent_message event found in JSONL stream"];
+        const summary = extractCodexEventSummary(events);
         const result: ProviderParsedResult = {
           text: input.stdout,
           raw: {
             format: "codex-jsonl",
-            events
+            events,
+            ...summary
           },
-          parseWarnings: finalWarnings
+          parseWarnings: finalWarnings,
+          ...metadataFromSummary(summary)
         };
         return result;
       }
@@ -203,6 +213,219 @@ export class CodexExecAdapter implements AgentAdapter {
       };
     }
   }
+}
+
+function buildCodexArgsPrefix(input: AgentRunInput, config: CodexProviderConfig): string[] {
+  const args: string[] = [];
+  args.push("-C", input.cwd);
+
+  if (config.sandbox) {
+    args.push("-s", config.sandbox);
+  }
+  if (config.approval) {
+    args.push("-a", config.approval);
+  }
+  if (config.profile) {
+    args.push("-p", config.profile);
+  }
+  if (config.profileV2) {
+    args.push("--profile-v2", config.profileV2);
+  }
+  for (const value of config.config ?? []) {
+    args.push("-c", value);
+  }
+  for (const dir of config.addDir ?? []) {
+    args.push("--add-dir", dir);
+  }
+
+  return args;
+}
+
+function appendCodexRunOptions(args: string[], input: AgentRunInput, config: CodexProviderConfig): void {
+  if (input.schema && input.schemaPath && shouldUseNativeSchema(input)) {
+    args.push("--output-schema", input.schemaPath);
+  }
+  if (input.lastMessagePath) {
+    args.push("-o", input.lastMessagePath);
+  }
+  if (config.ephemeral !== false) {
+    args.push("--ephemeral");
+  }
+  if (config.ignoreUserConfig) {
+    args.push("--ignore-user-config");
+  }
+  if (config.ignoreRules) {
+    args.push("--ignore-rules");
+  }
+  if (config.skipGitRepoCheck) {
+    args.push("--skip-git-repo-check");
+  }
+
+  if (input.metadata?.codexMode === "review") {
+    const review = input.metadata?.codexReview;
+    if (review && typeof review === "object" && !Array.isArray(review)) {
+      if ((review as any).uncommitted) args.push("--uncommitted");
+      if (typeof (review as any).base === "string") args.push("--base", (review as any).base);
+      if (typeof (review as any).commit === "string") args.push("--commit", (review as any).commit);
+      if (typeof (review as any).title === "string") args.push("--title", (review as any).title);
+    }
+  }
+}
+
+function resolveCodexStructuredPrompt(input: AgentRunInput, canUseNativeSchema: boolean): { prompt: string } {
+  if (canUseNativeSchema && input.schema && shouldUseNativeSchema(input)) {
+    if (!input.schemaPath && input.structuredOutput?.transport === "native") {
+      throw new OpenFlowError(
+        ErrorCode.CLI_USAGE_ERROR,
+        'Codex structuredOutput.transport="native" requires an artifact schemaPath.'
+      );
+    }
+    if (input.schemaPath) {
+      return { prompt: input.prompt };
+    }
+  }
+
+  const structuredPrompt = resolveStructuredOutputPrompt({
+    prompt: input.prompt,
+    schema: input.schema,
+    structuredOutput: input.structuredOutput
+  });
+
+  if (structuredPrompt.nativeRequested) {
+    throw new OpenFlowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      'Codex structuredOutput.transport="native" requires an artifact schemaPath.'
+    );
+  }
+
+  return { prompt: structuredPrompt.prompt };
+}
+
+function shouldUseNativeSchema(input: AgentRunInput): boolean {
+  const transport = input.structuredOutput?.transport ?? "auto";
+  return transport === "auto" || transport === "native";
+}
+
+function resultFromMessageText(
+  text: string,
+  raw: unknown,
+  jsonOverride?: unknown,
+  metadata?: Pick<ProviderParsedResult, "usage" | "threadId" | "providerMetadata">
+): ProviderParsedResult {
+  const structured = tryParseEmbeddedJson(text);
+  const result: ProviderParsedResult = {
+    text,
+    raw
+  };
+  if (jsonOverride !== undefined) {
+    result.json = jsonOverride;
+  } else if (structured !== undefined) {
+    result.json = structured;
+  }
+  if (structured !== undefined) {
+    result.structuredJson = structured;
+  }
+  if (metadata?.usage !== undefined) result.usage = metadata.usage;
+  if (metadata?.threadId !== undefined) result.threadId = metadata.threadId;
+  if (metadata?.providerMetadata !== undefined) result.providerMetadata = metadata.providerMetadata;
+  return result;
+}
+
+function summarizeCodexEvents(stdout: string): Record<string, unknown> | undefined {
+  const jsonlResult = tryParseJsonLines(stdout.trim());
+  if (!jsonlResult) {
+    return undefined;
+  }
+  return {
+    events: jsonlResult.events,
+    warnings: jsonlResult.warnings,
+    ...extractCodexEventSummary(jsonlResult.events)
+  };
+}
+
+function extractCodexEventSummary(events: unknown[]): Record<string, unknown> {
+  let threadId: string | undefined;
+  let usage: unknown;
+  const failures: unknown[] = [];
+  const errors: unknown[] = [];
+
+  for (const event of events) {
+    if (!event || typeof event !== "object" || Array.isArray(event)) {
+      continue;
+    }
+    const typed = event as any;
+    if (typed.type === "thread.started" && typeof typed.thread_id === "string") {
+      threadId = typed.thread_id;
+    }
+    if (typed.type === "turn.completed" && typed.usage !== undefined) {
+      usage = typed.usage;
+    }
+    if (typed.type === "turn.failed") {
+      failures.push(typed);
+    }
+    if (typed.type === "error") {
+      errors.push(typed);
+    }
+  }
+
+  const summary: Record<string, unknown> = {};
+  if (threadId !== undefined) summary.threadId = threadId;
+  if (usage !== undefined) summary.usage = usage;
+  const normalizedUsage = normalizeCodexUsage(usage);
+  if (normalizedUsage !== undefined) summary.normalizedUsage = normalizedUsage;
+  if (failures.length > 0) summary.failures = failures;
+  if (errors.length > 0) summary.errors = errors;
+  return summary;
+}
+
+function metadataFromSummary(summary: Record<string, unknown> | undefined): Pick<ProviderParsedResult, "usage" | "threadId" | "providerMetadata"> {
+  const metadata: Pick<ProviderParsedResult, "usage" | "threadId" | "providerMetadata"> = {};
+  if (!summary) return metadata;
+
+  if (typeof summary.threadId === "string") {
+    metadata.threadId = summary.threadId;
+  }
+  if (summary.normalizedUsage && typeof summary.normalizedUsage === "object" && !Array.isArray(summary.normalizedUsage)) {
+    metadata.usage = summary.normalizedUsage as AgentUsage;
+  }
+
+  const providerMetadata: Record<string, unknown> = {};
+  if (summary.usage !== undefined) providerMetadata.usage = summary.usage;
+  if (summary.failures !== undefined) providerMetadata.failures = summary.failures;
+  if (summary.errors !== undefined) providerMetadata.errors = summary.errors;
+  if (Object.keys(providerMetadata).length > 0) {
+    metadata.providerMetadata = providerMetadata;
+  }
+  return metadata;
+}
+
+export function normalizeCodexUsage(usage: unknown): AgentUsage | undefined {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+    return undefined;
+  }
+  const raw = usage as Record<string, unknown>;
+  const inputTokens = numberFromUnknown(raw.input_tokens ?? raw.inputTokens);
+  const cachedInputTokens = numberFromUnknown(raw.cached_input_tokens ?? raw.cachedInputTokens);
+  const outputTokens = numberFromUnknown(raw.output_tokens ?? raw.outputTokens);
+  const reasoningOutputTokens = numberFromUnknown(raw.reasoning_output_tokens ?? raw.reasoningOutputTokens);
+  const totalTokens = numberFromUnknown(raw.total_tokens ?? raw.totalTokens);
+
+  const normalized: AgentUsage = {};
+  if (inputTokens !== undefined) normalized.inputTokens = inputTokens;
+  if (cachedInputTokens !== undefined) normalized.cachedInputTokens = cachedInputTokens;
+  if (outputTokens !== undefined) normalized.outputTokens = outputTokens;
+  if (reasoningOutputTokens !== undefined) normalized.reasoningOutputTokens = reasoningOutputTokens;
+  if (totalTokens !== undefined) {
+    normalized.totalTokens = totalTokens;
+  } else if (inputTokens !== undefined || outputTokens !== undefined) {
+    normalized.totalTokens = (inputTokens ?? 0) + (outputTokens ?? 0);
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
+}
+
+function numberFromUnknown(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function tryParseJsonLines(stdout: string): { events: unknown[]; warnings: string[] } | null {

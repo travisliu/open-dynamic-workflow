@@ -27,6 +27,7 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
     phase: { value: dsl.phase, enumerable: true, configurable: false, writable: false },
     log: { value: dsl.log, enumerable: true, configurable: false, writable: false },
     pipeline: { value: dsl.pipeline, enumerable: true, configurable: false, writable: false },
+    pause: { value: dsl.pause, enumerable: true, configurable: false, writable: false },
     args: { value: Object.freeze({ ...runtime.args }), enumerable: true, configurable: false, writable: false },
     cwd: { value: runtime.cwd, enumerable: true, configurable: false, writable: false },
     runId: { value: runtime.runId, enumerable: true, configurable: false, writable: false },

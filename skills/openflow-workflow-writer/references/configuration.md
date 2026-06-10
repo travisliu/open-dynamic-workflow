@@ -30,7 +30,7 @@ graph TD
 
 | Option | Type | Default | Validation Rules | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `defaultProvider` | `string` | `"mock"` | Must be a key defined in `providers`. | Fallback provider used for agent calls if unspecified. |
+| `defaultProvider` | `string` | `"codex"` | Must be a key defined in `providers`. | Fallback provider used for agent calls if unspecified. |
 | `concurrency` | `integer` | `4` | Positive integer (>= 1). | Maximum parallel tasks executed concurrently by the scheduler. |
 | `timeoutMs` | `integer` | `900_000` | Positive integer (>= 1) in ms. | Global timeout for workflow execution. |
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Global model override fallback for provider execution. |
@@ -45,10 +45,17 @@ A dictionary mapping provider names to provider config objects.
 | Option | Type | Default | Validation Rules | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `command` | `string` | *(Required)* | Non-empty string. | Executable binary run in a subprocess (e.g., `codex`, `gemini`). |
-| `args` | `string[]` | `[]` | Array of strings. | Command-line arguments prepended before agent arguments. |
+| `args` | `string[]` | `undefined` | Array of strings. | Optional custom command arguments. For Codex, setting this disables the built-in command builder defaults. |
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Fallback model override for this provider. |
 | `modelArg` | `object \| false`| `undefined` | Must be `false` or object containing `{ flag: string }`. | Dictates how the model option is passed to the provider binary. |
 | `promptMode` | `string` | `undefined` | Must be `"stdin"` or `"arg"`. | `"stdin"` writes prompts to the process stdin. `"arg"` appends it as a final command line argument. |
+| `sandbox` | `string` | Codex: `"read-only"` | `read-only`, `workspace-write`, or `danger-full-access`. | Codex sandbox mode. |
+| `approval` | `string` | Codex: `"never"` | `untrusted`, `on-request`, or `never`. | Codex approval mode. |
+| `ephemeral` | `boolean` | Codex: `true` | Boolean. | Whether Codex uses ephemeral execution. |
+| `profile` | `string` | `undefined` | String. | Codex profile name. |
+| `profileV2` | `string` | `undefined` | String. | Codex profile-v2 name. |
+| `config` | `string[]` | `undefined` | Array of strings. | Codex `-c` config overrides. |
+| `addDir` | `string[]` | `undefined` | Array of strings. | Additional Codex readable directories. |
 
 #### Built-in Provider Defaults
 
@@ -63,11 +70,10 @@ providers:
         text: "mock response"
   codex:
     command: "codex"
-    args:
-      - "exec"
-      - "--json"
-      - "--ephemeral"
     defaultModel: null
+    sandbox: "read-only"
+    approval: "never"
+    ephemeral: true
   gemini:
     command: "gemini"
     args:
@@ -112,6 +118,25 @@ Controls visual outputs and terminal formatting.
 | :--- | :--- | :--- | :--- | :--- |
 | `mode` | `string` | `"pretty"` | Must be `"pretty"`, `"json"`, or `"jsonl"`. | Layout format printed to stdout (terminal visualization vs structured logs). |
 | `verbose` | `boolean` | `false` | Boolean. | Enables debugging messages. |
+
+---
+
+### `budget` Settings
+
+Soft workflow limits. OpenFlow does not predict or tokenize prompts; Codex token limits use only usage reported by `codex exec --json`.
+
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `maxAgentCalls` | `number` | `undefined` | Positive integer. | Maximum live provider calls started by the run. Cache hits do not count. |
+| `maxObservedTokens` | `number` | `undefined` | Positive integer. | Stop after provider-reported observed tokens exceed this value. |
+| `maxRunMs` | `number` | `undefined` | Positive integer. | Whole workflow wall-clock budget. |
+
+```yaml
+budget:
+  maxAgentCalls: 20
+  maxObservedTokens: 100000
+  maxRunMs: 1800000
+```
 
 ---
 

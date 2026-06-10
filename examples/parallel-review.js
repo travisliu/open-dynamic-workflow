@@ -1,30 +1,24 @@
 export const meta = {
   name: "parallel-review",
-  description: "Review changed files with multiple coding-agent CLIs",
+  description: "Review changed files with parallel Codex agents",
   phases: ["review", "summarize"]
 };
 
 phase("review");
 
 const reviews = await parallel({
-  codex: () => agent({
-    id: "codex-review",
-    provider: "codex",
-    prompt: "Review the changed files for correctness issues."
+  correctness: () => agent("Review the changed files for correctness issues.", {
+    id: "correctness-review"
   }),
-  gemini: () => agent({
-    id: "gemini-review",
-    provider: "gemini",
-    prompt: "Review the changed files for API design issues."
+  security: () => agent("Review the changed files for security issues.", {
+    id: "security-review"
   })
 });
 
 phase("summarize");
 
-const summary = await agent({
+const summary = await agent(`Summarize these reviews:\n${JSON.stringify(reviews, null, 2)}`, {
   id: "summary",
-  provider: "mock",
-  prompt: `Summarize these reviews:\n${JSON.stringify(reviews, null, 2)}`
 });
 
 export default {

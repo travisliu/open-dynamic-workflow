@@ -8,6 +8,7 @@ let result;
 if (args.subcase === "09.01") {
   result = await agent({
     id: "structured-agent",
+    provider: "mock",
     prompt: "Return findings as JSON",
     label: "structured-agent",
     schema: {

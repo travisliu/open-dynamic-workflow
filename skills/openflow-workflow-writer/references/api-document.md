@@ -48,6 +48,8 @@ OpenFlow exposes these workflow DSL primitives:
 | API          | Purpose                                         |
 | ------------ | ----------------------------------------------- |
 | `agent()`    | Run one provider-backed agent task.             |
+| `agent.review()` | Run Codex review mode through `codex exec review`. |
+| `pause()`    | Stop at a human decision point and resume later. |
 | `parallel()` | Run independent async task thunks concurrently. |
 | `pipeline()` | Process many items through ordered stages.      |
 | `phase()`    | Mark the current workflow phase.                |
@@ -69,6 +71,30 @@ const result = await agent({
 });
 ```
 
+### Claude-style string form
+
+```ts
+const text = await agent("Review src/auth.ts for correctness and security issues.", {
+  id: "review-auth"
+});
+```
+
+String form behavior:
+
+* Without `schema`, returns the final text.
+* With `schema`, returns the validated JSON object.
+* With `optional: true`, failed calls return `null`.
+* Without `optional: true`, failed calls throw and fail the workflow.
+
+### Codex review mode
+
+```ts
+const review = await agent.review("Review current uncommitted changes.", {
+  id: "review-uncommitted",
+  uncommitted: true
+});
+```
+
 ### Conceptual input type
 
 ```ts
@@ -84,6 +110,7 @@ type AgentCallInput = {
   };
   timeoutMs?: number;
   cwd?: string;
+  optional?: boolean;
   metadata?: Record<string, unknown>;
 };
 ```
@@ -101,6 +128,7 @@ type AgentCallInput = {
 | `structuredOutput` | No | Controls how a provided schema reaches the provider.           |
 | `timeoutMs` |       No | Per-agent timeout in milliseconds.                                  |
 | `cwd`       |       No | Working directory for the provider call.                            |
+| `optional`  |       No | String form only: failed calls return `null` instead of throwing.    |
 | `metadata`  |       No | Descriptive metadata for reports or artifacts.                      |
 
 ### Structured output
@@ -111,10 +139,10 @@ Use `schema` when downstream workflow steps need machine-readable output. When a
 
 | Transport | Behavior |
 | --------- | -------- |
-| `auto` | Default. Current providers use prompt injection and local validation. |
+| `auto` | Default. Codex default adapter uses native `--output-schema`; other/custom paths may use prompt injection and local validation. |
 | `prompt` | Always inject schema instructions into the provider prompt and validate locally. |
 | `validate-only` | Do not inject the schema; validate whatever the provider returns. |
-| `native` | Reserved for future provider-native structured output. Current `codex`, `gemini`, and `mock` adapters reject it. |
+| `native` | Require provider-native structured output. The default Codex adapter path supports this through `--output-schema`; use `auto` unless you need to force native behavior. |
 
 Recommended defaults:
 
@@ -157,7 +185,76 @@ const result = await agent({
 
 ---
 
-## 4. `parallel()`
+## 4. `pause()`
+
+Stops the current workflow in `pending` state and asks the caller for input.
+
+```ts
+const decision = await pause("approve-plan", {
+  message: "Review the plan before implementation.",
+  data: { plan }
+});
+```
+
+Resume the workflow with:
+
+```bash
+openflow resume <runId> "continue with the plan"
+```
+
+### Conceptual signature
+
+```ts
+pause(
+  id: string,
+  options: {
+    message: string;
+    data?: unknown;
+    schema?: JsonSchema;
+  }
+): Promise<string | unknown>;
+```
+
+### Behavior
+
+* `id` must be a stable non-empty string.
+* Without `schema`, resume input is returned as a string.
+* With `schema`, resume input must be valid JSON and is returned as the validated object.
+* If no resume input is available, OpenFlow writes pause artifacts, marks the run `pending`, and exits with code 9.
+* `openflow resume` creates a new continuation run. It replays the workflow, uses cache for completed pre-pause agent calls, supplies the pause response, and continues.
+
+### Schema example
+
+```ts
+const decision = await pause("approve-plan", {
+  message: "Approve or revise the plan.",
+  schema: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["approve", "revise"] },
+      instruction: { type: "string" }
+    },
+    required: ["action"]
+  }
+});
+```
+
+Resume with JSON:
+
+```bash
+openflow resume <runId> --input '{"action":"approve","instruction":"keep changes small"}'
+```
+
+### Rules
+
+* Do not call `pause()` inside `parallel()` branches.
+* Do not call `pause()` inside `pipeline()` stages.
+* Put pauses at top-level boundaries before fan-out, after synthesis, or between major loop rounds.
+* Use stable agent ids before and after the pause so replay/cache remains predictable.
+
+---
+
+## 5. `parallel()`
 
 Runs independent task thunks under the configured concurrency limit.
 
@@ -205,7 +302,7 @@ const reviews = await parallel(
 
 ---
 
-## 5. `pipeline()`
+## 6. `pipeline()`
 
 Processes an array of items through ordered stages.
 
@@ -360,7 +457,7 @@ agent tasks start immediately.
 
 ---
 
-## 6. `phase()`
+## 7. `phase()`
 
 Marks the current workflow phase.
 
@@ -389,7 +486,7 @@ Rules:
 
 ---
 
-## 7. `log()`
+## 8. `log()`
 
 Emits a workflow log event.
 
@@ -414,7 +511,7 @@ Do not log:
 
 ---
 
-## 8. Providers
+## 9. Providers
 
 OpenFlow provider adapters coordinate external agent CLIs.
 
@@ -430,7 +527,7 @@ Provider behavior should not leak into workflow semantics. Workflows should call
 
 ---
 
-## 9. Model Selection
+## 10. Model Selection
 
 Model selection can be configured globally, per provider, from the CLI, or per agent.
 
@@ -455,7 +552,7 @@ const result = await agent({
 
 ---
 
-## 10. Reports
+## 11. Reports
 
 OpenFlow supports three report modes.
 
@@ -489,7 +586,7 @@ Use for CI logs, dashboards, and live event consumers.
 
 ---
 
-## 11. Artifacts
+## 12. Artifacts
 
 Every run creates a local artifact directory.
 
@@ -499,6 +596,10 @@ Every run creates a local artifact directory.
   workflow.input.ts
   config.resolved.json
   events.jsonl
+  calls.jsonl
+  cache-index.json
+  pause-index.json
+  process.json
   report.json
   agents/
     <agentId>/
@@ -507,8 +608,13 @@ Every run creates a local artifact directory.
       stderr.log
       raw-result.json
       normalized-result.json
+      cache-hit.json
       schema.json
       validation-error.json
+  pauses/
+    <pauseId>/
+      pause.json
+      resume-input.json
   pipelines/
     <pipelineId>/
       pipeline.json
@@ -527,6 +633,7 @@ Use artifacts to debug:
 * normalized results
 * schema validation failures
 * pipeline item failures
+* pause requests and resume inputs
 * final reports
 * event order
 
@@ -534,7 +641,7 @@ Artifacts may contain prompts, source snippets, and model outputs. Treat them as
 
 ---
 
-## 12. Pipeline Events
+## 13. Pipeline Events
 
 Pipeline execution emits events such as:
 
@@ -553,9 +660,11 @@ pipeline.cancelled
 
 JSONL consumers should treat unknown event types as forward-compatible and ignore events they do not understand.
 
+Workflows that stop at `pause()` emit `workflow.pending`.
+
 ---
 
-## 13. Exit Codes
+## 14. Exit Codes
 
 | Code | Meaning                            |
 | ---: | ---------------------------------- |
@@ -568,16 +677,17 @@ JSONL consumers should treat unknown event types as forward-compatible and ignor
 |    6 | User cancelled                     |
 |    7 | Timeout                            |
 |    8 | Internal error                     |
+|    9 | Workflow pending                   |
 
 ---
 
-## 14. Out-of-Scope or Gated Capabilities
+## 15. Out-of-Scope or Gated Capabilities
 
 Do not assume these are available unless explicitly implemented or enabled:
 
 * distributed execution
-* resumable runs
-* approval gates
+* VM continuation or in-place paused process continuation
+* interactive approval gates beyond top-level `pause()`
 * DAG or branching pipelines
 * stage-level pipeline caching
 * automatic patch application
@@ -591,7 +701,7 @@ Do not assume these are available unless explicitly implemented or enabled:
 
 ---
 
-## 15. Common Validation Mistakes
+## 16. Common Validation Mistakes
 
 Bad: metadata is not first.
 
@@ -717,7 +827,7 @@ const results = await parallel({
 
 ---
 
-## 16. Minimal Workflow Template
+## 17. Minimal Workflow Template
 
 ```ts
 export const meta = {
@@ -755,7 +865,7 @@ export default {
 
 ---
 
-## 17. Parallel Workflow Template
+## 18. Parallel Workflow Template
 
 ```ts
 export const meta = {
@@ -802,7 +912,7 @@ export default {
 
 ---
 
-## 18. Pipeline Workflow Template
+## 19. Pipeline Workflow Template
 
 ```ts
 export const meta = {
@@ -881,7 +991,7 @@ export default {
 
 ---
 
-## 19. Workflow Patterns
+## 20. Workflow Patterns
 
 These patterns show standard architectures for organizing OpenFlow workflows.
 

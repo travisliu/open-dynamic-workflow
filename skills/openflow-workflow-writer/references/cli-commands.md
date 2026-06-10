@@ -21,6 +21,12 @@ openflow run <workflow-file>
 --report <pretty|json|jsonl>
 --concurrency <number>
 --timeout-ms <number>
+--max-agent-calls <number>
+--max-observed-tokens <number>
+--max-run-ms <ms>
+--resume <run-id-or-path>
+--no-cache
+--background
 --dry-run
 --fail-fast
 --verbose
@@ -34,10 +40,57 @@ openflow run workflows/review.ts --provider codex
 openflow run workflows/review.ts --provider mock
 openflow run workflows/review.ts --concurrency 2
 openflow run workflows/review.ts --timeout-ms 600000
+openflow run workflows/review.ts --resume <previous-run-id>
+openflow run workflows/review.ts --no-cache
+openflow run workflows/review.ts --max-observed-tokens 50000
+openflow run workflows/review.ts --background
 openflow run workflows/review.ts --report json
 openflow run workflows/review.ts --report jsonl
 openflow run workflows/review.ts --fail-fast
 ```
+
+Notes:
+
+* `--timeout-ms` is per agent; `--max-run-ms` is the whole workflow wall-clock budget.
+* Resume/cache reuses only successful agent calls from the same workflow hash.
+* OpenFlow does not estimate tokens. It only records Codex JSONL usage after Codex reports it.
+
+---
+
+## Resume a pending workflow
+
+```bash
+openflow resume <run-id-or-path> [input]
+openflow resume <run-id-or-path> --pause <pause-id> --input <value>
+openflow resume <run-id-or-path> --pause <pause-id> --input-file decision.json
+```
+
+Examples:
+
+```bash
+openflow resume 20260610-abc123 "continue with option A"
+openflow resume 20260610-abc123 --pause approve-plan --input '{"action":"approve"}'
+```
+
+Notes:
+
+* `openflow resume` is for runs that stopped at `pause()`.
+* If the run has exactly one pending pause, `--pause` can be omitted.
+* A continuation creates a new run and safely resumes/cache-replays the previous run.
+* Schema-backed pauses require JSON input.
+
+---
+
+## Observe runs
+
+```bash
+openflow list [--out <dir>] [--json]
+openflow inspect <run-id-or-path> [--out <dir>] [--json]
+openflow watch <run-id-or-path> [--out <dir>] [--jsonl]
+openflow kill <run-id-or-path> [--out <dir>] [--signal SIGTERM]
+```
+
+`watch` follows `events.jsonl`. `inspect` reads artifacts and works for running, completed, failed, cancelled, and pending runs. Pretty output includes the observed usage summary when Codex reports usage.
 
 ---
 

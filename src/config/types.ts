@@ -7,13 +7,23 @@ export interface ProviderModelArgConfig {
 
 export interface ProviderConfig {
   command: string;
-  args: string[];
+  args?: string[];
   defaultModel: string | null;
   modelArg?: ProviderModelArgConfig | false;
   timeoutMs?: number;
   env?: Record<string, string>;
   responses?: Record<string, unknown>; // Used by mock provider.
   promptMode?: "stdin" | "arg";
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  approval?: "untrusted" | "on-request" | "never";
+  ephemeral?: boolean;
+  profile?: string;
+  profileV2?: string;
+  config?: string[];
+  ignoreUserConfig?: boolean;
+  ignoreRules?: boolean;
+  skipGitRepoCheck?: boolean;
+  addDir?: string[];
 }
 
 export interface SecurityConfig {
@@ -33,6 +43,11 @@ export interface OpenFlowConfig {
   reporting: {
     mode: ReporterMode;
     verbose: boolean;
+  };
+  budget?: {
+    maxAgentCalls?: number;
+    maxObservedTokens?: number;
+    maxRunMs?: number;
   };
   failFast?: boolean;
 }

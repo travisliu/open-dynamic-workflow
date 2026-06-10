@@ -10,8 +10,311 @@ import { runPipeline } from "../pipeline/run.js";
 import { getActivePipelineContext, recordChildAgentId } from "../pipeline/context.js";
 import { createPipelineAgentId } from "../pipeline/id.js";
 import { isStructuredOutputTransport } from "../structured/structured-output.js";
+import {
+  cacheKey,
+  computeAgentFingerprint,
+  materializeCachedAgentResult,
+  recordCall
+} from "../artifacts/call-cache.js";
+import {
+  assertValidPauseId,
+  writePauseResumeInput,
+  writePendingPause
+} from "../artifacts/pause-control.js";
+import { validateJson } from "../structured/validate-json.js";
+import { WorkflowPendingError } from "./pending.js";
+
+type AgentStringOptions = Omit<AgentCallInput, "prompt"> & {
+  optional?: boolean;
+};
+
+type AgentReviewOptions = AgentStringOptions & {
+  uncommitted?: boolean;
+  base?: string;
+  commit?: string;
+  title?: string;
+};
+
+type AgentFacade = {
+  (input: AgentCallInput): Promise<AgentResult>;
+  (prompt: string, options?: AgentStringOptions): Promise<string | unknown | null>;
+  review(prompt: string, options?: AgentReviewOptions): Promise<string | unknown | null>;
+};
+
+interface PauseOptions {
+  message: string;
+  data?: unknown;
+  schema?: Record<string, unknown>;
+}
 
 export function createDsl(runtime: RuntimeState) {
+  const runAgentObject = async (input: AgentCallInput): Promise<AgentResult> => {
+    validateAgentInput(input);
+
+    let normalizedId = input.id;
+    const activePipeline = getActivePipelineContext();
+    if (!normalizedId) {
+      if (activePipeline) {
+        activePipeline.agentCounter++;
+        normalizedId = createPipelineAgentId({
+          pipelineId: activePipeline.pipelineId,
+          itemIndex: activePipeline.itemIndex,
+          stageName: activePipeline.stageName,
+          suffix: activePipeline.agentCounter.toString()
+        });
+      } else {
+        normalizedId = runtime.idGenerator ? runtime.idGenerator.nextId("agent") : `agent-${++runtime.agentCounter}`;
+      }
+    }
+
+    if (activePipeline) {
+      recordChildAgentId(normalizedId);
+    }
+
+    const normalizedProvider = input.provider || runtime.cli?.provider || runtime.config.defaultProvider || "mock";
+    const normalizedTimeoutMs = input.timeoutMs || runtime.config.timeoutMs || 30000;
+    const normalizedCwd = input.cwd || runtime.cwd;
+
+    const resolved = resolveAgentModel({
+      agentModel: input.model,
+      cliModel: runtime.cli?.model,
+      providerDefaultModel: runtime.config.providers?.[normalizedProvider]?.defaultModel,
+      globalDefaultModel: runtime.config.defaultModel
+    });
+    const callId = input.id || input.label || normalizedId;
+    const fingerprint = computeAgentFingerprint({
+      call: input,
+      provider: normalizedProvider,
+      model: resolved.model,
+      cwd: normalizedCwd
+    });
+
+    const cachedEntry = runtime.callCache?.previousEntries[cacheKey(callId, fingerprint)];
+    if (
+      runtime.callCache?.enabled &&
+      runtime.callCache.previousRunRoot &&
+      cachedEntry &&
+      cachedEntry.status === "succeeded" &&
+      runtime.artifactStore
+    ) {
+      const cachedResult = await materializeCachedAgentResult({
+        store: runtime.artifactStore,
+        previousRunRoot: runtime.callCache.previousRunRoot,
+        previousRunId: runtime.callCache.previousRunId,
+        entry: cachedEntry,
+        currentAgentId: normalizedId,
+        label: input.label,
+        provider: normalizedProvider,
+        model: resolved.model
+      });
+      runtime.agentResults.push(cachedResult);
+      runtime.eventSink?.emit("agent.cache_hit", {
+        agentId: normalizedId,
+        label: input.label,
+        provider: normalizedProvider,
+        model: resolved.model,
+        callId,
+        previousRunId: runtime.callCache.previousRunId,
+        previousAgentId: cachedEntry.agentId,
+        artifacts: cachedResult.artifacts
+      });
+      await recordCall({
+        store: runtime.artifactStore,
+        cache: runtime.callCache,
+        callId,
+        fingerprint,
+        result: cachedResult
+      });
+      return cachedResult;
+    }
+
+    assertLiveAgentBudget(runtime, normalizedId);
+
+    const task: ScheduledTask<AgentResult> = {
+      id: normalizedId,
+      provider: normalizedProvider,
+      model: resolved.model,
+      run: async (schedulerSignal: AbortSignal) => {
+        let finalSignal = schedulerSignal;
+        let onAbort: (() => void) | undefined;
+
+        if (activePipeline && activePipeline.stageSignal) {
+          const combinedController = new AbortController();
+          onAbort = () => {
+            combinedController.abort(schedulerSignal.reason || activePipeline.stageSignal?.reason || "Aborted");
+          };
+          if (schedulerSignal.aborted) {
+            combinedController.abort(schedulerSignal.reason);
+          } else if (activePipeline.stageSignal.aborted) {
+            combinedController.abort(activePipeline.stageSignal.reason);
+          } else {
+            schedulerSignal.addEventListener("abort", onAbort);
+            activePipeline.stageSignal.addEventListener("abort", onAbort);
+          }
+          finalSignal = combinedController.signal;
+        }
+
+        const execInput: any = {
+          id: normalizedId,
+          provider: normalizedProvider,
+          prompt: input.prompt,
+          timeoutMs: normalizedTimeoutMs,
+          cwd: normalizedCwd,
+          signal: finalSignal,
+          metadata: {
+            ...input.metadata,
+            modelResolutionSource: resolved.source
+          }
+        };
+        if (input.label !== undefined) execInput.label = input.label;
+        if (resolved.model !== undefined) execInput.model = resolved.model;
+        if (input.schema !== undefined) execInput.schema = input.schema;
+        if (input.structuredOutput !== undefined) execInput.structuredOutput = input.structuredOutput;
+
+        try {
+          return await runtime.agentExecutor.execute(execInput);
+        } finally {
+          if (onAbort) {
+            schedulerSignal.removeEventListener("abort", onAbort);
+            activePipeline?.stageSignal?.removeEventListener("abort", onAbort);
+          }
+        }
+      }
+    };
+    if (input.label !== undefined) {
+      task.label = input.label;
+    }
+
+    const scheduleOptions: ScheduleOptions = {
+      provider: normalizedProvider,
+      model: resolved.model,
+      timeoutMs: normalizedTimeoutMs,
+      failFast: runtime.failFast,
+      cwd: normalizedCwd
+    };
+
+    const result = await runtime.scheduler.schedule(task, scheduleOptions);
+    runtime.agentResults.push(result);
+    observeAgentUsage(runtime, result);
+    await recordCall({
+      store: runtime.artifactStore,
+      cache: runtime.callCache,
+      callId,
+      fingerprint,
+      result
+    });
+
+    if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
+      throw new OpenFlowError(ErrorCode.PROVIDER_UNAVAILABLE, result.error.message);
+    }
+    assertObservedTokenBudget(runtime, normalizedId);
+
+    return result;
+  };
+
+  const runAgentString = async (
+    prompt: string,
+    options: AgentStringOptions = {}
+  ): Promise<string | unknown | null> => {
+    if (typeof prompt !== "string" || prompt.trim() === "") {
+      throw new InvalidDslCallError("agent() prompt must be a non-empty string.");
+    }
+
+    const { optional, ...rest } = options;
+    const result = await runAgentObject({ ...rest, prompt });
+    if (!result.ok) {
+      if (optional) {
+        return null;
+      }
+      throw new OpenFlowError(
+        (result.error.code as ErrorCode) || ErrorCode.PROVIDER_PROCESS_FAILED,
+        result.error.message || "Agent execution failed."
+      );
+    }
+
+    if (result.json !== undefined) {
+      return result.json;
+    }
+    return result.text ?? "";
+  };
+
+  const agent = (async (inputOrPrompt: AgentCallInput | string, options?: AgentStringOptions) => {
+    if (typeof inputOrPrompt === "string") {
+      return runAgentString(inputOrPrompt, options);
+    }
+    return runAgentObject(inputOrPrompt);
+  }) as AgentFacade;
+
+  agent.review = async (prompt: string, options: AgentReviewOptions = {}) => {
+    const { uncommitted, base, commit, title, metadata, ...rest } = options;
+    return runAgentString(prompt, {
+      ...rest,
+      provider: "codex",
+      metadata: {
+        ...metadata,
+        codexMode: "review",
+        codexReview: {
+          ...(uncommitted !== undefined ? { uncommitted } : {}),
+          ...(base !== undefined ? { base } : {}),
+          ...(commit !== undefined ? { commit } : {}),
+          ...(title !== undefined ? { title } : {})
+        }
+      }
+    });
+  };
+
+  const pause = async (id: string, options: PauseOptions): Promise<unknown> => {
+    validatePauseInput(id, options);
+    if (getActivePipelineContext()) {
+      throw new InvalidDslCallError("pause() is not supported inside pipeline stages in the MVP.");
+    }
+    if ((runtime.parallelDepth ?? 0) > 0) {
+      throw new InvalidDslCallError("pause() is not supported inside parallel() branches in the MVP.");
+    }
+
+    const response = runtime.pauseResponses?.[id];
+    if (response !== undefined) {
+      const value = validatePauseResponse(id, response, options.schema);
+      if (runtime.artifactStore) {
+        await writePendingPause({
+          store: runtime.artifactStore,
+          pause: {
+            id,
+            message: options.message,
+            ...(options.data !== undefined ? { data: options.data } : {}),
+            ...(options.schema !== undefined ? { schema: options.schema } : {}),
+            createdAt: new Date().toISOString()
+          }
+        });
+        await writePauseResumeInput({ store: runtime.artifactStore, pauseId: id, value });
+      }
+      return value;
+    }
+
+    if (!runtime.artifactStore) {
+      throw new WorkflowPendingError({
+        id,
+        message: options.message,
+        ...(options.data !== undefined ? { data: options.data } : {}),
+        ...(options.schema !== undefined ? { schema: options.schema } : {}),
+        createdAt: new Date().toISOString()
+      });
+    }
+
+    const pendingPause = await writePendingPause({
+      store: runtime.artifactStore,
+      pause: {
+        id,
+        message: options.message,
+        ...(options.data !== undefined ? { data: options.data } : {}),
+        ...(options.schema !== undefined ? { schema: options.schema } : {}),
+        createdAt: new Date().toISOString()
+      }
+    });
+    runtime.pendingPause = pendingPause;
+    throw new WorkflowPendingError(pendingPause);
+  };
+
   return {
     phase: (name: string): void => {
       if (!name || typeof name !== "string" || name.trim() === "") {
@@ -41,144 +344,8 @@ export function createDsl(runtime: RuntimeState) {
       }
     },
 
-    agent: async (input: AgentCallInput): Promise<AgentResult> => {
-      if (!input || typeof input !== "object") {
-        throw new InvalidDslCallError("agent() requires an input object.");
-      }
-      if (!input.prompt || typeof input.prompt !== "string" || input.prompt.trim() === "") {
-        throw new InvalidDslCallError("agent() requires a non-empty prompt string.");
-      }
-      if (input.id !== undefined && (typeof input.id !== "string" || input.id.trim() === "")) {
-        throw new InvalidDslCallError("agent() id must be a non-empty string.");
-      }
-      if (input.provider !== undefined && (typeof input.provider !== "string" || input.provider.trim() === "")) {
-        throw new InvalidDslCallError("agent() provider must be a non-empty string.");
-      }
-      if (input.timeoutMs !== undefined && (typeof input.timeoutMs !== "number" || input.timeoutMs <= 0)) {
-        throw new InvalidDslCallError("agent() timeoutMs must be a positive number.");
-      }
-      if (input.cwd !== undefined && (typeof input.cwd !== "string" || input.cwd.trim() === "")) {
-        throw new InvalidDslCallError("agent() cwd must be a non-empty string.");
-      }
-      if (
-        input.structuredOutput !== undefined &&
-        (typeof input.structuredOutput !== "object" || input.structuredOutput === null || Array.isArray(input.structuredOutput))
-      ) {
-        throw new InvalidDslCallError("agent() structuredOutput must be an object when provided.");
-      }
-      if (
-        input.structuredOutput?.transport !== undefined &&
-        !isStructuredOutputTransport(input.structuredOutput.transport)
-      ) {
-        throw new InvalidDslCallError(
-          'agent() structuredOutput.transport must be one of "validate-only", "prompt", "native", or "auto".'
-        );
-      }
-
-      // Normalization
-      let normalizedId = input.id;
-      const activePipeline = getActivePipelineContext();
-      if (!normalizedId) {
-        if (activePipeline) {
-          activePipeline.agentCounter++;
-          normalizedId = createPipelineAgentId({
-            pipelineId: activePipeline.pipelineId,
-            itemIndex: activePipeline.itemIndex,
-            stageName: activePipeline.stageName,
-            suffix: activePipeline.agentCounter.toString()
-          });
-        } else {
-          normalizedId = runtime.idGenerator ? runtime.idGenerator.nextId("agent") : `agent-${++runtime.agentCounter}`;
-        }
-      }
-
-      if (activePipeline) {
-        recordChildAgentId(normalizedId);
-      }
-
-      const normalizedProvider = input.provider || runtime.config.defaultProvider || "mock";
-      const normalizedTimeoutMs = input.timeoutMs || runtime.config.timeoutMs || 30000;
-      const normalizedCwd = input.cwd || runtime.cwd;
-
-      const resolved = resolveAgentModel({
-        agentModel: input.model,
-        cliModel: runtime.cli?.model,
-        providerDefaultModel: runtime.config.providers?.[normalizedProvider]?.defaultModel,
-        globalDefaultModel: runtime.config.defaultModel
-      });
-
-      const task: ScheduledTask<AgentResult> = {
-        id: normalizedId,
-        provider: normalizedProvider,
-        model: resolved.model,
-        run: async (schedulerSignal: AbortSignal) => {
-          let finalSignal = schedulerSignal;
-          let onAbort: (() => void) | undefined;
-
-          if (activePipeline && activePipeline.stageSignal) {
-            const combinedController = new AbortController();
-            onAbort = () => {
-              combinedController.abort(schedulerSignal.reason || activePipeline.stageSignal?.reason || "Aborted");
-            };
-            if (schedulerSignal.aborted) {
-              combinedController.abort(schedulerSignal.reason);
-            } else if (activePipeline.stageSignal.aborted) {
-              combinedController.abort(activePipeline.stageSignal.reason);
-            } else {
-              schedulerSignal.addEventListener("abort", onAbort);
-              activePipeline.stageSignal.addEventListener("abort", onAbort);
-            }
-            finalSignal = combinedController.signal;
-          }
-
-          const execInput: any = {
-            id: normalizedId,
-            provider: normalizedProvider,
-            prompt: input.prompt,
-            timeoutMs: normalizedTimeoutMs,
-            cwd: normalizedCwd,
-            signal: finalSignal,
-            metadata: {
-              ...input.metadata,
-              modelResolutionSource: resolved.source
-            }
-          };
-          if (input.label !== undefined) execInput.label = input.label;
-          if (resolved.model !== undefined) execInput.model = resolved.model;
-          if (input.schema !== undefined) execInput.schema = input.schema;
-          if (input.structuredOutput !== undefined) execInput.structuredOutput = input.structuredOutput;
-
-          try {
-            return await runtime.agentExecutor.execute(execInput);
-          } finally {
-            if (onAbort) {
-              schedulerSignal.removeEventListener("abort", onAbort);
-              activePipeline?.stageSignal?.removeEventListener("abort", onAbort);
-            }
-          }
-        }
-      };
-      if (input.label !== undefined) {
-        task.label = input.label;
-      }
-
-      const scheduleOptions: ScheduleOptions = {
-        provider: normalizedProvider,
-        model: resolved.model,
-        timeoutMs: normalizedTimeoutMs,
-        failFast: runtime.failFast,
-        cwd: normalizedCwd
-      };
-
-      const result = await runtime.scheduler.schedule(task, scheduleOptions);
-      runtime.agentResults.push(result);
-
-      if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
-        throw new OpenFlowError(ErrorCode.PROVIDER_UNAVAILABLE, result.error.message);
-      }
-
-      return result;
-    },
+    agent,
+    pause,
 
     parallel: async <T>(
       tasks: Record<string, () => Promise<T>> | Array<() => Promise<T>>
@@ -187,30 +354,35 @@ export function createDsl(runtime: RuntimeState) {
         throw new InvalidDslCallError("parallel() requires an array or an object of task thunks.");
       }
 
-      if (Array.isArray(tasks)) {
-        const promises = tasks.map((task, idx) => {
-          if (typeof task !== "function") {
-            throw new InvalidDslCallError(`parallel() task at index ${idx} must be a function.`);
+      runtime.parallelDepth = (runtime.parallelDepth ?? 0) + 1;
+      try {
+        if (Array.isArray(tasks)) {
+          const promises = tasks.map((task, idx) => {
+            if (typeof task !== "function") {
+              throw new InvalidDslCallError(`parallel() task at index ${idx} must be a function.`);
+            }
+            return task();
+          });
+          return await Promise.all(promises);
+        } else {
+          const keys = Object.keys(tasks);
+          const promises = keys.map((key) => {
+            const task = tasks[key];
+            if (typeof task !== "function") {
+              throw new InvalidDslCallError(`parallel() task '${key}' must be a function.`);
+            }
+            return task();
+          });
+          const results = await Promise.all(promises);
+          const resultObj: Record<string, T> = {};
+          for (let i = 0; i < keys.length; i++) {
+            const key = keys[i]!;
+            resultObj[key] = results[i]!;
           }
-          return task();
-        });
-        return Promise.all(promises);
-      } else {
-        const keys = Object.keys(tasks);
-        const promises = keys.map((key) => {
-          const task = tasks[key];
-          if (typeof task !== "function") {
-            throw new InvalidDslCallError(`parallel() task '${key}' must be a function.`);
-          }
-          return task();
-        });
-        const results = await Promise.all(promises);
-        const resultObj: Record<string, T> = {};
-        for (let i = 0; i < keys.length; i++) {
-          const key = keys[i]!;
-          resultObj[key] = results[i]!;
+          return resultObj;
         }
-        return resultObj;
+      } finally {
+        runtime.parallelDepth = Math.max(0, (runtime.parallelDepth ?? 1) - 1);
       }
     },
 
@@ -219,13 +391,144 @@ export function createDsl(runtime: RuntimeState) {
       stages: PipelineStage<any, any>[],
       options?: PipelineOptions
     ): Promise<PipelineResult<O>> => {
-      return runPipeline({
+      const result = await runPipeline<I, O>({
         items,
         stages,
         options,
         runtime,
         signal: runtime.abortController.signal
       });
+      const pauseError = findPipelinePauseError(result);
+      if (pauseError) {
+        throw new InvalidDslCallError(pauseError);
+      }
+      return result;
     }
   };
+}
+
+function findPipelinePauseError(result: PipelineResult<unknown>): string | undefined {
+  for (const item of result) {
+    if (item.status === "succeeded") {
+      continue;
+    }
+    for (const stage of item.stages) {
+      const message = stage.error?.message;
+      if (typeof message === "string" && message.includes("pause() is not supported inside pipeline stages")) {
+        return message;
+      }
+    }
+  }
+  return undefined;
+}
+
+function validatePauseInput(id: string, options: PauseOptions): void {
+  assertValidPauseId(id);
+  if (!options || typeof options !== "object" || Array.isArray(options)) {
+    throw new InvalidDslCallError("pause() options must be an object.");
+  }
+  if (typeof options.message !== "string" || options.message.trim() === "") {
+    throw new InvalidDslCallError("pause() options.message must be a non-empty string.");
+  }
+  if (options.schema !== undefined && (typeof options.schema !== "object" || options.schema === null || Array.isArray(options.schema))) {
+    throw new InvalidDslCallError("pause() options.schema must be a JSON schema object.");
+  }
+}
+
+function validatePauseResponse(id: string, response: unknown, schema?: Record<string, unknown>): unknown {
+  if (!schema) {
+    return typeof response === "string" ? response : JSON.stringify(response);
+  }
+  const validation = validateJson(response, schema);
+  if (!validation.ok) {
+    throw new OpenFlowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      `Resume input for pause '${id}' does not match schema: ${validation.message}`,
+      { cause: validation.errors }
+    );
+  }
+  return validation.value;
+}
+
+function assertLiveAgentBudget(runtime: RuntimeState, agentId: string): void {
+  const budget = runtime.budget;
+  if (!budget?.maxAgentCalls) {
+    return;
+  }
+  if (budget.liveAgentCalls >= budget.maxAgentCalls) {
+    const error = new OpenFlowError(
+      ErrorCode.BUDGET_EXCEEDED,
+      `Budget exceeded: maxAgentCalls ${budget.maxAgentCalls} reached before starting agent '${agentId}'.`
+    );
+    runtime.scheduler.abort({ type: "budget", message: error.message, source: agentId, cause: "budget" });
+    runtime.abortController.abort(error);
+    throw error;
+  }
+  budget.liveAgentCalls++;
+}
+
+function observeAgentUsage(runtime: RuntimeState, result: AgentResult): void {
+  const usage = result.usage;
+  const summary = runtime.budget?.usageSummary;
+  if (!usage || !summary) {
+    return;
+  }
+  summary.agentCount++;
+  summary.inputTokens = (summary.inputTokens ?? 0) + (usage.inputTokens ?? 0);
+  summary.cachedInputTokens = (summary.cachedInputTokens ?? 0) + (usage.cachedInputTokens ?? 0);
+  summary.outputTokens = (summary.outputTokens ?? 0) + (usage.outputTokens ?? 0);
+  summary.reasoningOutputTokens = (summary.reasoningOutputTokens ?? 0) + (usage.reasoningOutputTokens ?? 0);
+  summary.totalTokens = (summary.totalTokens ?? 0) + (usage.totalTokens ?? ((usage.inputTokens ?? 0) + (usage.outputTokens ?? 0)));
+}
+
+function assertObservedTokenBudget(runtime: RuntimeState, agentId: string): void {
+  const budget = runtime.budget;
+  if (!budget?.maxObservedTokens) {
+    return;
+  }
+  const observed = budget.usageSummary.totalTokens ?? 0;
+  if (observed > budget.maxObservedTokens) {
+    const error = new OpenFlowError(
+      ErrorCode.BUDGET_EXCEEDED,
+      `Budget exceeded: observed ${observed} tokens after agent '${agentId}', above maxObservedTokens ${budget.maxObservedTokens}.`
+    );
+    runtime.scheduler.abort({ type: "budget", message: error.message, source: agentId, cause: "budget" });
+    runtime.abortController.abort(error);
+    throw error;
+  }
+}
+
+function validateAgentInput(input: AgentCallInput): void {
+  if (!input || typeof input !== "object") {
+    throw new InvalidDslCallError("agent() requires an input object.");
+  }
+  if (!input.prompt || typeof input.prompt !== "string" || input.prompt.trim() === "") {
+    throw new InvalidDslCallError("agent() requires a non-empty prompt string.");
+  }
+  if (input.id !== undefined && (typeof input.id !== "string" || input.id.trim() === "")) {
+    throw new InvalidDslCallError("agent() id must be a non-empty string.");
+  }
+  if (input.provider !== undefined && (typeof input.provider !== "string" || input.provider.trim() === "")) {
+    throw new InvalidDslCallError("agent() provider must be a non-empty string.");
+  }
+  if (input.timeoutMs !== undefined && (typeof input.timeoutMs !== "number" || input.timeoutMs <= 0)) {
+    throw new InvalidDslCallError("agent() timeoutMs must be a positive number.");
+  }
+  if (input.cwd !== undefined && (typeof input.cwd !== "string" || input.cwd.trim() === "")) {
+    throw new InvalidDslCallError("agent() cwd must be a non-empty string.");
+  }
+  if (
+    input.structuredOutput !== undefined &&
+    (typeof input.structuredOutput !== "object" || input.structuredOutput === null || Array.isArray(input.structuredOutput))
+  ) {
+    throw new InvalidDslCallError("agent() structuredOutput must be an object when provided.");
+  }
+  if (
+    input.structuredOutput?.transport !== undefined &&
+    !isStructuredOutputTransport(input.structuredOutput.transport)
+  ) {
+    throw new InvalidDslCallError(
+      'agent() structuredOutput.transport must be one of "validate-only", "prompt", "native", or "auto".'
+    );
+  }
 }

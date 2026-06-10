@@ -5,7 +5,7 @@ export type ProviderName = "mock" | "codex" | "gemini" | string;
 
 export type ReporterMode = "pretty" | "json" | "jsonl";
 
-export type WorkflowStatus = "succeeded" | "failed" | "cancelled";
+export type WorkflowStatus = "succeeded" | "failed" | "cancelled" | "pending";
 
 export type MaybePromise<T> = T | Promise<T>;
 

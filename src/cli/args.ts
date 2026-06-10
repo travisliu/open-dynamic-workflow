@@ -15,6 +15,9 @@ export interface RunCliOptions {
   report: ReportMode;
   concurrency?: number;
   timeoutMs?: number;
+  maxAgentCalls?: number;
+  maxObservedTokens?: number;
+  maxRunMs?: number;
   dryRun: boolean;
   failFast: boolean;
   verbose: boolean;

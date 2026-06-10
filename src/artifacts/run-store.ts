@@ -75,6 +75,9 @@ export class FileSystemArtifactStore implements ArtifactStore {
     const eventsPath = path.join(runRootDir, "events.jsonl");
     await fs.writeFile(eventsPath, "", "utf8");
 
+    await fs.writeFile(path.join(runRootDir, "calls.jsonl"), "", "utf8");
+    await fs.writeFile(path.join(runRootDir, "cache-index.json"), JSON.stringify({ schemaVersion: "openflow.cache-index.v1", entries: {} }, null, 2), "utf8");
+
     return this.getRunArtifacts();
   }
 
@@ -125,7 +128,7 @@ export class FileSystemArtifactStore implements ArtifactStore {
     }
   }
 
-  async updateManifest(status: "succeeded" | "failed" | "cancelled", error?: any): Promise<string> {
+  async updateManifest(status: "succeeded" | "failed" | "cancelled" | "pending", error?: any): Promise<string> {
     if (!this.runRootDir || !this.manifestObj) {
       throw new Error("Run has not been created yet.");
     }
@@ -152,6 +155,8 @@ export class FileSystemArtifactStore implements ArtifactStore {
       workflowInputPath: path.join(rootDir, "workflow.input.ts"),
       resolvedConfigPath: path.join(rootDir, "config.resolved.json"),
       eventsPath: path.join(rootDir, "events.jsonl"),
+      callsPath: path.join(rootDir, "calls.jsonl"),
+      cacheIndexPath: path.join(rootDir, "cache-index.json"),
       reportPath: path.join(rootDir, "report.json"),
       agentDir: (agentId: string) => {
         return path.join(rootDir, "agents", safeFileName(agentId));

@@ -12,6 +12,16 @@ export interface ProviderConfig {
   timeoutMs?: number;
   env?: Record<string, string>;
   mock?: MockProviderConfig;
+  sandbox?: "read-only" | "workspace-write" | "danger-full-access";
+  approval?: "untrusted" | "on-request" | "never";
+  ephemeral?: boolean;
+  profile?: string;
+  profileV2?: string;
+  config?: string[];
+  ignoreUserConfig?: boolean;
+  ignoreRules?: boolean;
+  skipGitRepoCheck?: boolean;
+  addDir?: string[];
 }
 
 export interface MockProviderConfig {
@@ -51,6 +61,13 @@ export interface OpenFlowConfig {
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
   reporting: ReportingConfig;
+  budget?: BudgetConfig | undefined;
+}
+
+export interface BudgetConfig {
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
 }
 
 export interface ResolvedConfig extends OpenFlowConfig {
@@ -71,7 +88,13 @@ export interface CliRunOptions {
   report?: ReporterMode;
   concurrency?: number;
   timeoutMs?: number;
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
   dryRun: boolean;
   failFast: boolean;
   verbose: boolean;
+  resume?: string;
+  noCache?: boolean;
+  pauseResponses?: Record<string, unknown>;
 }

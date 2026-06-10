@@ -44,6 +44,11 @@ describe("Exit Codes Mapping", () => {
     expect(exitCodeForError(err)).toBe(ExitCode.Timeout);
   });
 
+  it("maps WORKFLOW_PENDING to WorkflowPending (9)", () => {
+    const err = new OpenFlowError(ErrorCode.WORKFLOW_PENDING, "pending");
+    expect(exitCodeForError(err)).toBe(ExitCode.WorkflowPending);
+  });
+
   it("maps PROVIDER_PROCESS_FAILED to WorkflowFailed (1)", () => {
     const err = new OpenFlowError(ErrorCode.PROVIDER_PROCESS_FAILED, "provider process failed");
     expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);

@@ -1,7 +1,8 @@
-import type { AgentCallInput, AgentResult } from "./agent.js";
+import type { AgentResult, AgentRuntimeFunction, AgentUsage } from "./agent.js";
 import type { JsonObject, WorkflowStatus } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
+import type { WorkflowPause } from "../artifacts/pause-control.js";
 
 export interface WorkflowMeta {
   name: string;
@@ -32,7 +33,7 @@ export interface WorkflowRuntimeContext {
   cwd: string;
   runId: string;
   artifactsDir: string;
-  agent(input: AgentCallInput): Promise<AgentResult>;
+  agent: AgentRuntimeFunction;
   parallel<TTasks extends ParallelTasks<unknown>>(tasks: TTasks): Promise<ParallelResult<TTasks>>;
   phase(name: string): void;
   log(message: string, data?: unknown): void;
@@ -41,6 +42,7 @@ export interface WorkflowRuntimeContext {
     stages: PipelineStage<any, any>[],
     options?: PipelineOptions
   ): Promise<PipelineResult<O>>;
+  pause(id: string, options: { message: string; data?: unknown; schema?: Record<string, unknown> }): Promise<unknown>;
 }
 
 export interface WorkflowRunResult {
@@ -57,5 +59,7 @@ export interface WorkflowRunResult {
   artifactsDir: string;
   reportPath: string;
   eventsPath: string;
+  usageSummary?: AgentUsage & { agentCount: number } | undefined;
+  pendingPause?: WorkflowPause | undefined;
   error?: SerializedError;
 }

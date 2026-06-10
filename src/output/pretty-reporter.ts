@@ -1,6 +1,7 @@
 import type { Reporter, ReporterStartInput, ReporterStreams } from "./reporter.js";
 import type { EventEnvelope } from "./events.js";
 import type { WorkflowRunResult } from "../types/workflow.js";
+import { formatUsageSummary } from "./usage.js";
 
 function formatDuration(ms?: number): string {
   if (typeof ms !== "number") return "";
@@ -138,10 +139,24 @@ export class PrettyReporter implements Reporter {
         this.stdout.write(`✕ Workflow failed: ${errMsg}\n`);
         break;
       }
+      case "workflow.pending": {
+        this.stdout.write(`⏸ Workflow pending: ${payload.pause?.id ?? "pause"}\n`);
+        if (payload.pause?.message) {
+          this.stdout.write(`${payload.pause.message}\n`);
+        }
+        break;
+      }
     }
   }
 
   finish(result: WorkflowRunResult): void {
+    const usage = formatUsageSummary(result.usageSummary);
+    if (usage) {
+      this.stdout.write(`${usage}\n`);
+    }
+    if (result.status === "pending" && result.pendingPause) {
+      this.stdout.write(`Resume: openflow resume ${result.runId} --pause ${result.pendingPause.id} --input <value>\n`);
+    }
     this.stdout.write(`Artifacts: ${result.artifactsDir}\n`);
   }
 }

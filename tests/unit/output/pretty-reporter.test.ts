@@ -97,6 +97,46 @@ describe("PrettyReporter", () => {
     expect(getStdout()).toBe("Artifacts: .openflow/runs/123\n");
   });
 
+  it("finish() prints observed usage when available", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.finish({
+      artifactsDir: ".openflow/runs/123",
+      usageSummary: {
+        agentCount: 2,
+        inputTokens: 10,
+        cachedInputTokens: 4,
+        outputTokens: 6,
+        reasoningOutputTokens: 2,
+        totalTokens: 16
+      }
+    } as any);
+
+    expect(getStdout()).toContain("Usage: 16 total, 10 input, 6 output, 2 reasoning, 4 cached input tokens across 2 live agents\n");
+    expect(getStdout()).toContain("Artifacts: .openflow/runs/123\n");
+  });
+
+  it("prints pending pause and resume hint", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.handle({
+      type: "workflow.pending",
+      payload: { pause: { id: "approve", message: "Approve plan." } }
+    } as any);
+    reporter.finish({
+      runId: "run-1",
+      status: "pending",
+      artifactsDir: ".openflow/runs/run-1",
+      pendingPause: { id: "approve", message: "Approve plan." }
+    } as any);
+
+    expect(getStdout()).toContain("Workflow pending: approve\n");
+    expect(getStdout()).toContain("Approve plan.\n");
+    expect(getStdout()).toContain("openflow resume run-1 --pause approve --input <value>\n");
+  });
+
   it("agent.output is hidden unless verbose is true", () => {
     const { streams, getStdout } = createMockStreams();
     const reporter = new PrettyReporter(streams, { verbose: false });

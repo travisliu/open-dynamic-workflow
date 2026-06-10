@@ -28,7 +28,7 @@ export function createInitialManifest(input: CreateManifestInput): RunManifest {
 
 export function updateManifestStatus(
   manifest: RunManifest,
-  status: "succeeded" | "failed" | "cancelled",
+  status: "succeeded" | "failed" | "cancelled" | "pending",
   error?: any,
   now?: Date
 ): RunManifest {

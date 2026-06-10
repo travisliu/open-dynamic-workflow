@@ -16,7 +16,7 @@ describe("CodexExecAdapter", () => {
 
     const cmd = await adapter.buildCommand(input);
     expect(cmd.command).toBe("codex");
-    expect(cmd.args).toEqual(["exec", "--json", "--ephemeral"]);
+    expect(cmd.args).toEqual(["-C", "/root", "exec", "--json", "--ephemeral"]);
     expect(cmd.stdin).toBe("generate a test");
   });
 
@@ -42,7 +42,35 @@ describe("CodexExecAdapter", () => {
     expect(cmd.stdin).toBe("generate a test");
   });
 
-  it("injects schema into stdin by default when schema is provided", async () => {
+  it("uses Codex native output schema when schemaPath is available", async () => {
+    const adapter = new CodexExecAdapter();
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "codex",
+      prompt: "Return findings as JSON.",
+      schema: {
+        type: "object",
+        properties: {
+          findings: { type: "array" }
+        },
+        required: ["findings"]
+      },
+      schemaPath: "/tmp/schema.json",
+      lastMessagePath: "/tmp/last-message.txt",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.args).toContain("--output-schema");
+    expect(cmd.args).toContain("/tmp/schema.json");
+    expect(cmd.args).toContain("-o");
+    expect(cmd.args).toContain("/tmp/last-message.txt");
+    expect(cmd.stdin).toBe("Return findings as JSON.");
+  });
+
+  it("injects schema into stdin when no schemaPath is available", async () => {
     const adapter = new CodexExecAdapter();
     const input: AgentRunInput = {
       id: "run-1",
@@ -108,9 +136,7 @@ describe("CodexExecAdapter", () => {
       env: { PATH: "/bin" }
     };
 
-    await expect(adapter.buildCommand(input)).rejects.toThrow(
-      'Codex does not support structuredOutput.transport="native" yet.'
-    );
+    await expect(adapter.buildCommand(input)).rejects.toThrow("requires an artifact schemaPath");
   });
 
   it("uses arg prompt mode when configured", async () => {
@@ -129,7 +155,7 @@ describe("CodexExecAdapter", () => {
     };
 
     const cmd = await adapter.buildCommand(input);
-    expect(cmd.args).toEqual(["exec", "--json", "--ephemeral", "generate a test"]);
+    expect(cmd.args).toEqual(["-C", "/root", "exec", "--json", "--ephemeral", "generate a test"]);
     expect(cmd.stdin).toBeUndefined();
   });
 
@@ -149,7 +175,42 @@ describe("CodexExecAdapter", () => {
     };
 
     const cmd = await adapter.buildCommand(input);
-    expect(cmd.args).toEqual(["exec", "--json", "--ephemeral", "--model", "custom-model-v2"]);
+    expect(cmd.args).toEqual(["-C", "/root", "exec", "--json", "--model", "custom-model-v2", "--ephemeral"]);
+  });
+
+  it("builds exec review command with review options", async () => {
+    const adapter = new CodexExecAdapter();
+    const input: AgentRunInput = {
+      id: "review-1",
+      provider: "codex",
+      prompt: "review current changes",
+      cwd: "/repo",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" },
+      metadata: {
+        codexMode: "review",
+        codexReview: {
+          uncommitted: true,
+          base: "main",
+          title: "Review title"
+        }
+      }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.args).toEqual([
+      "-C",
+      "/repo",
+      "exec",
+      "review",
+      "--json",
+      "--ephemeral",
+      "--uncommitted",
+      "--base",
+      "main",
+      "--title",
+      "Review title"
+    ]);
   });
 
   it("parses JSON stdout with text field", async () => {
@@ -172,6 +233,53 @@ describe("CodexExecAdapter", () => {
     expect(parsed.text).toBe("hello from codex");
     expect(parsed.json).toEqual({ text: "hello from codex", confidence: 0.9 });
     expect(parsed.structuredJson).toBeUndefined();
+  });
+
+  it("prefers last-message content over JSONL stdout", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started", "thread_id": "thread-1"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "stdout message"}}',
+        '{"type": "turn.completed", "usage": {"input_tokens": 10}}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0,
+      lastMessage: '{"from":"last-message"}'
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe('{"from":"last-message"}');
+    expect(parsed.json).toEqual({ from: "last-message" });
+    expect(parsed.structuredJson).toEqual({ from: "last-message" });
+    expect((parsed.raw as any).jsonl.threadId).toBe("thread-1");
+    expect((parsed.raw as any).jsonl.usage).toEqual({ input_tokens: 10 });
+    expect(parsed.threadId).toBe("thread-1");
+    expect(parsed.usage).toEqual({ inputTokens: 10, totalTokens: 10 });
+  });
+
+  it("normalizes Codex JSONL usage fields without double-counting cached input", async () => {
+    const adapter = new CodexExecAdapter();
+    const parsed = await adapter.parseResult({
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started", "thread_id": "thread-usage"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "done"}}',
+        '{"type": "turn.completed", "usage": {"input_tokens": 10, "cached_input_tokens": 8, "output_tokens": 3, "reasoning_output_tokens": 2}}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    });
+
+    expect(parsed.threadId).toBe("thread-usage");
+    expect(parsed.usage).toEqual({
+      inputTokens: 10,
+      cachedInputTokens: 8,
+      outputTokens: 3,
+      reasoningOutputTokens: 2,
+      totalTokens: 13
+    });
   });
 
   it("parses JSON stdout with text field containing valid JSON", async () => {

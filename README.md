@@ -1,6 +1,6 @@
 # OpenFlow CLI
 
-OpenFlow is a local-first command-line workflow runner for orchestrating coding-agent CLIs such as `codex exec` and `gemini -p`.
+OpenFlow is a local-first command-line workflow runner for Codex-first dynamic workflows.
 
 It lets engineers define constrained JavaScript-like workflows, run agent tasks sequentially or in parallel, capture structured results, and persist durable run artifacts for local debugging and CI automation.
 
@@ -14,7 +14,7 @@ Modern coding agents are useful from the terminal, but larger engineering tasks 
 
 - Split large engineering tasks into repeatable workflow files.
 - Run multiple agent reviews in parallel.
-- Use different providers for different tasks.
+- Run Codex review, analysis, and synthesis steps with repeatable workflow scripts.
 - Validate structured JSON output with JSON Schema.
 - Capture prompts, stdout, stderr, normalized results, reports, and events.
 - Use pretty terminal output locally or JSON/JSONL output in CI.
@@ -34,6 +34,7 @@ OpenFlow supports:
 - Constrained workflow metadata parsing
 - Workflow DSL functions:
   - `agent()`
+  - `pause()`
   - `parallel()`
   - `pipeline()`
   - `phase()`
@@ -48,9 +49,11 @@ OpenFlow supports:
 - JSON Schema validation for structured agent output
 - Pretty, JSON, and JSONL reporters
 - Durable artifact directories under `.openflow/runs/<runId>`
+- Same-workflow resume/cache with `--resume <runId>`
+- Pending workflows with `pause()` and `openflow resume`
 - Deterministic exit codes
 
-Future roadmap features include plugin providers, retries, worktree/container isolation, resumable runs, approval gates, automatic patch application, and static HTML reports.
+Future roadmap features include plugin providers, retries, worktree/container isolation, approval gates, automatic patch application, and static HTML reports.
 
 ---
 
@@ -63,9 +66,9 @@ Recommended baseline:
 - Node.js 20+
 - npm, pnpm, or yarn
 - Git, when running inside a repository
-- Optional provider CLIs:
-  - Codex CLI for the `codex` provider
-  - Gemini CLI for the `gemini` provider
+- Provider CLI:
+  - Codex CLI for the default `codex` provider
+  - Gemini CLI is still available for explicit `gemini` workflows, but Codex is the default path.
 
 The `mock` provider is intended for tests, examples, and CI workflows that should not require real provider credentials.
 
@@ -119,31 +122,25 @@ Create a workflow file:
 // workflows/review.ts
 export const meta = {
   name: "parallel-review",
-  description: "Review changed files with multiple coding-agent CLIs",
+  description: "Review changed files with parallel Codex agents",
   phases: ["review", "summarize"]
 };
 
 phase("review");
 
 const reviews = await parallel({
-  codex: () => agent({
-    id: "codex-review",
-    provider: "codex",
-    prompt: "Review the changed files for correctness issues."
+  correctness: () => agent("Review the changed files for correctness issues.", {
+    id: "correctness-review"
   }),
-  gemini: () => agent({
-    id: "gemini-review",
-    provider: "gemini",
-    prompt: "Review the changed files for API design issues."
+  security: () => agent("Review the changed files for security issues.", {
+    id: "security-review"
   })
 });
 
 phase("summarize");
 
-const summary = await agent({
+const summary = await agent("Summarize these reviews and deduplicate findings:\n" + JSON.stringify(reviews, null, 2), {
   id: "summary",
-  provider: "codex",
-  prompt: `Summarize these reviews:\n${JSON.stringify(reviews, null, 2)}`
 });
 
 export default {
@@ -223,6 +220,12 @@ Common options:
 --report <pretty|json|jsonl>
 --concurrency <number>
 --timeout-ms <number>
+--max-agent-calls <number>
+--max-observed-tokens <number>
+--max-run-ms <ms>
+--resume <run-id-or-path>
+--no-cache
+--background
 --dry-run
 --fail-fast
 --verbose
@@ -238,7 +241,27 @@ openflow run workflows/review.ts --timeout-ms 600000
 openflow run workflows/review.ts --report json
 openflow run workflows/review.ts --report jsonl
 openflow run workflows/review.ts --fail-fast
+openflow run workflows/review.ts --resume <previous-run-id>
+openflow run workflows/review.ts --background
 ```
+
+`--timeout-ms` is a per-agent timeout. `--max-run-ms` is a workflow-level wall-clock budget.
+
+Resume/cache only reuses successful agent calls from the same workflow hash. OpenFlow records every call in `calls.jsonl`; if `cache-index.json` is missing or damaged, resume rebuilds safe cache hits from that journal. `--no-cache` disables reads and cache-index writes, but keeps the call journal for debugging.
+
+OpenFlow does not estimate token usage. For Codex runs, it records usage reported by `codex exec --json` and can stop later work with `--max-observed-tokens` after observed usage exceeds the limit.
+
+### `openflow resume`
+
+Continues a workflow that stopped at `pause()`.
+
+```bash
+openflow resume <runId-or-path> [input]
+openflow resume <runId-or-path> --pause <pauseId> --input <value>
+openflow resume <runId-or-path> --pause <pauseId> --input-file decision.json
+```
+
+If the pending run has exactly one pause, `--pause` can be omitted. Resume creates a new run, replays the workflow, reuses successful pre-pause agent calls through same-workflow cache, returns the supplied pause input, and continues from there. The original pending run remains as an audit record.
 
 ### `openflow validate`
 
@@ -261,6 +284,18 @@ Validation checks include:
 - Metadata is statically analyzable.
 - Unsupported imports and restricted APIs are rejected.
 - `pipeline()` stage configuration and structure are verified.
+
+### Run observation commands
+
+```bash
+openflow list --out .openflow/runs
+openflow inspect <runId>
+openflow watch <runId>
+openflow watch <runId> --jsonl
+openflow kill <runId>
+```
+
+Background and pending runs use the same artifact files as foreground runs. `watch` follows `events.jsonl` and exits when a run reaches `succeeded`, `failed`, `cancelled`, or `pending`. `inspect` reads `report.json`, `manifest.json`, and `process.json`.
 
 ### `openflow doctor`
 
@@ -387,6 +422,41 @@ const reviews = await parallel(
 );
 ```
 
+### `pause(id, options)`
+
+Stops the current workflow in `pending` state and asks the caller for input.
+
+```ts
+const decision = await pause("approve-plan", {
+  message: "Review the plan before implementation.",
+  data: { plan }
+});
+```
+
+Resume with:
+
+```bash
+openflow resume <runId> "continue with the plan"
+```
+
+With a schema, resume input must be JSON and the workflow receives the validated object:
+
+```ts
+const decision = await pause("approve-plan", {
+  message: "Approve or revise the plan.",
+  schema: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["approve", "revise"] },
+      instruction: { type: "string" }
+    },
+    required: ["action"]
+  }
+});
+```
+
+`pause()` must use a stable non-empty id. It is intentionally unsupported inside `parallel()` branches and `pipeline()` stages.
+
 ### `phase(name)`
 
 Marks the current workflow phase.
@@ -448,6 +518,8 @@ The `PipelineStageContext` (`ctx`) object passed to each stage contains:
 - `signal`: AbortSignal for the stage.
 - `sleep(ms)`: Utility to pause execution within the stage.
 
+Workflows can use normal JavaScript `for` and `while` loops. For cache-friendly loops, give every agent call a stable id such as `fix-${round}` or `review-${round}`. OpenFlow does not intercept CPU-only infinite loops; use explicit round limits, budgets, or periodic `pause()` calls for long-running workflows.
+
 ---
 
 ## Structured Output
@@ -480,10 +552,10 @@ const result = await agent({
 
 Transport options:
 
-- `auto`: use prompt injection for current providers and keep local validation enabled.
+- `auto`: use Codex native `--output-schema` when available, otherwise use prompt injection and local validation.
 - `prompt`: always inject the schema into the prompt before invoking the provider.
 - `validate-only`: do not inject the schema into the prompt; only validate the returned output locally.
-- `native`: reserved for future provider-native structured output support. Current adapters reject it.
+- `native`: require provider-native structured output support. The default Codex adapter path supports this through `--output-schema`.
 
 When a schema is provided, OpenFlow attempts to normalize provider output in this order:
 
@@ -644,6 +716,10 @@ Every run creates a local artifact directory.
   workflow.input.ts
   config.resolved.json
   events.jsonl
+  calls.jsonl
+  cache-index.json
+  pause-index.json
+  process.json
   report.json
   agents/
     <agentId>/
@@ -652,11 +728,16 @@ Every run creates a local artifact directory.
       stderr.log
       raw-result.json
       normalized-result.json
+      cache-hit.json
       schema.json
       validation-error.json
+  pauses/
+    <pauseId>/
+      pause.json
+      resume-input.json
 ```
 
-Artifacts are always enabled so failed or partial runs remain debuggable.
+Artifacts are always enabled so failed, partial, or pending runs remain debuggable.
 
 ---
 
@@ -673,6 +754,7 @@ Artifacts are always enabled so failed or partial runs remain debuggable.
 | 6 | User cancelled |
 | 7 | Timeout |
 | 8 | Internal error |
+| 9 | Workflow pending |
 
 ---
 

@@ -4,6 +4,21 @@ import type { SerializedError } from "./errors.js";
 
 export type StructuredOutputTransport = "validate-only" | "prompt" | "native" | "auto";
 
+export interface AgentUsage {
+  inputTokens?: number | undefined;
+  cachedInputTokens?: number | undefined;
+  outputTokens?: number | undefined;
+  reasoningOutputTokens?: number | undefined;
+  totalTokens?: number | undefined;
+}
+
+export interface AgentCacheInfo {
+  hit: boolean;
+  callId: string;
+  previousRunId?: string | undefined;
+  previousAgentId?: string | undefined;
+}
+
 export interface StructuredOutputConfig {
   transport?: StructuredOutputTransport | undefined;
 }
@@ -18,7 +33,25 @@ export interface AgentCallInput {
   structuredOutput?: StructuredOutputConfig | undefined;
   timeoutMs?: number | undefined;
   cwd?: string | undefined;
+  optional?: boolean | undefined;
   metadata?: Record<string, unknown> | undefined;
+}
+
+export type AgentStringOptions = Omit<AgentCallInput, "prompt"> & {
+  optional?: boolean | undefined;
+};
+
+export type AgentReviewOptions = AgentStringOptions & {
+  uncommitted?: boolean | undefined;
+  base?: string | undefined;
+  commit?: string | undefined;
+  title?: string | undefined;
+};
+
+export interface AgentRuntimeFunction {
+  (input: AgentCallInput): Promise<AgentResult>;
+  (prompt: string, options?: AgentStringOptions): Promise<string | unknown | null>;
+  review(prompt: string, options?: AgentReviewOptions): Promise<string | unknown | null>;
 }
 
 export type AgentTaskState =
@@ -51,6 +84,10 @@ export interface AgentSuccessResult {
   exitCode: number;
   durationMs: number;
   artifacts: AgentArtifacts;
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
+  cache?: AgentCacheInfo | undefined;
 }
 
 export interface AgentFailureResult {
@@ -66,6 +103,10 @@ export interface AgentFailureResult {
   durationMs: number;
   artifacts: AgentArtifacts;
   error: SerializedError;
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
+  cache?: AgentCacheInfo | undefined;
 }
 
 export interface AgentRunInput {
@@ -79,6 +120,8 @@ export interface AgentRunInput {
   timeoutMs: number;
   cwd: string;
   env: Record<string, string>;
+  schemaPath?: string | undefined;
+  lastMessagePath?: string | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
 
@@ -105,6 +148,7 @@ export interface ProviderParseInput {
   stdout: string;
   stderr: string;
   exitCode: number | null;
+  lastMessage?: string | undefined;
 }
 
 export interface ProviderParsedResult {
@@ -113,6 +157,9 @@ export interface ProviderParsedResult {
   structuredJson?: unknown;
   raw?: unknown;
   parseWarnings?: string[];
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentAdapter {

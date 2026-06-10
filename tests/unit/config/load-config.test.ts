@@ -10,7 +10,7 @@ describe("Load Config", () => {
       cli: {}
     });
 
-    expect(config.defaultProvider).toBe("mock");
+    expect(config.defaultProvider).toBe("codex");
     expect(config.concurrency).toBe(4);
     expect(config.security.allowShell).toBe(false);
   });
