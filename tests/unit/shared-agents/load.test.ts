@@ -87,6 +87,28 @@ describe("loadSharedAgentRegistry", () => {
     expect(registry.list()).toHaveLength(1);
     expect(registry.get("js-agent")).toBeDefined();
   });
+
+  it("loads a valid JS agent with an ES import statement", async () => {
+    const agentsDir = join(tempDir, ".openflow", "agents");
+    await mkdir(agentsDir, { recursive: true });
+    const agentFile = join(agentsDir, "import-test.agent.js");
+    await writeFile(agentFile, `
+      import { defineAgent } from "@prmflow/openflow";
+      export default defineAgent({
+        id: "import-js-agent",
+        description: "Import JS Agent",
+        run: async () => ({ ok: true })
+      });
+    `);
+
+    const registry = await loadSharedAgentRegistry({
+      cwd: tempDir,
+      dir: ".openflow/agents"
+    });
+
+    expect(registry.list()).toHaveLength(1);
+    expect(registry.get("import-js-agent")).toBeDefined();
+  });
   
   it("supports .mjs and .cjs extensions", async () => {
     const agentsDir = join(tempDir, "agents");

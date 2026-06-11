@@ -79,7 +79,7 @@ export async function loadSharedAgentRegistry(
       validateSharedAgentSource(sourceText, filePath);
       
       let codeToRun = sourceText;
-      if (ext === ".ts") {
+      if (ext === ".ts" || ext === ".js" || ext === ".mjs") {
         codeToRun = transpileTs(sourceText, filePath);
       }
 
