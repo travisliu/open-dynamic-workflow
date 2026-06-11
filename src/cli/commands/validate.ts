@@ -4,6 +4,7 @@ import { loadConfig } from "../../config/load.js";
 import { loadWorkflow } from "../../workflow/load.js";
 import { parseWorkflow } from "../../workflow/parse.js";
 import { validateWorkflow } from "../../workflow/validate.js";
+import { loadSharedAgentRegistry } from "../../shared-agents/load.js";
 import { printValidationSuccess, printValidationIssues } from "../print.js";
 import { resolveUserPath } from "../paths.js";
 
@@ -33,10 +34,21 @@ export async function validateCommand(input: ValidateCommandInput): Promise<void
   // Parse workflow metadata
   const parsed = parseWorkflow(loaded);
 
+  // Load shared agent registry
+  const registry = await loadSharedAgentRegistry({
+    cwd: config.cwd,
+    dir: config.sharedAgents?.dir,
+    maxDefinitions: config.sharedAgents?.maxDefinitions,
+    strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
+  });
+
   // Validate restrictions
   const issues = validateWorkflow(parsed, {
     allowImports: false,
-    allowShell: false
+    allowShell: false,
+    allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds,
+    knownSharedAgentIds: new Set(registry.list().map(entry => entry.id)),
+    sharedAgentRegistry: registry
   });
 
   if (issues.length > 0) {

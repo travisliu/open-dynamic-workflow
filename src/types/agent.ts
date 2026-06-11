@@ -16,7 +16,7 @@ export type AgentPermissions =
   | { mode: "default" }
   | { mode: "dangerously-full-access" };
 
-export interface AgentCallInput {
+export interface DirectAgentCallInput {
   id?: string | undefined;
   label?: string | undefined;
   provider?: ProviderName | undefined;
@@ -29,6 +29,23 @@ export interface AgentCallInput {
   permissions?: AgentPermissionsInput | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
+
+export interface DefinitionAgentCallInput {
+  id?: string | undefined;
+  definition: string;
+  label?: string | undefined;
+  provider?: ProviderName | undefined;
+  prompt?: string | undefined;
+  model?: string | undefined;
+  schema?: JsonSchema | undefined;
+  structuredOutput?: StructuredOutputConfig | undefined;
+  timeoutMs?: number | undefined;
+  cwd?: string | undefined;
+  permissions?: AgentPermissionsInput | undefined;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+export type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
 
 export type AgentTaskState =
   | "queued"
@@ -62,6 +79,7 @@ export interface AgentSuccessResult {
   artifacts: AgentArtifacts;
   cache?: AgentResultCacheInfo | undefined;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentFailureResult {
@@ -79,6 +97,7 @@ export interface AgentFailureResult {
   error: SerializedError;
   cache?: AgentResultCacheInfo | undefined;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentResultCacheInfo {

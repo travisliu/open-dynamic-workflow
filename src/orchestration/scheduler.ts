@@ -2,6 +2,7 @@ import type { Scheduler, ScheduledTask, ScheduleOptions, AbortReason } from "../
 import type { AgentResult, AgentTaskState, AgentPermissions } from "../types/agent.js";
 import type { WorkflowEventType } from "../types/events.js";
 import { createLinkedAbortController } from "./cancellation.js";
+import { sanitizeMetadata } from "../security/metadata.js";
 
 export interface SchedulerConfig {
   concurrency: number;
@@ -88,7 +89,8 @@ export class DefaultScheduler implements Scheduler {
         provider: task.provider || options?.provider || "mock",
         model: task.model || options?.model,
         state: "queued",
-        permissions: task.permissions || { mode: "default" }
+        permissions: task.permissions || { mode: "default" },
+        metadata: sanitizeMetadata(task.metadata)
       });
     }
 
@@ -135,7 +137,8 @@ export class DefaultScheduler implements Scheduler {
             message: abortMsg,
             code: "TASK_SKIPPED"
           },
-          permissions: queuedTask.task.permissions || { mode: "default" }
+          permissions: queuedTask.task.permissions || { mode: "default" },
+          metadata: sanitizeMetadata(queuedTask.task.metadata)
         });
       }
 
@@ -182,7 +185,8 @@ export class DefaultScheduler implements Scheduler {
           model: internalTask.task.model || internalTask.options?.model,
           cwd: internalTask.options?.cwd || process.cwd(),
           state: "running",
-          permissions: internalTask.task.permissions || { mode: "default" }
+          permissions: internalTask.task.permissions || { mode: "default" },
+          metadata: sanitizeMetadata(internalTask.task.metadata)
         });
       }
 
@@ -215,7 +219,8 @@ export class DefaultScheduler implements Scheduler {
                 durationMs: Date.now() - startTime,
                 exitCode: agentResult?.exitCode ?? 0,
                 artifacts: agentResult?.artifacts ?? { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
-                permissions: internalTask.task.permissions || { mode: "default" }
+                permissions: internalTask.task.permissions || { mode: "default" },
+                metadata: sanitizeMetadata(internalTask.task.metadata)
               });
             }
             internalTask.resolve(result);
@@ -237,7 +242,8 @@ export class DefaultScheduler implements Scheduler {
                 exitCode,
                 artifacts,
                 error,
-                permissions: internalTask.task.permissions || { mode: "default" }
+                permissions: internalTask.task.permissions || { mode: "default" },
+                metadata: sanitizeMetadata(internalTask.task.metadata)
               });
             }
 
@@ -291,20 +297,21 @@ export class DefaultScheduler implements Scheduler {
 
           this.completed.set(internalTask.task.id, failureResult);
 
-          if (this.eventSink) {
-            const eventName = isAbort ? "agent.cancelled" : "agent.failed";
-            this.eventSink.emit(eventName, {
-              agentId: internalTask.task.id,
-              label: internalTask.task.label,
-              provider: internalTask.task.provider || internalTask.options?.provider || "mock",
-              model: internalTask.task.model || internalTask.options?.model,
-              status,
-              durationMs,
-              exitCode: null,
-              error: errorPayload,
-              permissions: internalTask.task.permissions || { mode: "default" }
-            });
-          }
+      if (this.eventSink) {
+        const eventName = isAbort ? "agent.cancelled" : "agent.failed";
+        this.eventSink.emit(eventName, {
+          agentId: internalTask.task.id,
+          label: internalTask.task.label,
+          provider: internalTask.task.provider || internalTask.options?.provider || "mock",
+          model: internalTask.task.model || internalTask.options?.model,
+          status,
+          durationMs,
+          exitCode: null,
+          error: errorPayload,
+          permissions: internalTask.task.permissions || { mode: "default" },
+          metadata: sanitizeMetadata(internalTask.task.metadata)
+        });
+      }
 
           internalTask.resolve(failureResult as any);
 

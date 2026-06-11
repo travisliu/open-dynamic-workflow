@@ -85,6 +85,7 @@ export interface AgentQueuedPayload {
   provider: string;
   model?: string;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentStartedPayload {
@@ -94,6 +95,7 @@ export interface AgentStartedPayload {
   model?: string;
   cwd: string;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentOutputPayload {
@@ -112,6 +114,7 @@ export interface AgentCompletedPayload {
   exitCode: number;
   artifacts: AgentArtifacts;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentCacheHitPayload {
@@ -137,6 +140,7 @@ export interface AgentFailedPayload {
   error: SerializedError;
   artifacts: AgentArtifacts;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentTimedOutPayload {
@@ -149,6 +153,7 @@ export interface AgentTimedOutPayload {
   error: SerializedError;
   artifacts: AgentArtifacts;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AgentCancelledPayload {
@@ -161,6 +166,7 @@ export interface AgentCancelledPayload {
   error?: SerializedError;
   artifacts?: AgentArtifacts;
   permissions: AgentPermissions;
+  metadata?: Record<string, unknown>;
 }
 
 export interface PipelineStartedPayload {

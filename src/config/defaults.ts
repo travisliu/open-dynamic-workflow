@@ -39,6 +39,12 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
       "PASSWORD"
     ]
   },
+  sharedAgents: {
+    dir: ".openflow/agents",
+    allowDynamicIds: false,
+    maxDefinitions: 100,
+    strictPromptTemplateVariables: true
+  },
   reporting: {
     mode: "pretty",
     verbose: false

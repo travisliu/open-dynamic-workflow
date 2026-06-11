@@ -154,8 +154,10 @@ describe("Model Events, Reports, and Artifacts", () => {
 
     const metadata = writtenFiles.get("agents/agent-test-run/metadata.json");
     expect(metadata).toEqual({
+      modelResolutionSource: "cli",
       model: "custom-resolved-model",
       resolutionSource: "cli",
+      structuredOutputTransport: undefined,
       permissions: { mode: "default" }
     });
   });

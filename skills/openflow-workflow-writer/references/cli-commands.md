@@ -61,6 +61,8 @@ openflow validate workflows/review.ts
 * Unsupported imports and restricted APIs are rejected.
 * Supported `pipeline()` usage is accepted.
 * Obviously invalid `pipeline()` usage is rejected.
+* Shared agent definitions in `sharedAgents.dir` are loaded and validated.
+* Verifies that `agent({ definition })` and `ctx.agent({ definition })` calls use string literal IDs that exist in the shared agent registry (when `sharedAgents.allowDynamicIds` is false).
 
 ---
 
@@ -78,3 +80,11 @@ openflow doctor
 * Gemini CLI is available for Gemini workflows.
 * provider commands can be executed.
 * secret-like environment values are not printed.
+
+---
+
+## Shared Agent Loading & Security Policy
+
+When executing `openflow run` or `openflow validate`, OpenFlow scans the configured `sharedAgents.dir` directory.
+If a file contains unauthorized symbols or attempts host operations violating the validation restrictions, a `SHARED_AGENT_SECURITY_POLICY_VIOLATION` error is thrown, halting execution or validation immediately.
+Literal shared agent IDs referenced in `agent({ definition })` or `ctx.agent({ definition })` are checked against this loaded registry.

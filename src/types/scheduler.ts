@@ -14,6 +14,7 @@ export interface ScheduledTask<T> {
   provider?: ProviderName | undefined;
   model?: string | undefined;
   permissions?: AgentPermissions | undefined;
+  metadata?: Record<string, unknown> | undefined;
   run: (signal: AbortSignal) => MaybePromise<T>;
 }
 

@@ -42,6 +42,13 @@ export interface ReportingConfig {
   verbose: boolean;
 }
 
+export interface SharedAgentsConfig {
+  dir: string;
+  allowDynamicIds: false;
+  maxDefinitions: number;
+  strictPromptTemplateVariables: boolean;
+}
+
 export interface OpenFlowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
@@ -51,6 +58,7 @@ export interface OpenFlowConfig {
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
   reporting: ReportingConfig;
+  sharedAgents: SharedAgentsConfig;
 }
 
 export interface ResolvedConfig extends OpenFlowConfig {

@@ -1,6 +1,7 @@
 import type { Reporter, ReporterStartInput, ReporterStreams } from "./reporter.js";
 import type { EventEnvelope } from "./events.js";
 import type { WorkflowRunResult } from "../types/workflow.js";
+import { sanitizeMetadata } from "../security/metadata.js";
 
 function formatDuration(ms?: number): string {
   if (typeof ms !== "number") return "";
@@ -48,6 +49,9 @@ export class PrettyReporter implements Reporter {
           const providerStr = payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
           const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
           this.stdout.write(`• ${label} queued [${providerStr}]${permStr}\n`);
+          if (payload.metadata && Object.keys(payload.metadata).length > 0) {
+            this.stdout.write(`  Metadata: ${JSON.stringify(sanitizeMetadata(payload.metadata))}\n`);
+          }
         }
         break;
       }
@@ -56,6 +60,9 @@ export class PrettyReporter implements Reporter {
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
         const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
         this.stdout.write(`▶ ${label} started [${providerStr}]${permStr}\n`);
+        if (this.verbose && payload.metadata && Object.keys(payload.metadata).length > 0) {
+          this.stdout.write(`  Metadata: ${JSON.stringify(sanitizeMetadata(payload.metadata))}\n`);
+        }
         break;
       }
       case "agent.output": {
@@ -70,6 +77,9 @@ export class PrettyReporter implements Reporter {
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
         const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
         this.stdout.write(`✓ ${label} succeeded [${providerStr}] ${dur}${permStr}\n`);
+        if (this.verbose && payload.metadata && Object.keys(payload.metadata).length > 0) {
+          this.stdout.write(`  Metadata: ${JSON.stringify(sanitizeMetadata(payload.metadata))}\n`);
+        }
         break;
       }
       case "agent.cache_hit": {
@@ -84,6 +94,9 @@ export class PrettyReporter implements Reporter {
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
         const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
         this.stdout.write(`✕ ${label} failed [${providerStr}] ${errMsg}${permStr}\n`);
+        if (this.verbose && payload.metadata && Object.keys(payload.metadata).length > 0) {
+          this.stdout.write(`  Metadata: ${JSON.stringify(sanitizeMetadata(payload.metadata))}\n`);
+        }
         break;
       }
       case "agent.timed_out": {
@@ -92,6 +105,9 @@ export class PrettyReporter implements Reporter {
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
         const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
         this.stdout.write(`✕ ${label} timed out [${providerStr}] ${errMsg}${permStr}\n`);
+        if (this.verbose && payload.metadata && Object.keys(payload.metadata).length > 0) {
+          this.stdout.write(`  Metadata: ${JSON.stringify(sanitizeMetadata(payload.metadata))}\n`);
+        }
         break;
       }
       case "agent.cancelled": {
@@ -100,6 +116,9 @@ export class PrettyReporter implements Reporter {
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
         const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
         this.stdout.write(`✕ ${label} cancelled [${providerStr}] ${errMsg}${permStr}\n`);
+        if (this.verbose && payload.metadata && Object.keys(payload.metadata).length > 0) {
+          this.stdout.write(`  Metadata: ${JSON.stringify(sanitizeMetadata(payload.metadata))}\n`);
+        }
         break;
       }
       case "pipeline.started": {

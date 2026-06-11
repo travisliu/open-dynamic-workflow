@@ -578,7 +578,8 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const rawResultJson = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
     expect(rawResultJson).toEqual({
       foo: "bar",
-      permissions: { mode: "dangerously-full-access" }
+      permissions: { mode: "dangerously-full-access" },
+      metadata: {}
     });
   });
 
@@ -638,7 +639,8 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const rawResultJson = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
     expect(rawResultJson).toEqual({
       raw: "primitive string",
-      permissions: { mode: "dangerously-full-access" }
+      permissions: { mode: "dangerously-full-access" },
+      metadata: {}
     });
   });
 
@@ -698,7 +700,60 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const rawResultJson = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
     expect(rawResultJson).toEqual({
       raw: ["item1", "item2"],
-      permissions: { mode: "dangerously-full-access" }
+      permissions: { mode: "dangerously-full-access" },
+      metadata: {}
     });
+  });
+
+  it("sanitizes and size-limits metadata in artifacts and results", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          responses: {
+            "metadata-agent": { text: "success" }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-metadata-sanitization";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const longString = "a".repeat(300);
+    const result = await executor.execute({
+      id: "metadata-agent",
+      label: "Metadata Agent",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      permissions: { mode: "default" },
+      signal: new AbortController().signal,
+      metadata: {
+        sharedAgentId: longString,
+        secret: "should-be-redacted",
+        pipelineId: "pipe-1"
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    // Verify result metadata
+    expect((result as any).metadata.sharedAgentId).toHaveLength(256 + 3);
+    expect((result as any).metadata.pipelineId).toBe("pipe-1");
+    expect((result as any).metadata).not.toHaveProperty("secret");
+
+    // Verify metadata.json artifact
+    const agentDir = path.join(runOutDir, "agents/metadata-agent");
+    const metadataJson = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
+    expect(metadataJson.sharedAgentId).toHaveLength(256 + 3);
+    expect(metadataJson.pipelineId).toBe("pipe-1");
+    expect(metadataJson).not.toHaveProperty("secret");
+    expect(metadataJson.model).toBe("mock-model"); // model is added by executor after sanitization
   });
 });

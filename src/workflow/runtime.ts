@@ -17,6 +17,7 @@ import { shouldTriggerFailFast } from "../orchestration/fail-fast.js";
 import { OpenFlowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { loadRuntimeCallCache } from "../artifacts/call-cache.js";
+import type { SharedAgentRegistry } from "../shared-agents/registry.js";
 
 export interface Clock {
   now(): Date;
@@ -31,6 +32,7 @@ export interface RuntimeRunInput {
   config: ResolvedConfig;
   cli: CliRunOptions;
   signal?: AbortSignal;
+  sharedAgentRegistry?: SharedAgentRegistry;
 }
 
 export interface RuntimeDependencies {
@@ -39,6 +41,7 @@ export interface RuntimeDependencies {
   artifactStore?: ArtifactStore;
   clock?: Clock;
   idGenerator?: IdGenerator;
+  sharedAgentRegistry?: SharedAgentRegistry;
 }
 
 export interface RuntimeRunner {
@@ -92,7 +95,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       pipelineSummaries: [],
       startedAt: startTime.toISOString(),
       idGenerator: deps.idGenerator !== undefined ? deps.idGenerator : undefined,
-      failFast: input.cli.failFast
+      failFast: input.cli.failFast,
+      sharedAgentRegistry: input.sharedAgentRegistry || deps.sharedAgentRegistry
     };
 
     if (deps.artifactStore && !deps.artifactStore.isRunCreated()) {

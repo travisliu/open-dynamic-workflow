@@ -347,7 +347,9 @@ OpenFlow workflows run in a constrained runtime. The runtime exposes a clean, ex
 
 ### `agent(input)`
 
-Runs a provider-backed agent task.
+Runs a provider-backed agent task (either a direct agent or a registered shared agent).
+
+Direct agent call:
 
 ```ts
 const result = await agent({
@@ -357,13 +359,25 @@ const result = await agent({
 });
 ```
 
+Shared agent call:
+
+```ts
+const result = await agent({
+  definition: "security-reviewer",
+  file: "src/auth.ts" // context variable consumed by the template
+});
+```
+
 Supported input:
 
 ```ts
-type AgentCallInput = {
+type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
+
+// Direct provider call
+type DirectAgentCallInput = {
   id?: string;
   label?: string;
-  provider?: "codex" | "gemini" | "mock" | string;
+  provider?: string;
   prompt: string;
   model?: string;
   schema?: JsonSchema;
@@ -371,6 +385,22 @@ type AgentCallInput = {
   cwd?: string;
   permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
+};
+
+// Registered shared agent call
+type DefinitionAgentCallInput = {
+  definition: string;
+  id?: string;
+  label?: string;
+  provider?: string;
+  prompt?: string;
+  model?: string;
+  schema?: JsonSchema;
+  timeoutMs?: number;
+  cwd?: string;
+  permissions?: { mode: "dangerously-full-access" };
+  metadata?: Record<string, unknown>;
+  [contextKey: string]: unknown; // additional context fields passed to the template
 };
 ```
 
@@ -461,7 +491,7 @@ The `PipelineStageContext` (`ctx`) object passed to each stage contains:
 - `pipelineId` and `runId` (strings)
 - `itemIndex` and `stageIndex` (numbers)
 - `stageName` (string)
-- `agent(input)`: Run an agent call with guaranteed scoped context.
+- `agent(input)`: Run an agent call (direct or shared agent definition) with guaranteed scoped context.
 - `log(message, data?)`: Log pipeline-specific messages.
 - `agentId(suffix?)`: Helper to generate a unique agent ID.
 - `signal`: AbortSignal for the stage.

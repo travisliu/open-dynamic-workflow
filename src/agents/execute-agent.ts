@@ -8,6 +8,7 @@ import { runProcess } from "./process-runner.js";
 import { validateJson } from "../structured/validate-json.js";
 import { normalizeAgentOutput } from "../structured/normalize-agent-output.js";
 import { buildProviderEnv, shouldRedactEnvName, redactText, StreamRedactor } from "../security/env.js";
+import { sanitizeMetadata } from "../security/metadata.js";
 
 const MAX_IN_MEMORY_LOG_SIZE = 1024 * 1024; // 1MB limit for in-memory results
 
@@ -39,6 +40,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
     const registry = createDefaultProviderRegistry({ config: this.config });
     const adapter = registry.get(input.provider);
     const resolvedPerms = input.permissions || { mode: "default" };
+    const sanitizedMetadata = sanitizeMetadata(input.metadata);
 
     // 1. Write prompt.txt
     await this.artifactStore.writeText(`agents/${input.id}/prompt.txt`, input.prompt);
@@ -50,8 +52,9 @@ export class DefaultAgentExecutor implements AgentExecutor {
 
     // Write metadata.json
     const metadataJson = {
+      ...sanitizedMetadata,
       model: input.model,
-      resolutionSource: input.metadata?.modelResolutionSource || "provider-default",
+      resolutionSource: sanitizedMetadata.modelResolutionSource || "provider-default",
       structuredOutputTransport: input.schema ? input.structuredOutput?.transport ?? "auto" : undefined,
       permissions: resolvedPerms
     };
@@ -110,7 +113,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       cwd: input.cwd,
       env: {},
       permissions: resolvedPerms,
-      metadata: input.metadata
+      metadata: sanitizedMetadata
     };
 
     const appendToLogs = async (stream: "stdout" | "stderr", chunk: string, redactor: StreamRedactor) => {
@@ -176,7 +179,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         durationMs,
         artifacts: agentArtifacts,
         error: errorPayload,
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
 
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
@@ -226,7 +230,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         durationMs,
         artifacts: agentArtifacts,
         error: errPayload,
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
@@ -247,7 +252,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         durationMs,
         artifacts: agentArtifacts,
         error: errPayload,
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
@@ -271,7 +277,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
           message: stderrInMemory.trim() || `Process exited with code ${exitCode}`,
           code: "PROVIDER_PROCESS_FAILED"
         },
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
@@ -303,7 +310,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
           message: `Parser crashed: ${err.message}`,
           code: "INTERNAL_ERROR"
         },
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
@@ -314,12 +322,14 @@ export class DefaultAgentExecutor implements AgentExecutor {
     if (rawResult && typeof rawResult === "object" && !Array.isArray(rawResult)) {
       savedRawResult = {
         ...rawResult,
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
     } else {
       savedRawResult = {
         raw: rawResult,
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
     }
     await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, savedRawResult);
@@ -353,7 +363,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
           message: normalized.error.message,
           code: normalized.error.code as any
         },
-        permissions: resolvedPerms
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
       };
       return failureResult;
     }
@@ -374,7 +385,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
       exitCode: exitCode ?? 0,
       durationMs,
       artifacts: agentArtifacts,
-      permissions: resolvedPerms
+      permissions: resolvedPerms,
+      metadata: sanitizedMetadata
     };
 
     return successResult;

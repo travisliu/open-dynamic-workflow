@@ -172,4 +172,36 @@ export function validateConfig(config: OpenFlowConfig): void {
       "Config value 'security.allowWorkflowImports' must be false in MVP."
     );
   }
+
+  // sharedAgents validation
+  if (typeof config.sharedAgents !== "object" || config.sharedAgents === null) {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'sharedAgents' must be an object."
+    );
+  }
+  if (typeof config.sharedAgents.dir !== "string" || config.sharedAgents.dir.trim() === "") {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'sharedAgents.dir' must be a non-empty string."
+    );
+  }
+  if (!Number.isInteger(config.sharedAgents.maxDefinitions) || config.sharedAgents.maxDefinitions < 1) {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'sharedAgents.maxDefinitions' must be a positive integer."
+    );
+  }
+  if (config.sharedAgents.allowDynamicIds !== false) {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'sharedAgents.allowDynamicIds' must be false in MVP."
+    );
+  }
+  if (typeof config.sharedAgents.strictPromptTemplateVariables !== "boolean") {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'sharedAgents.strictPromptTemplateVariables' must be a boolean."
+    );
+  }
 }
