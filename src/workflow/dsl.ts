@@ -6,7 +6,6 @@ import { resolveAgentModel } from "../agents/resolve-model.js";
 import { InvalidDslCallError } from "./errors.js";
 import { OpenFlowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
-import type { PipelineStage, PipelineOptions, PipelineResult } from "../pipeline/types.js";
 import { runPipeline } from "../pipeline/run.js";
 import { getActivePipelineContext, recordChildAgentId } from "../pipeline/context.js";
 import { createPipelineAgentId } from "../pipeline/id.js";
@@ -20,6 +19,14 @@ import {
 } from "../artifacts/call-cache.js";
 import { executeSharedAgent } from "../shared-agents/execute.js";
 import { serializeError } from "../errors/serialize.js";
+import { getActiveWorkflowInvocation } from "./invocation-types.js";
+import type { 
+  PipelineStage, 
+  PipelineOptions, 
+  PipelineResult, 
+  WorkflowCallInput, 
+  WorkflowSettledResult 
+} from "../types/workflow.js";
 
 export function createDsl(runtime: RuntimeState) {
   const logWorkflow = (message: string, data?: unknown): void => {
@@ -36,6 +43,7 @@ export function createDsl(runtime: RuntimeState) {
   };
 
   const runDirectAgent = async (input: DirectAgentCallInput): Promise<AgentResult> => {
+    const activeInvocation = getActiveWorkflowInvocation();
     if (!input || typeof input !== "object") {
       throw new InvalidDslCallError("agent() requires an input object.");
     }
@@ -88,6 +96,13 @@ export function createDsl(runtime: RuntimeState) {
     const resolvedPermissions: AgentPermissions = input.permissions
       ? { mode: "dangerously-full-access" }
       : { mode: "default" };
+
+    const originMetadata = activeInvocation ? {
+      workflowInvocationId: activeInvocation.workflowInvocationId,
+      parentWorkflowInvocationId: activeInvocation.parentWorkflowInvocationId,
+      workflowName: activeInvocation.workflowName,
+      workflowDepth: activeInvocation.depth
+    } : {};
 
     // Normalization
     let normalizedId = input.id;
@@ -180,24 +195,32 @@ export function createDsl(runtime: RuntimeState) {
       permissions: resolvedPermissions,
       metadata: {
         ...input.metadata,
+        ...originMetadata,
         modelResolutionSource: resolved.source
       },
       run: async (schedulerSignal: AbortSignal) => {
         let finalSignal = schedulerSignal;
         let onAbort: (() => void) | undefined;
 
-        if (activePipeline && activePipeline.stageSignal) {
+        const invocationSignal = activeInvocation?.signal;
+
+        if ((activePipeline && activePipeline.stageSignal) || invocationSignal) {
           const combinedController = new AbortController();
           onAbort = () => {
-            combinedController.abort(schedulerSignal.reason || activePipeline.stageSignal?.reason || "Aborted");
+            combinedController.abort(schedulerSignal.reason || activePipeline?.stageSignal?.reason || invocationSignal?.reason || "Aborted");
           };
           if (schedulerSignal.aborted) {
             combinedController.abort(schedulerSignal.reason);
-          } else if (activePipeline.stageSignal.aborted) {
+          } else if (activePipeline?.stageSignal?.aborted) {
             combinedController.abort(activePipeline.stageSignal.reason);
+          } else if (invocationSignal?.aborted) {
+            combinedController.abort(invocationSignal.reason);
           } else {
             schedulerSignal.addEventListener("abort", onAbort);
-            activePipeline.stageSignal.addEventListener("abort", onAbort);
+            if (activePipeline?.stageSignal) {
+              activePipeline.stageSignal.addEventListener("abort", onAbort);
+            }
+            invocationSignal?.addEventListener("abort", onAbort);
           }
           finalSignal = combinedController.signal;
         }
@@ -212,6 +235,7 @@ export function createDsl(runtime: RuntimeState) {
           signal: finalSignal,
           metadata: {
             ...input.metadata,
+            ...originMetadata,
             modelResolutionSource: resolved.source
           }
         };
@@ -225,7 +249,10 @@ export function createDsl(runtime: RuntimeState) {
         } finally {
           if (onAbort) {
             schedulerSignal.removeEventListener("abort", onAbort);
-            activePipeline?.stageSignal?.removeEventListener("abort", onAbort);
+            if (activePipeline?.stageSignal) {
+              activePipeline.stageSignal.removeEventListener("abort", onAbort);
+            }
+            invocationSignal?.removeEventListener("abort", onAbort);
           }
         }
       }
@@ -242,22 +269,32 @@ export function createDsl(runtime: RuntimeState) {
       cwd: normalizedCwd
     };
 
-    const result = await runtime.scheduler.schedule(task, scheduleOptions);
-    runtime.agentResults.push(result);
-    await recordCall({
-      store: runtime.artifactStore,
-      cache: runtime.callCache,
-      sequence,
-      callId,
-      fingerprint,
-      result
-    });
-
-    if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
-      throw new OpenFlowError(ErrorCode.PROVIDER_UNAVAILABLE, result.error.message);
+    if (activeInvocation?.concurrencyBudget) {
+      await activeInvocation.concurrencyBudget.acquire();
     }
+    
+    try {
+      const result = await runtime.scheduler.schedule(task, scheduleOptions);
+      runtime.agentResults.push(result);
+      await recordCall({
+        store: runtime.artifactStore,
+        cache: runtime.callCache,
+        sequence,
+        callId,
+        fingerprint,
+        result
+      });
 
-    return result;
+      if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
+        throw new OpenFlowError(ErrorCode.PROVIDER_UNAVAILABLE, result.error.message);
+      }
+
+      return result;
+    } finally {
+      if (activeInvocation?.concurrencyBudget) {
+        activeInvocation.concurrencyBudget.release();
+      }
+    }
   };
 
   const runAgentCall = async (input: AgentCallInput): Promise<AgentResult> => {
@@ -272,6 +309,7 @@ export function createDsl(runtime: RuntimeState) {
         );
       }
       const activePipeline = getActivePipelineContext();
+      const activeInvocation = getActiveWorkflowInvocation();
       try {
         return await executeSharedAgent({
           sharedAgentId: input.definition,
@@ -290,7 +328,7 @@ export function createDsl(runtime: RuntimeState) {
           runId: runtime.runId,
           cwd: runtime.cwd,
           artifactsDir: runtime.artifactsDir,
-          signal: runtime.abortController.signal,
+          signal: activeInvocation?.signal || runtime.abortController.signal,
           agent: async (innerInput) => {
             if ("definition" in innerInput && innerInput.definition !== undefined) {
               throw new OpenFlowError(
@@ -366,12 +404,22 @@ export function createDsl(runtime: RuntimeState) {
       if (!name || typeof name !== "string" || name.trim() === "") {
         throw new InvalidDslCallError("phase() requires a non-empty string for the phase name.");
       }
-      if (runtime.currentPhase) {
+      
+      const activeInvocation = getActiveWorkflowInvocation();
+      const currentPhase = activeInvocation ? activeInvocation.currentPhase : runtime.currentPhase;
+      
+      if (currentPhase) {
         if (runtime.eventSink) {
-          runtime.eventSink.emit("phase.completed", { name: runtime.currentPhase });
+          runtime.eventSink.emit("phase.completed", { name: currentPhase });
         }
       }
-      runtime.currentPhase = name;
+      
+      if (activeInvocation) {
+        activeInvocation.currentPhase = name;
+      } else {
+        runtime.currentPhase = name;
+      }
+      
       if (runtime.eventSink) {
         runtime.eventSink.emit("phase.started", { name });
       }
@@ -419,13 +467,32 @@ export function createDsl(runtime: RuntimeState) {
       stages: PipelineStage<any, any>[],
       options?: PipelineOptions
     ): Promise<PipelineResult<O>> => {
+      const activeInvocation = getActiveWorkflowInvocation();
       return runPipeline({
         items,
         stages,
         options,
         runtime,
-        signal: runtime.abortController.signal
+        signal: activeInvocation?.signal || runtime.abortController.signal
       });
+    },
+
+    workflow: async <T>(input: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>> => {
+      const activeInvocation = getActiveWorkflowInvocation();
+      if (!activeInvocation) {
+        throw new OpenFlowError(
+          ErrorCode.WORKFLOW_FAILED,
+          "workflow() can only be called from within a workflow invocation."
+        );
+      }
+      if (!runtime.invocationManager) {
+        throw new OpenFlowError(
+          ErrorCode.WORKFLOW_FAILED,
+          "Workflow invocation manager is not available."
+        );
+      }
+      const result = await runtime.invocationManager.invokeChild<T>(activeInvocation, input);
+      return result;
     }
   };
 }

@@ -81,4 +81,30 @@ describe("Merge Config", () => {
     const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
     expect(merged.sharedAgents.allowDynamicIds).toBe(false);
   });
+
+  it("workflow.discovery.include replaces defaults", () => {
+    const fileConfig: any = {
+      workflow: {
+        discovery: {
+          include: ["custom/**/*.ts"]
+        }
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.workflow.discovery.include).toEqual(["custom/**/*.ts"]);
+    // maxDepth should remain default
+    expect(merged.workflow.maxDepth).toBe(8);
+  });
+
+  it("workflow.maxDepth overrides defaults", () => {
+    const fileConfig: any = {
+      workflow: {
+        maxDepth: 3
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.workflow.maxDepth).toBe(3);
+    // discovery should remain default
+    expect(merged.workflow.discovery.include).toEqual(["workflows/**/*.ts"]);
+  });
 });

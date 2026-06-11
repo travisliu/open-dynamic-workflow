@@ -166,6 +166,9 @@ export class FileSystemArtifactStore implements ArtifactStore {
       reportPath: path.join(rootDir, "report.json"),
       agentDir: (agentId: string) => {
         return path.join(rootDir, "agents", safeFileName(agentId));
+      },
+      workflowInvocationDir: (workflowInvocationId: string) => {
+        return path.join(rootDir, "workflows", safeFileName(workflowInvocationId));
       }
     };
   }

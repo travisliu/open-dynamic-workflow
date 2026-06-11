@@ -45,6 +45,12 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
     maxDefinitions: 100,
     strictPromptTemplateVariables: true
   },
+  workflow: {
+    discovery: {
+      include: ["workflows/**/*.ts"]
+    },
+    maxDepth: 8
+  },
   reporting: {
     mode: "pretty",
     verbose: false

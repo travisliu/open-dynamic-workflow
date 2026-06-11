@@ -52,6 +52,7 @@ OpenFlow exposes these workflow DSL primitives:
 | `pipeline()` | Process many items through ordered stages.      |
 | `phase()`    | Mark the current workflow phase.                |
 | `log()`      | Emit a workflow log event.                      |
+| `workflow()` | Invoke another workflow as a child.            |
 
 ---
 
@@ -471,7 +472,54 @@ Do not log:
 
 ---
 
-## 8. Providers
+## 8. `workflow()`
+
+Invokes another workflow as a child of the current workflow.
+
+### Example
+
+```ts
+const result = await workflow({
+  name: "security-review",
+  args: { target: "src/auth.ts" }
+});
+```
+
+### Conceptual input type
+
+```ts
+type WorkflowCallInput = {
+  name: string;
+  args?: JsonObject;
+  failureMode?: "throw" | "settled";
+  timeoutMs?: number;
+  concurrency?: number;
+  metadata?: JsonObject;
+};
+```
+
+### Fields
+
+| Field         | Required | Description                                                                         |
+| ------------- | -------: | ----------------------------------------------------------------------------------- |
+| `name`        |      Yes | Name of the child workflow to invoke (must be registered).                          |
+| `args`        |       No | Input arguments passed to the child workflow.                                       |
+| `failureMode` |       No | `"throw"` (default) or `"settled"`. Controls error handling.                         |
+| `timeoutMs`   |       No | Maximum execution time for the child invocation.                                     |
+| `concurrency` |       No | Local concurrency limit for agents within the child invocation subtree.             |
+| `metadata`    |       No | Custom metadata for the invocation.                                                 |
+
+### Behavior
+
+* **Isolation**: Child workflows run in a fresh context with their own `args` and `phase` state.
+* **Cloning**: `args` and results are deep-cloned using JSON-safe rules to prevent mutation leakage.
+* **Cancellation**: If the parent workflow is cancelled, the child and all its descendants are aborted.
+* **Recursion**: Active recursion (e.g., A calling B calling A) is detected and rejected at runtime.
+* **Depth**: Maximum invocation depth is enforced (default 8).
+
+---
+
+## 9. Providers
 
 OpenFlow provider adapters coordinate external agent CLIs.
 
@@ -497,7 +545,7 @@ The `permissions` field on `agent()` affects provider CLI arguments at the adapt
 
 ---
 
-## 9. Model Selection
+## 10. Model Selection
 
 Model selection can be configured globally, per provider, from the CLI, or per agent.
 
@@ -522,7 +570,7 @@ const result = await agent({
 
 ---
 
-## 10. Reports
+## 11. Reports
 
 OpenFlow supports three report modes.
 
@@ -556,7 +604,7 @@ Use for CI logs, dashboards, and live event consumers.
 
 ---
 
-## 11. Artifacts
+## 12. Artifacts
 
 Every run creates a local artifact directory.
 
@@ -585,6 +633,12 @@ Every run creates a local artifact directory.
           stages/
             <stageName>/
               stage-result.json
+  workflows/
+    <workflowInvocationId>/
+      input.json
+      result.json
+      error.json
+      summary.json
 ```
 
 Use artifacts to debug:
@@ -601,7 +655,7 @@ Artifacts may contain prompts, source snippets, and model outputs. Treat them as
 
 ---
 
-## 12. Pipeline Events
+## 13. Pipeline Events
 
 Pipeline execution emits events such as:
 
@@ -622,7 +676,7 @@ JSONL consumers should treat unknown event types as forward-compatible and ignor
 
 ---
 
-## 13. Exit Codes
+## 14. Exit Codes
 
 | Code | Meaning                            |
 | ---: | ---------------------------------- |
@@ -638,7 +692,7 @@ JSONL consumers should treat unknown event types as forward-compatible and ignor
 
 ---
 
-## 14. Out-of-Scope or Gated Capabilities
+## 15. Out-of-Scope or Gated Capabilities
 
 Do not assume these are available unless explicitly implemented or enabled:
 
@@ -658,7 +712,7 @@ Do not assume these are available unless explicitly implemented or enabled:
 
 ---
 
-## 15. Common Validation Mistakes
+## 16. Common Validation Mistakes
 
 Bad: metadata is not first.
 
@@ -824,7 +878,7 @@ const result = await agent({
 
 ---
 
-## 16. Minimal Workflow Template
+## 17. Minimal Workflow Template
 
 ```ts
 export const meta = {
@@ -862,7 +916,7 @@ export default {
 
 ---
 
-## 17. Parallel Workflow Template
+## 18. Parallel Workflow Template
 
 ```ts
 export const meta = {
@@ -909,7 +963,7 @@ export default {
 
 ---
 
-## 18. Pipeline Workflow Template
+## 19. Pipeline Workflow Template
 
 ```ts
 export const meta = {
@@ -988,7 +1042,7 @@ export default {
 
 ---
 
-## 19. Workflow Patterns
+## 20. Workflow Patterns
 
 These patterns show standard architectures for organizing OpenFlow workflows.
 

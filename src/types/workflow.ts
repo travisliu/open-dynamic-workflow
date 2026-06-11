@@ -1,7 +1,9 @@
 import type { AgentCallInput, AgentResult } from "./agent.js";
-import type { JsonObject, WorkflowStatus } from "./common.js";
+import type { JsonObject, JsonValue, WorkflowStatus } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
+
+export type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary };
 
 export interface WorkflowMeta {
   name: string;
@@ -9,6 +11,7 @@ export interface WorkflowMeta {
   phases?: string[];
   version?: string;
   tags?: string[];
+  inputSchema?: JsonObject;
 }
 
 export interface ParsedWorkflow {
@@ -27,10 +30,68 @@ export type ParallelResult<TTasks> = TTasks extends Array<() => Promise<infer TV
     ? Record<keyof TTasks, TValue>
     : never;
 
+export type WorkflowFailureMode = "throw" | "settled";
+
+export interface WorkflowCallInput {
+  name: string;
+  args?: JsonObject;
+  failureMode?: WorkflowFailureMode;
+  timeoutMs?: number;
+  concurrency?: number;
+  metadata?: JsonObject;
+}
+
+export type WorkflowThrowCallInput = Omit<WorkflowCallInput, "failureMode"> & {
+  failureMode?: "throw";
+};
+
+export type WorkflowSettledCallInput = Omit<WorkflowCallInput, "failureMode"> & {
+  failureMode: "settled";
+};
+
+export type WorkflowSettledStatus = "succeeded" | "failed" | "timed_out" | "cancelled";
+
+export type WorkflowSettledResult<T = unknown> =
+  | {
+      status: "succeeded";
+      workflowName: string;
+      workflowInvocationId: string;
+      output: T;
+      startedAt: string;
+      finishedAt: string;
+      durationMs: number;
+      artifactPath?: string | undefined;
+    }
+  | {
+      status: Exclude<WorkflowSettledStatus, "succeeded">;
+      workflowName: string;
+      workflowInvocationId: string;
+      output: null;
+      error: SerializedError;
+      startedAt: string;
+      finishedAt: string;
+      durationMs: number;
+      artifactPath?: string | undefined;
+    };
+
+export interface WorkflowInvocationSummary {
+  workflowInvocationId: string;
+  parentWorkflowInvocationId?: string | undefined;
+  workflowName: string;
+  status: WorkflowSettledStatus;
+  depth: number;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  artifactPath?: string | undefined;
+  error?: SerializedError | undefined;
+}
+
 export interface WorkflowRuntimeContext {
   args: JsonObject;
   cwd: string;
   runId: string;
+  workflowInvocationId?: string | undefined;
   artifactsDir: string;
   agent(input: AgentCallInput): Promise<AgentResult>;
   parallel<TTasks extends ParallelTasks<unknown>>(tasks: TTasks): Promise<ParallelResult<TTasks>>;
@@ -41,6 +102,9 @@ export interface WorkflowRuntimeContext {
     stages: PipelineStage<any, any>[],
     options?: PipelineOptions
   ): Promise<PipelineResult<O>>;
+  workflow<T = JsonValue>(input: WorkflowThrowCallInput): Promise<T>;
+  workflow<T = JsonValue>(input: WorkflowSettledCallInput): Promise<WorkflowSettledResult<T>>;
+  workflow<T = JsonValue>(input: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>>;
 }
 
 export interface WorkflowRunResult {
@@ -48,14 +112,16 @@ export interface WorkflowRunResult {
   runId: string;
   status: WorkflowStatus;
   meta: WorkflowMeta;
-  result?: unknown;
+  result?: unknown | undefined;
   agents: AgentResult[];
   pipelines?: PipelineSummary[] | undefined;
+  workflows?: WorkflowInvocationSummary[] | undefined;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
   artifactsDir: string;
   reportPath: string;
   eventsPath: string;
-  error?: SerializedError;
+  error?: SerializedError | undefined;
 }
+

@@ -49,6 +49,19 @@ export interface SharedAgentsConfig {
   strictPromptTemplateVariables: boolean;
 }
 
+export interface WorkflowDiscoveryConfig {
+  include: string[];
+}
+
+export interface WorkflowConfig {
+  discovery: WorkflowDiscoveryConfig;
+  maxDepth: number;
+}
+
+export interface OrchestrationConfig {
+  concurrency?: number;
+}
+
 export interface OpenFlowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
@@ -59,6 +72,8 @@ export interface OpenFlowConfig {
   security: SecurityConfig;
   reporting: ReportingConfig;
   sharedAgents: SharedAgentsConfig;
+  workflow: WorkflowConfig;
+  orchestration?: OrchestrationConfig;
 }
 
 export interface ResolvedConfig extends OpenFlowConfig {

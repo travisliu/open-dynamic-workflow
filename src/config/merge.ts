@@ -44,6 +44,14 @@ export function mergeConfig(
       ...defaults.sharedAgents,
       ...(fileConfig.sharedAgents ?? {}),
       allowDynamicIds: false
+    },
+    workflow: {
+      ...defaults.workflow,
+      ...(fileConfig.workflow ?? {}),
+      discovery: {
+        ...defaults.workflow.discovery,
+        ...(fileConfig.workflow?.discovery ?? {})
+      }
     }
   };
 

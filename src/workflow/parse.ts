@@ -8,6 +8,36 @@ function hashSource(sourceText: string): string {
   return createHash("sha256").update(sourceText).digest("hex");
 }
 
+function parseJsonLiteral(node: ts.Expression): unknown {
+  if (ts.isStringLiteral(node)) return node.text;
+  if (ts.isNumericLiteral(node)) return Number(node.text);
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
+  if (node.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isArrayLiteralExpression(node)) {
+    return node.elements.map(element => {
+      if (ts.isSpreadElement(element)) {
+        throw new OpenFlowError(ErrorCode.WORKFLOW_PARSE_ERROR, "Metadata inputSchema must be a static JSON object.");
+      }
+      return parseJsonLiteral(element);
+    });
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    const result: Record<string, unknown> = {};
+    for (const prop of node.properties) {
+      if (!ts.isPropertyAssignment(prop)) {
+        throw new OpenFlowError(ErrorCode.WORKFLOW_PARSE_ERROR, "Metadata inputSchema must be a static JSON object.");
+      }
+      if (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name)) {
+        throw new OpenFlowError(ErrorCode.WORKFLOW_PARSE_ERROR, "Metadata inputSchema keys must be identifiers or string literals.");
+      }
+      result[prop.name.text] = parseJsonLiteral(prop.initializer);
+    }
+    return result;
+  }
+  throw new OpenFlowError(ErrorCode.WORKFLOW_PARSE_ERROR, "Metadata inputSchema must be a static JSON object.");
+}
+
 export function parseWorkflow(loaded: LoadedWorkflow): ParsedWorkflow {
   const sourceFile = ts.createSourceFile(
     loaded.sourcePath,
@@ -117,6 +147,8 @@ export function parseWorkflow(loaded: LoadedWorkflow): ParsedWorkflow {
         );
       }
       meta[keyName] = value.text;
+    } else if (keyName === "inputSchema") {
+      meta[keyName] = parseJsonLiteral(value);
     } else {
       throw new OpenFlowError(
         ErrorCode.WORKFLOW_PARSE_ERROR,

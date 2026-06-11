@@ -1,0 +1,6 @@
+export const meta = {
+  name: "recursive-b",
+  description: "Indirect recursion B"
+};
+
+return await workflow({ name: "recursive-a" });

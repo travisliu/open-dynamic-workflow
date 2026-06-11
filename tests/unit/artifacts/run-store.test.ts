@@ -143,4 +143,14 @@ describe("FileSystemArtifactStore", () => {
     const content = await fs.readFile(path.join(artifacts.rootDir, "ok.txt"), "utf8");
     expect(content).toBe("some data");
   });
+
+  it("getRunArtifacts() returns correct workflowInvocationDir helper", async () => {
+    const store = new FileSystemArtifactStore();
+    const artifacts = await store.createRun(defaultRunInput);
+
+    const invocationId = "wf-123";
+    const invocationDir = artifacts.workflowInvocationDir(invocationId);
+    
+    expect(invocationDir).toBe(path.join(artifacts.rootDir, "workflows", invocationId));
+  });
 });

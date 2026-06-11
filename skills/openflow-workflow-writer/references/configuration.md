@@ -34,6 +34,7 @@ graph TD
 | `concurrency` | `integer` | `4` | Positive integer (>= 1). | Maximum parallel tasks executed concurrently by the scheduler. |
 | `timeoutMs` | `integer` | `900_000` | Positive integer (>= 1) in ms. | Global timeout for workflow execution. |
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Global model override fallback for provider execution. |
+| `workflow.maxDepth` | `integer` | `8` | Positive integer (>= 1). | Maximum recursion/invocation depth for nested workflows. |
 | `failFast` | `boolean` | `false` | Boolean. | If true, aborts execution immediately on the first task failure. |
 
 ---

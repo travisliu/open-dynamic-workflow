@@ -27,7 +27,12 @@ export type EventType =
   | "pipeline.item.failed"
   | "pipeline.stage.started"
   | "pipeline.stage.completed"
-  | "pipeline.stage.failed";
+  | "pipeline.stage.failed"
+  | "workflow.invocation.started"
+  | "workflow.invocation.completed"
+  | "workflow.invocation.failed"
+  | "workflow.invocation.timed_out"
+  | "workflow.invocation.cancelled";
 
 export interface EventEnvelope<TPayload = unknown> {
   schemaVersion: "openflow.event.v1";
@@ -244,6 +249,29 @@ export interface PipelineStageTerminalPayload {
   durationMs: number;
   childAgentIds: string[];
   error?: SerializedError | undefined;
+}
+
+export interface WorkflowInvocationStartedPayload {
+  workflowInvocationId: string;
+  parentWorkflowInvocationId?: string;
+  workflowName: string;
+  depth: number;
+  startedAt: string;
+  metadata?: Record<string, unknown>;
+  artifactPath?: string;
+}
+
+export interface WorkflowInvocationTerminalPayload {
+  workflowInvocationId: string;
+  parentWorkflowInvocationId?: string;
+  workflowName: string;
+  status: "succeeded" | "failed" | "timed_out" | "cancelled";
+  depth: number;
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  artifactPath?: string;
+  error?: SerializedError;
 }
 
 export function isEventEnvelope(value: unknown): value is EventEnvelope {

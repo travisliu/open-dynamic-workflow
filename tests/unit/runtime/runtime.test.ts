@@ -5,12 +5,15 @@ import type { ResolvedConfig, CliRunOptions } from "../../../src/types/config.js
 import type { AgentExecutor, AgentExecutionInput } from "../../../src/agents/execution-types.js";
 import type { AgentResult } from "../../../src/types/agent.js";
 import type { RuntimeEventSink } from "../../../src/orchestration/scheduler.js";
+import { getActiveWorkflowInvocation } from "../../../src/workflow/invocation-types.js";
 
 class FakeAgentExecutor implements AgentExecutor {
   active = 0;
   maxActive = 0;
+  observedConcurrency?: number;
 
   async execute(input: AgentExecutionInput): Promise<AgentResult> {
+    this.observedConcurrency = getActiveWorkflowInvocation()?.effectiveConcurrency;
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
 
@@ -369,5 +372,29 @@ describe("DefaultRuntimeRunner", () => {
     expect(result.agents).toHaveLength(2);
     expect(result.agents[0]!.permissions).toEqual({ mode: "dangerously-full-access" });
     expect(result.agents[1]!.permissions).toEqual({ mode: "default" });
+  });
+
+  it("seeds root invocation context effectiveConcurrency with CLI/config scheduler limit", async () => {
+    const runner = new DefaultRuntimeRunner();
+    const parsedWorkflow: ParsedWorkflow = {
+      meta: { name: "concurrency-test", description: "concurrency-test" },
+      body: `
+        await agent({ prompt: "hello" });
+        export default { ok: true };
+      `,
+      sourcePath: "workflow.js",
+      sourceText: "",
+      sourceHash: "123"
+    };
+
+    const executor = new FakeAgentExecutor();
+    const cliOptions = { ...defaultCliOptions, concurrency: 5 };
+    const result = await runner.run(
+      { parsedWorkflow, config: defaultResolvedConfig, cli: cliOptions },
+      { agentExecutor: executor, eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
+    );
+
+    expect(result.status).toBe("succeeded");
+    expect(executor.observedConcurrency).toBe(5);
   });
 });

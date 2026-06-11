@@ -101,4 +101,31 @@ describe("JsonReporter", () => {
     const parsed = JSON.parse(output.trim());
     expect(parsed.agents[0].permissions).toEqual({ mode: "dangerously-full-access" });
   });
+
+  it("finish() output includes workflow summaries", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new JsonReporter(streams);
+
+    const resultWithWorkflows = {
+      ...dummyResult,
+      workflows: [
+        {
+          workflowInvocationId: "wf-1",
+          workflowName: "child",
+          status: "succeeded",
+          depth: 1,
+          startedAt: "start",
+          finishedAt: "finish",
+          durationMs: 50
+        }
+      ]
+    };
+
+    reporter.finish(resultWithWorkflows as any);
+
+    const output = getStdout();
+    const parsed = JSON.parse(output.trim());
+    expect(parsed.workflows).toHaveLength(1);
+    expect(parsed.workflows[0].workflowName).toBe("child");
+  });
 });

@@ -169,6 +169,24 @@ export class PrettyReporter implements Reporter {
         this.stdout.write(`✕ Workflow failed: ${errMsg}\n`);
         break;
       }
+      case "workflow.invocation.started": {
+        const idStr = payload.workflowInvocationId ? ` (${payload.workflowInvocationId})` : "";
+        this.stdout.write(`> workflow ${payload.workflowName} started${idStr}\n`);
+        break;
+      }
+      case "workflow.invocation.completed": {
+        const dur = formatDuration(payload.durationMs);
+        this.stdout.write(`ok workflow ${payload.workflowName} completed in ${dur}\n`);
+        break;
+      }
+      case "workflow.invocation.failed":
+      case "workflow.invocation.timed_out":
+      case "workflow.invocation.cancelled": {
+        const dur = formatDuration(payload.durationMs);
+        const statusStr = type.split(".").pop();
+        this.stdout.write(`error workflow ${payload.workflowName} ${statusStr} in ${dur}\n`);
+        break;
+      }
     }
   }
 

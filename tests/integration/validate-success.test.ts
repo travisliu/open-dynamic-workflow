@@ -57,9 +57,12 @@ describe("Valid metadata passes validation", () => {
 
   it("CLI exits with code 0 and shows success message, creating no artifacts", async () => {
     const workflowPath = path.resolve("tests/fixtures/workflows/valid-basic.workflow.js");
+    const destPath = path.join(TEMP_DIR, "valid-basic.workflow.js");
+    await fs.copyFile(workflowPath, destPath);
+
     const result = await runCli([
       "validate",
-      workflowPath,
+      destPath,
       "--cwd",
       TEMP_DIR
     ]);

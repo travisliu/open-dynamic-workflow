@@ -4,6 +4,8 @@ import type { SharedAgentRegistry } from "../shared-agents/registry.js";
 import { ErrorCode } from "../errors/codes.js";
 import { OpenFlowError } from "../errors/types.js";
 import type { ParsedWorkflow, WorkflowValidationIssue } from "./types.js";
+import type { WorkflowRegistry } from "./registry.js";
+import { isPathLikeWorkflowName } from "./workflow-call.js";
 
 const Ajv = (AjvModule as any).default || AjvModule;
 const ajv = new Ajv({ allErrors: true });
@@ -62,9 +64,20 @@ function parseStaticProperties(node: ts.Node | undefined): any {
 export interface ValidateWorkflowOptions {
   allowImports: false;
   allowShell: false;
-  allowDynamicSharedAgentIds?: boolean;
-  knownSharedAgentIds?: ReadonlySet<string>;
-  sharedAgentRegistry?: SharedAgentRegistry;
+  allowDynamicSharedAgentIds?: boolean | undefined;
+  knownSharedAgentIds?: ReadonlySet<string> | undefined;
+  sharedAgentRegistry?: SharedAgentRegistry | undefined;
+  knownWorkflowNames?: ReadonlySet<string> | undefined;
+  workflowInputSchemas?: ReadonlyMap<string, unknown> | undefined;
+}
+
+function getObjectLiteralProperty(node: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined {
+  for (const prop of node.properties) {
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const propName = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : undefined;
+    if (propName === name) return prop.initializer;
+  }
+  return undefined;
 }
 
 export function validateWorkflow(
@@ -87,6 +100,15 @@ export function validateWorkflow(
       line: line + 1,
       column: character + 1
     });
+  }
+
+  // Validate metadata inputSchema
+  if (workflow.meta.inputSchema) {
+    try {
+      ajv.compile(workflow.meta.inputSchema);
+    } catch (err: any) {
+      report(sourceFile, `Metadata 'inputSchema' is not a valid JSON Schema: ${err.message}`);
+    }
   }
 
   const knownSharedAgentIds = options.knownSharedAgentIds ?? (
@@ -168,6 +190,123 @@ export function validateWorkflow(
         }
       }
     } catch (err: any) {}
+  }
+
+  function validateInputAgainstSchema(name: string, schema: any, argsExpr: ts.Expression | undefined) {
+    const parsedArgs = parseStaticProperties(argsExpr) ?? {};
+    try {
+      const validate = ajv.compile(schema);
+      const valid = validate(parsedArgs);
+      if (!valid && validate.errors) {
+        let hasDynamicProps = false;
+        if (argsExpr && ts.isObjectLiteralExpression(argsExpr)) {
+          for (const prop of argsExpr.properties) {
+            if (ts.isPropertyAssignment(prop)) {
+              if (!isStaticValue(prop.initializer)) {
+                hasDynamicProps = true;
+                break;
+              }
+            } else {
+              hasDynamicProps = true;
+              break;
+            }
+          }
+        }
+
+        for (const error of validate.errors) {
+          if (error.keyword === "required" && hasDynamicProps) {
+            continue;
+          }
+          const path = error.instancePath ? ` at ${error.instancePath}` : "";
+          report(argsExpr || sourceFile, `Workflow '${name}' input validation failed: ${error.message}${path}`);
+        }
+      }
+    } catch (err) {}
+  }
+
+  function validateWorkflowCall(node: ts.CallExpression, isContextForm: boolean) {
+    const firstArg = node.arguments[0];
+    const callPrefix = isContextForm ? "ctx.workflow()" : "workflow()";
+
+    if (!firstArg) {
+      report(node, `${callPrefix} requires an object literal argument.`);
+      return;
+    }
+
+    if (!ts.isObjectLiteralExpression(firstArg)) {
+      report(firstArg, `${callPrefix} argument must be an object literal.`);
+      return;
+    }
+
+    const allowedWorkflowCallKeys = new Set([
+      "name",
+      "args",
+      "failureMode",
+      "timeoutMs",
+      "concurrency",
+      "metadata"
+    ]);
+
+    for (const prop of firstArg.properties) {
+      if (ts.isSpreadAssignment(prop)) {
+        report(prop, `${callPrefix} does not support spread properties.`);
+        continue;
+      }
+      if (!ts.isPropertyAssignment(prop)) {
+        report(prop, `${callPrefix} does not support shorthand or method properties.`);
+        continue;
+      }
+      if (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name)) {
+        report(prop.name, `${callPrefix} does not support computed property names.`);
+        continue;
+      }
+      const key = prop.name.text;
+      if (!allowedWorkflowCallKeys.has(key)) {
+        report(prop.name, `${callPrefix} contains unsupported key '${key}'.`);
+        continue;
+      }
+
+      const init = prop.initializer;
+      if (key === "failureMode") {
+        if (ts.isStringLiteral(init)) {
+          if (init.text !== "throw" && init.text !== "settled") {
+            report(init, `failureMode must be 'throw' or 'settled'.`);
+          }
+        }
+      } else if (key === "timeoutMs" || key === "concurrency") {
+        if (ts.isNumericLiteral(init)) {
+          const val = Number(init.text);
+          if (!Number.isInteger(val) || val <= 0) {
+            report(init, `${key} must be a positive integer.`);
+          }
+        } else if (isStaticValue(init)) {
+          report(init, `${key} must be a positive integer.`);
+        }
+      } else if (key === "metadata") {
+        if (isStaticValue(init) && !ts.isObjectLiteralExpression(init)) {
+          report(init, "metadata must be an object.");
+        }
+      }
+    }
+
+    const nameExpr = getObjectLiteralProperty(firstArg, "name");
+    const argsExpr = getObjectLiteralProperty(firstArg, "args");
+
+    if (!nameExpr) {
+      report(firstArg, `${callPrefix} is missing required 'name' property.`);
+    } else if (ts.isStringLiteral(nameExpr)) {
+      const name = nameExpr.text;
+      if (isPathLikeWorkflowName(name)) {
+        report(nameExpr, "Workflow names must not be path-like.");
+      } else if (options.knownWorkflowNames && !options.knownWorkflowNames.has(name)) {
+        report(nameExpr, `Workflow '${name}' was not found in the registry.`);
+      } else if (options.workflowInputSchemas) {
+        const schema = options.workflowInputSchemas.get(name);
+        if (schema) {
+          validateInputAgainstSchema(name, schema, argsExpr);
+        }
+      }
+    }
   }
 
   function validateAgentCall(node: ts.CallExpression, isContextForm: boolean) {
@@ -382,6 +521,8 @@ export function validateWorkflow(
           }
         } else if (calleeText === "agent") {
           validateAgentCall(node, false);
+        } else if (calleeText === "workflow") {
+          validateWorkflowCall(node, false);
         } else if (["read", "write"].includes(calleeText)) {
           report(node, `${calleeText}() is not supported in the MVP.`);
         } else if (calleeText === "fetch") {
@@ -392,8 +533,12 @@ export function validateWorkflow(
       } else if (ts.isPropertyAccessExpression(callee)) {
         const obj = callee.expression;
         const prop = callee.name;
-        if (ts.isIdentifier(obj) && obj.text === "ctx" && prop.text === "agent") {
-          validateAgentCall(node, true);
+        if (ts.isIdentifier(obj) && obj.text === "ctx") {
+          if (prop.text === "agent") {
+            validateAgentCall(node, true);
+          } else if (prop.text === "workflow") {
+            validateWorkflowCall(node, true);
+          }
         }
       }
       if (callee.kind === ts.SyntaxKind.ImportKeyword) {
@@ -473,6 +618,172 @@ export function assertWorkflowValid(
     throw new OpenFlowError(
       ErrorCode.WORKFLOW_VALIDATION_ERROR,
       `Workflow validation failed:\n${summary}`
+    );
+  }
+}
+
+export interface DependencyInfo {
+  name: string;
+  line: number;
+  character: number;
+}
+
+export function extractWorkflowDependencies(parsed: ParsedWorkflow): DependencyInfo[] {
+  const dependencies: DependencyInfo[] = [];
+  const sourceFile = ts.createSourceFile(
+    parsed.sourcePath,
+    parsed.sourceText,
+    ts.ScriptTarget.Latest,
+    true
+  );
+
+  function visit(node: ts.Node) {
+    if (ts.isCallExpression(node)) {
+      const callee = node.expression;
+      let isWorkflowCall = false;
+      if (ts.isIdentifier(callee) && callee.text === "workflow") {
+        isWorkflowCall = true;
+      } else if (ts.isPropertyAccessExpression(callee)) {
+        const obj = callee.expression;
+        const prop = callee.name;
+        if (ts.isIdentifier(obj) && obj.text === "ctx" && prop.text === "workflow") {
+          isWorkflowCall = true;
+        }
+      }
+
+      if (isWorkflowCall && node.arguments.length > 0) {
+        const firstArg = node.arguments[0];
+        if (firstArg && ts.isObjectLiteralExpression(firstArg)) {
+          const nameExpr = getObjectLiteralProperty(firstArg, "name");
+          if (nameExpr && ts.isStringLiteral(nameExpr)) {
+            const { line, character } = sourceFile.getLineAndCharacterOfPosition(nameExpr.getStart());
+            dependencies.push({
+              name: nameExpr.text,
+              line: line + 1,
+              character: character + 1
+            });
+          }
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return dependencies;
+}
+
+export function validateRegistryDependencies(
+  registry: WorkflowRegistry,
+  options: {
+    sharedAgentRegistry?: SharedAgentRegistry | undefined;
+    allowDynamicSharedAgentIds?: boolean | undefined;
+  }
+): void {
+  const definitions = registry.list();
+  
+  // 1. Extract dependencies
+  const dependencyMap = new Map<string, DependencyInfo[]>();
+  for (const def of definitions) {
+    const deps = extractWorkflowDependencies(def.parsedWorkflow);
+    dependencyMap.set(def.name, deps);
+  }
+
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const validationCache = new Map<string, string[]>(); // Map of workflow name -> validation errors (if any)
+
+  const knownWorkflowNames = registry.names();
+  const workflowInputSchemas = registry.inputSchemas();
+
+  // DFS function for cycle detection and transitive validation
+  function check(
+    currentName: string,
+    stack: { name: string; sourcePath: string; line?: number; character?: number }[]
+  ): string[] {
+    if (visiting.has(currentName)) {
+      const cycleStartIndex = stack.findIndex(item => item.name === currentName);
+      const cycleStack = stack.slice(cycleStartIndex);
+      const chainStr = cycleStack
+        .map(item => `${item.name} (${item.sourcePath}${item.line ? `:${item.line}:${item.character}` : ""})`)
+        .join(" -> ");
+      
+      throw new OpenFlowError(
+        ErrorCode.WORKFLOW_VALIDATION_ERROR,
+        `Static recursion cycle detected: ${chainStr} -> ${currentName}`
+      );
+    }
+
+    if (validationCache.has(currentName)) {
+      return validationCache.get(currentName)!;
+    }
+
+    if (visited.has(currentName)) {
+      return [];
+    }
+
+    const def = registry.get(currentName);
+    if (!def) {
+      return [`Workflow '${currentName}' was not found in the registry.`];
+    }
+
+    visiting.add(currentName);
+
+    // 2. Validate current workflow first (using standard validation)
+    const issues = validateWorkflow(def.parsedWorkflow, {
+      allowImports: false,
+      allowShell: false,
+      sharedAgentRegistry: options.sharedAgentRegistry,
+      knownWorkflowNames,
+      workflowInputSchemas,
+      allowDynamicSharedAgentIds: options.allowDynamicSharedAgentIds
+    });
+
+    const localErrors = issues.map(issue => issue.message);
+
+    // 3. Recurse to check dependencies
+    const deps = dependencyMap.get(currentName) || [];
+    const childErrors: string[] = [];
+
+    for (const dep of deps) {
+      const errors = check(dep.name, [
+        ...stack,
+        {
+          name: currentName,
+          sourcePath: def.sourcePath,
+          line: dep.line,
+          character: dep.character
+        }
+      ]);
+
+      for (const err of errors) {
+        childErrors.push(
+          `${dep.name} (${def.sourcePath}:${dep.line}:${dep.character}) -> ${err}`
+        );
+      }
+    }
+
+    visiting.delete(currentName);
+    visited.add(currentName);
+
+    const allErrors = [...localErrors, ...childErrors];
+    validationCache.set(currentName, allErrors);
+    return allErrors;
+  }
+
+  // Run validation on all definitions
+  const allRegistryErrors: string[] = [];
+  for (const def of definitions) {
+    const errors = check(def.name, []);
+    if (errors.length > 0) {
+      allRegistryErrors.push(`Workflow '${def.name}' validation failed:\n` + errors.map(e => `  - ${e}`).join("\n"));
+    }
+  }
+
+  if (allRegistryErrors.length > 0) {
+    throw new OpenFlowError(
+      ErrorCode.WORKFLOW_VALIDATION_ERROR,
+      allRegistryErrors.join("\n\n")
     );
   }
 }

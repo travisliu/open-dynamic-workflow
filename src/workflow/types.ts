@@ -1,4 +1,4 @@
-import type { ParsedWorkflow, WorkflowMeta } from "../types/workflow.js";
+import type { ParsedWorkflow, WorkflowMeta, WorkflowInvocationSummary } from "../types/workflow.js";
 import type { ArtifactStore } from "../types/artifacts.js";
 import type { ResolvedConfig, CliRunOptions } from "../types/config.js";
 import type { AgentResult } from "../types/agent.js";
@@ -8,6 +8,9 @@ import type { RuntimeEventSink } from "../orchestration/scheduler.js";
 import type { PipelineSummary } from "../pipeline/types.js";
 import type { RuntimeCallCache } from "../artifacts/call-cache.js";
 import type { SharedAgentRegistry } from "../shared-agents/registry.js";
+import type { WorkflowRegistry } from "./registry.js";
+import type { WorkflowInvocationManager, WorkflowInvocationContext } from "./invocation-types.js";
+import type { JsonObject } from "../types/common.js";
 
 export type { ParsedWorkflow, WorkflowMeta };
 
@@ -26,11 +29,14 @@ export interface WorkflowValidationIssue {
 
 export interface RuntimeState {
   artifactStore?: ArtifactStore | undefined;
+  workflowRegistry?: WorkflowRegistry | undefined;
+  invocationManager?: WorkflowInvocationManager | undefined;
+  currentInvocation?: WorkflowInvocationContext | undefined;
   runId: string;
   parsedWorkflow: ParsedWorkflow;
   config: ResolvedConfig;
   cli: CliRunOptions;
-  args: Record<string, unknown>;
+  args: JsonObject;
   cwd: string;
   artifactsDir: string;
   currentPhase?: string | undefined;
@@ -45,9 +51,11 @@ export interface RuntimeState {
   callCache?: RuntimeCallCache | undefined;
   pipelineCounter?: number | undefined;
   pipelineSummaries?: PipelineSummary[] | undefined;
+  workflowSummaries?: WorkflowInvocationSummary[] | undefined;
   idGenerator?: IdGenerator | undefined;
   failFast?: boolean | undefined;
   sharedAgentRegistry?: SharedAgentRegistry | undefined;
+  schedulerConcurrency: number;
 }
 
 export interface IdGenerator {

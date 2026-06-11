@@ -49,6 +49,15 @@ export interface RunArtifacts {
   eventsPath: string;
   reportPath: string;
   agentDir(agentId: string): string;
+  workflowInvocationDir(workflowInvocationId: string): string;
+}
+
+export interface WorkflowInvocationArtifacts {
+  rootDir: string;
+  inputPath: string;
+  resultPath: string;
+  errorPath: string;
+  summaryPath: string;
 }
 
 export interface ArtifactStore {

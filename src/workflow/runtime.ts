@@ -11,6 +11,7 @@ import { DefaultScheduler } from "../orchestration/scheduler.js";
 import { createDsl } from "./dsl.js";
 import { createSandboxContext } from "./sandbox.js";
 import type { RuntimeState } from "./types.js";
+import { type WorkflowRegistry, createRootWorkflowRegistry } from "./registry.js";
 import { serializeError } from "../errors/serialize.js";
 import { createLinkedAbortController } from "../orchestration/cancellation.js";
 import { shouldTriggerFailFast } from "../orchestration/fail-fast.js";
@@ -18,6 +19,11 @@ import { OpenFlowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { loadRuntimeCallCache } from "../artifacts/call-cache.js";
 import type { SharedAgentRegistry } from "../shared-agents/registry.js";
+
+import { DefaultWorkflowInvocationManager } from "./invocation-manager.js";
+import type { WorkflowInvocationContext } from "./invocation-types.js";
+import { withActiveWorkflowInvocation, getActiveWorkflowInvocation } from "./invocation-types.js";
+import { cloneJsonValue, cloneJsonObject } from "./json.js";
 
 export interface Clock {
   now(): Date;
@@ -29,6 +35,7 @@ export interface IdGenerator {
 
 export interface RuntimeRunInput {
   parsedWorkflow: ParsedWorkflow;
+  workflowRegistry?: WorkflowRegistry;
   config: ResolvedConfig;
   cli: CliRunOptions;
   signal?: AbortSignal;
@@ -59,9 +66,11 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     const cwd = input.cli.cwd || input.config.cwd || process.cwd();
     const artifactsDir = input.cli.outDir || input.config.outDir || path.resolve(cwd, ".openflow/runs", runId);
 
+    const schedulerConcurrency = input.cli.concurrency ?? input.config.concurrency ?? 1;
+
     const scheduler = new DefaultScheduler(
       {
-        concurrency: input.cli.concurrency ?? input.config.concurrency ?? 1,
+        concurrency: schedulerConcurrency,
         failFast: !!(input.cli.failFast || input.config.failFast)
       },
       { eventSink: deps.eventSink }
@@ -74,8 +83,11 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       outDir: input.config.outDir
     });
 
+    const registry = input.workflowRegistry || createRootWorkflowRegistry(input.parsedWorkflow);
+
     const runtime: RuntimeState = {
       artifactStore: deps.artifactStore,
+      workflowRegistry: registry,
       runId,
       parsedWorkflow: input.parsedWorkflow,
       config: input.config,
@@ -93,11 +105,20 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       callCache,
       pipelineCounter: 0,
       pipelineSummaries: [],
+      workflowSummaries: [],
       startedAt: startTime.toISOString(),
       idGenerator: deps.idGenerator !== undefined ? deps.idGenerator : undefined,
       failFast: input.cli.failFast,
-      sharedAgentRegistry: input.sharedAgentRegistry || deps.sharedAgentRegistry
+      sharedAgentRegistry: input.sharedAgentRegistry || deps.sharedAgentRegistry,
+      schedulerConcurrency
     };
+
+    const invocationManager = new DefaultWorkflowInvocationManager({
+      runtime,
+      registry,
+      evaluate: (ctx) => executeWorkflowModule(runtime, ctx)
+    });
+    runtime.invocationManager = invocationManager;
 
     if (deps.artifactStore && !deps.artifactStore.isRunCreated()) {
       await deps.artifactStore.createRun({
@@ -137,10 +158,13 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
 
     try {
       if (runtimeAbortController.signal.aborted) {
-        throw new Error(String(runtimeAbortController.signal.reason || "Workflow cancelled before execution started."));
+        throw new OpenFlowError(ErrorCode.WORKFLOW_CANCELLED, String(runtimeAbortController.signal.reason || "Workflow cancelled before execution started."));
       }
 
-      const workflowResult = await executeWorkflowModule(runtime);
+      const workflowResult = await invocationManager.executeRoot(
+        registry.require(input.parsedWorkflow.meta.name),
+        runtime.args
+      );
 
       // Wait for scheduler to drain all pending tasks
       await scheduler.drain();
@@ -184,58 +208,33 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           }
           return result;
         }
-        }
+      }
 
-        // Check if any agent failed with UNSUPPORTED_CAPABILITY
-        const unsupportedAgent = runtime.agentResults.find(a => !a.ok && a.error?.code === ErrorCode.UNSUPPORTED_CAPABILITY) as AgentFailureResult | undefined;
-        if (unsupportedAgent) {
-          const result = buildFailedRunResult(
-            runtime,
-            new OpenFlowError(ErrorCode.UNSUPPORTED_CAPABILITY, unsupportedAgent.error.message),
-            durationMs,
-            finishTime.toISOString(),
-            deps.artifactStore
-          );
-          if (deps.eventSink) {
-            deps.eventSink.emit("workflow.failed", {
-              status: "failed",
-              durationMs,
-              error: result.error!
-            });
-          }
-          if (deps.artifactStore) {
-            await deps.artifactStore.updateManifest("failed", result.error);
-          }
-          return result;
-        }
-
-        // Build succeeded run result
-        const result = buildSucceededRunResult(runtime, workflowResult, durationMs, finishTime.toISOString(), deps.artifactStore);
-        if (deps.eventSink) {
+      // Build succeeded run result
+      const result = buildSucceededRunResult(runtime, workflowResult, durationMs, finishTime.toISOString(), deps.artifactStore);
+      if (deps.eventSink) {
         deps.eventSink.emit("workflow.completed", {
           status: "succeeded",
           durationMs,
           result: workflowResult
         });
-        }
-        if (deps.artifactStore) {
+      }
+      if (deps.artifactStore) {
         await deps.artifactStore.updateManifest("succeeded");
-        }
-        return result;
-        } catch (err: any) {
-        // Scheduler drain to ensure everything settles
-        try {
-        await scheduler.drain();
-        } catch {
-        // Ignore errors during final drain
-        }
+      }
+      return result;
 
-        const finishTime = deps.clock ? deps.clock.now() : new Date();
-        const durationMs = finishTime.getTime() - startTime.getTime();
+    } catch (err: any) {
+      const finishTime = deps.clock ? deps.clock.now() : new Date();
+      const durationMs = finishTime.getTime() - startTime.getTime();
 
-        const isCancelled = runtimeAbortController.signal.aborted || err.name === "WorkflowCancelledError";
+      const isCancellation = err?.code === ErrorCode.WORKFLOW_CANCELLED || 
+                             err?.code === ErrorCode.USER_CANCELLED ||
+                             err?.name === "AbortError" || 
+                             err?.name === "WorkflowCancelledError" ||
+                             (err?.name === "OpenFlowError" && (err?.code === ErrorCode.WORKFLOW_CANCELLED || err?.code === ErrorCode.USER_CANCELLED));
 
-        if (isCancelled) {
+      if (isCancellation) {
         const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), err.message, deps.artifactStore);
         if (deps.eventSink) {
           deps.eventSink.emit("workflow.cancelled", {
@@ -248,25 +247,26 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           await deps.artifactStore.updateManifest("cancelled", result.error);
         }
         return result;
-        } else {
-        const result = buildFailedRunResult(runtime, err, durationMs, finishTime.toISOString(), deps.artifactStore);
-        if (deps.eventSink) {
-          deps.eventSink.emit("workflow.failed", {
-            status: "failed",
-            durationMs,
-            error: result.error!
-          });
-        }
-        if (deps.artifactStore) {
-          await deps.artifactStore.updateManifest("failed", result.error);
-        }
-        return result;
-        }
-        }
+      }
+
+      // Build failed run result
+      const result = buildFailedRunResult(runtime, err, durationMs, finishTime.toISOString(), deps.artifactStore);
+      if (deps.eventSink) {
+        deps.eventSink.emit("workflow.failed", {
+          status: "failed",
+          durationMs,
+          error: result.error!
+        });
+      }
+      if (deps.artifactStore) {
+        await deps.artifactStore.updateManifest("failed", result.error);
+      }
+      return result;
+    }
   }
 }
 
-export async function executeWorkflowModule(runtime: RuntimeState): Promise<unknown> {
+export async function executeWorkflowModule(runtime: RuntimeState, invocationContext?: WorkflowInvocationContext): Promise<unknown> {
   let context: vm.Context;
   try {
     context = createSandboxContext(runtime);
@@ -278,18 +278,49 @@ export async function executeWorkflowModule(runtime: RuntimeState): Promise<unkn
     );
   }
 
-  const body = runtime.parsedWorkflow.body;
+  const parsedWorkflow = invocationContext ? invocationContext.definition.parsedWorkflow : runtime.parsedWorkflow;
+  const body = parsedWorkflow.body;
   const transformedBody = body.replace(/export\s+default\s+/, "__default = ");
   const wrappedBody = `(async () => {\n${transformedBody}\n})()`;
 
   try {
     const promise = vm.runInContext(wrappedBody, context, {
-      filename: runtime.parsedWorkflow.sourcePath,
+      filename: parsedWorkflow.sourcePath,
       lineOffset: -1
     });
 
     await promise;
-    return (context as any).__default;
+    const workflowFn = (context as any).__default;
+    let result: unknown;
+    if (typeof workflowFn === "function") {
+      const dsl = createDsl(runtime);
+      const activeInvocation = getActiveWorkflowInvocation();
+      const args = activeInvocation ? activeInvocation.args : runtime.args;
+      
+      const dslContext = {
+        ...dsl,
+        args: Object.freeze(cloneJsonObject(args, "workflow args")),
+        cwd: runtime.cwd,
+        runId: runtime.runId,
+        artifactsDir: runtime.artifactsDir,
+        signal: activeInvocation?.signal || runtime.abortController.signal
+      };
+      result = await workflowFn(dslContext);
+    } else {
+      result = workflowFn;
+    }
+
+    if (result === undefined) return undefined;
+    if (result === null) return null;
+    try {
+      return cloneJsonValue(result, "workflow result");
+    } catch (err: any) {
+      throw new OpenFlowError(
+        ErrorCode.WORKFLOW_RESULT_SERIALIZATION_FAILED,
+        `Failed to serialize workflow result: ${err.message}`,
+        { cause: err }
+      );
+    }
   } catch (err: any) {
     // Check if it's already an OpenFlowError (e.g. from DSL)
     // We check both instanceof and the presence of the 'code' property 
@@ -331,6 +362,7 @@ export function buildSucceededRunResult(
     meta: runtime.parsedWorkflow.meta,
     agents: runtime.agentResults,
     pipelines: runtime.pipelineSummaries,
+    workflows: runtime.workflowSummaries,
     startedAt: runtime.startedAt,
     finishedAt,
     durationMs,
@@ -366,6 +398,7 @@ export function buildFailedRunResult(
     meta: runtime.parsedWorkflow.meta,
     agents: runtime.agentResults,
     pipelines: runtime.pipelineSummaries,
+    workflows: runtime.workflowSummaries,
     startedAt: runtime.startedAt,
     finishedAt,
     durationMs,
@@ -402,6 +435,7 @@ export function buildCancelledRunResult(
     meta: runtime.parsedWorkflow.meta,
     agents: runtime.agentResults,
     pipelines: runtime.pipelineSummaries,
+    workflows: runtime.workflowSummaries,
     startedAt: runtime.startedAt,
     finishedAt,
     durationMs,

@@ -37,6 +37,11 @@ export class DefaultAgentExecutor implements AgentExecutor {
   }
 
   async execute(input: AgentExecutionInput): Promise<AgentResult> {
+    const result = await this.executeInternal(input);
+    return removeUndefinedProperties(result);
+  }
+
+  private async executeInternal(input: AgentExecutionInput): Promise<AgentResult> {
     const registry = createDefaultProviderRegistry({ config: this.config });
     const adapter = registry.get(input.provider);
     const resolvedPerms = input.permissions || { mode: "default" };
@@ -477,4 +482,24 @@ export class DefaultAgentExecutor implements AgentExecutor {
       }
     }
   }
+}
+
+function removeUndefinedProperties<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+  if (obj instanceof Date || obj instanceof RegExp || obj instanceof Promise) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(removeUndefinedProperties) as any;
+  }
+  const result: any = {};
+  for (const key of Object.keys(obj)) {
+    const val = (obj as any)[key];
+    if (val !== undefined) {
+      result[key] = removeUndefinedProperties(val);
+    }
+  }
+  return result;
 }

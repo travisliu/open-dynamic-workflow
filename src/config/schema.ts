@@ -204,4 +204,38 @@ export function validateConfig(config: OpenFlowConfig): void {
       "Config value 'sharedAgents.strictPromptTemplateVariables' must be a boolean."
     );
   }
+
+  // workflow validation
+  if (typeof config.workflow !== "object" || config.workflow === null) {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'workflow' must be an object."
+    );
+  }
+  if (typeof config.workflow.discovery !== "object" || config.workflow.discovery === null) {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'workflow.discovery' must be an object."
+    );
+  }
+  if (!Array.isArray(config.workflow.discovery.include)) {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'workflow.discovery.include' must be an array of strings."
+    );
+  }
+  for (const glob of config.workflow.discovery.include) {
+    if (typeof glob !== "string" || glob.trim() === "") {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'workflow.discovery.include' must contain only non-empty strings."
+      );
+    }
+  }
+  if (!Number.isInteger(config.workflow.maxDepth) || config.workflow.maxDepth < 1) {
+    throw new OpenFlowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'workflow.maxDepth' must be a positive integer."
+    );
+  }
 }

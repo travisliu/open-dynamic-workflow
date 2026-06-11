@@ -24,6 +24,32 @@ describe("Exit Codes Mapping", () => {
     expect(exitCodeForError(err)).toBe(ExitCode.WorkflowInvalid);
   });
 
+  it("maps nested workflow validation/setup errors to WorkflowInvalid (3)", () => {
+    const codes = [
+      ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND,
+      ErrorCode.WORKFLOW_DUPLICATE_DEFINITION,
+      ErrorCode.WORKFLOW_INVALID_CALL,
+      ErrorCode.WORKFLOW_INPUT_VALIDATION_FAILED,
+      ErrorCode.WORKFLOW_RECURSION_DETECTED,
+      ErrorCode.WORKFLOW_MAX_DEPTH_EXCEEDED
+    ];
+
+    for (const code of codes) {
+      const err = new OpenFlowError(code, "test error");
+      expect(exitCodeForError(err)).toBe(ExitCode.WorkflowInvalid);
+    }
+  });
+
+  it("maps WORKFLOW_RESULT_SERIALIZATION_FAILED to WorkflowFailed (1)", () => {
+    const err = new OpenFlowError(ErrorCode.WORKFLOW_RESULT_SERIALIZATION_FAILED, "serialization failed");
+    expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);
+  });
+
+  it("maps WORKFLOW_TIMEOUT to Timeout (7)", () => {
+    const err = new OpenFlowError(ErrorCode.WORKFLOW_TIMEOUT, "workflow timed out");
+    expect(exitCodeForError(err)).toBe(ExitCode.Timeout);
+  });
+
   it("maps PROVIDER_UNAVAILABLE to ProviderUnavailable (4)", () => {
     const err = new OpenFlowError(ErrorCode.PROVIDER_UNAVAILABLE, "provider missing");
     expect(exitCodeForError(err)).toBe(ExitCode.ProviderUnavailable);

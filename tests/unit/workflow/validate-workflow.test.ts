@@ -448,4 +448,188 @@ describe("Validate Workflow Restrictions", () => {
       expect(issues).toHaveLength(0);
     });
   });
+
+  describe("Nested Workflow Validation", () => {
+    it("accepts valid workflow() call", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "child-workflow", args: { x: 1 } });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues).toHaveLength(0);
+    });
+
+    it("flags workflow() with path-like name", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "./child-workflow" });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues.some(i => i.message.includes("Workflow names must not be path-like"))).toBe(true);
+    });
+
+    it("flags workflow() with path-like names including subdir/child, child.ts, child.js, file:child, and drive paths", () => {
+      const paths = [
+        "subdir/child",
+        "child.ts",
+        "child.js",
+        "file:child",
+        "file:///child",
+        "./child",
+        "../child",
+        "/child",
+        "\\\\server\\\\child",
+        "C:\\\\child",
+        "safe/../child"
+      ];
+      for (const p of paths) {
+        const parsed = createParsed(`
+          await workflow({ name: "${p}" });
+        `);
+        const issues = validateWorkflow(parsed, options);
+        expect(issues.some(i => i.message.includes("Workflow names must not be path-like")), `Expected to reject path-like name: ${p}`).toBe(true);
+      }
+    });
+
+    it("flags workflow() with unknown literal name when knownWorkflowNames is provided", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "unknown-workflow" });
+      `);
+      const issues = validateWorkflow(parsed, {
+        ...options,
+        knownWorkflowNames: new Set(["child-workflow"])
+      });
+      expect(issues.some(i => i.message.includes("was not found in the registry"))).toBe(true);
+    });
+
+    it("flags workflow() with invalid input schema statically", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "child-workflow", args: { target: 123 } });
+      `);
+      const issues = validateWorkflow(parsed, {
+        ...options,
+        knownWorkflowNames: new Set(["child-workflow"]),
+        workflowInputSchemas: new Map([
+          ["child-workflow", {
+            type: "object",
+            properties: {
+              target: { type: "string" }
+            }
+          }]
+        ])
+      });
+      expect(issues.some(i => i.message.includes("input validation failed"))).toBe(true);
+    });
+
+    it("flags workflow() with missing required properties", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "child-workflow", args: {} });
+      `);
+      const issues = validateWorkflow(parsed, {
+        ...options,
+        knownWorkflowNames: new Set(["child-workflow"]),
+        workflowInputSchemas: new Map([
+          ["child-workflow", {
+            type: "object",
+            required: ["target"]
+          }]
+        ])
+      });
+      expect(issues.some(i => i.message.includes("must have required property 'target'"))).toBe(true);
+    });
+
+    it("accepts ctx.workflow() in pipeline stage", () => {
+      const parsed = createParsed(`
+        await pipeline([], [{
+          name: "test",
+          run: async (item, ctx) => {
+            await ctx.workflow({ name: "child-workflow", args: { item } });
+          }
+        }]);
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues).toHaveLength(0);
+    });
+
+    it("flags invalid inputSchema in metadata", () => {
+       const parsed = {
+         meta: { 
+           name: "test", 
+           description: "test",
+           inputSchema: { type: "invalid-type" } as any
+         },
+         body: "",
+         sourcePath: "test.js",
+         sourceText: "",
+         sourceHash: "123"
+       };
+       const issues = validateWorkflow(parsed, options);
+       expect(issues.some(i => i.message.includes("not a valid JSON Schema"))).toBe(true);
+    });
+
+    it("rejects unsupported keys on workflow call object", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "child-workflow", unexpected: true });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues.some(i => i.message.includes("contains unsupported key 'unexpected'"))).toBe(true);
+    });
+
+    it("rejects invalid failureMode on workflow call object", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "child-workflow", failureMode: "ignore" });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues.some(i => i.message.includes("failureMode must be 'throw' or 'settled'"))).toBe(true);
+    });
+
+    it("rejects invalid timeoutMs literals on workflow call object", () => {
+      const cases = [
+        { val: "0", msg: "timeoutMs must be a positive integer" },
+        { val: "1.5", msg: "timeoutMs must be a positive integer" },
+        { val: '"100"', msg: "timeoutMs must be a positive integer" }
+      ];
+      for (const { val, msg } of cases) {
+        const parsed = createParsed(`
+          await workflow({ name: "child-workflow", timeoutMs: ${val} });
+        `);
+        const issues = validateWorkflow(parsed, options);
+        expect(issues.some(i => i.message.includes(msg))).toBe(true);
+      }
+    });
+
+    it("rejects invalid concurrency literals on workflow call object", () => {
+      const cases = [
+        { val: "0", msg: "concurrency must be a positive integer" },
+        { val: '"2"', msg: "concurrency must be a positive integer" }
+      ];
+      for (const { val, msg } of cases) {
+        const parsed = createParsed(`
+          await workflow({ name: "child-workflow", concurrency: ${val} });
+        `);
+        const issues = validateWorkflow(parsed, options);
+        expect(issues.some(i => i.message.includes(msg))).toBe(true);
+      }
+    });
+
+    it("rejects static non-object metadata literals on workflow call object", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "child-workflow", metadata: "not-an-object" });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues.some(i => i.message.includes("metadata must be an object"))).toBe(true);
+    });
+
+    it("accepts valid options on workflow call object", () => {
+      const parsed = createParsed(`
+        await workflow({
+          name: "child-workflow",
+          failureMode: "settled",
+          timeoutMs: 1000,
+          concurrency: 2,
+          metadata: { label: "review" }
+        });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues).toHaveLength(0);
+    });
+  });
 });

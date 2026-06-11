@@ -1,6 +1,8 @@
 import * as vm from "node:vm";
 import type { RuntimeState } from "./types.js";
 import { createDsl } from "./dsl.js";
+import { getActiveWorkflowInvocation } from "./invocation-types.js";
+import { cloneJsonObject } from "./json.js";
 
 /**
  * Creates a restricted sandbox context for running a workflow.
@@ -15,6 +17,8 @@ import { createDsl } from "./dsl.js";
  */
 export function createSandboxContext(runtime: RuntimeState): vm.Context {
   const dsl = createDsl(runtime);
+  const activeInvocation = getActiveWorkflowInvocation();
+  const args = activeInvocation ? activeInvocation.args : runtime.args;
 
   // Use a clean object for the sandbox global scope
   const sandbox = Object.create(null);
@@ -27,13 +31,15 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
     phase: { value: dsl.phase, enumerable: true, configurable: false, writable: false },
     log: { value: dsl.log, enumerable: true, configurable: false, writable: false },
     pipeline: { value: dsl.pipeline, enumerable: true, configurable: false, writable: false },
-    args: { value: Object.freeze({ ...runtime.args }), enumerable: true, configurable: false, writable: false },
+    workflow: { value: dsl.workflow, enumerable: true, configurable: false, writable: false },
+    args: { value: Object.freeze(cloneJsonObject(args, "workflow args")), enumerable: true, configurable: false, writable: false },
     cwd: { value: runtime.cwd, enumerable: true, configurable: false, writable: false },
     runId: { value: runtime.runId, enumerable: true, configurable: false, writable: false },
-        artifactsDir: { value: runtime.artifactsDir, enumerable: true, configurable: false, writable: false },
+    artifactsDir: { value: runtime.artifactsDir, enumerable: true, configurable: false, writable: false },
+    setTimeout: { value: setTimeout, enumerable: true, configurable: false, writable: false },
+    clearTimeout: { value: clearTimeout, enumerable: true, configurable: false, writable: false },
     
     // Placeholder for the default export capture. 
-    // The transformation in runtime.ts will assign to this.
     __default: { value: undefined, enumerable: false, configurable: false, writable: true }
   });
 

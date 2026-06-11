@@ -251,4 +251,40 @@ describe("PrettyReporter", () => {
 
     expect(getStdout()).toContain('  Metadata: {"sharedAgentId":"' + "a".repeat(256) + '..."}\n');
   });
+
+  it("workflow.invocation.started prints invocation details", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.handle({
+      type: "workflow.invocation.started",
+      payload: { workflowInvocationId: "wf-1", workflowName: "sub-flow", depth: 1 }
+    } as any);
+
+    expect(getStdout()).toBe("> workflow sub-flow started (wf-1)\n");
+  });
+
+  it("workflow.invocation.completed prints success", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.handle({
+      type: "workflow.invocation.completed",
+      payload: { workflowName: "sub-flow", durationMs: 123 }
+    } as any);
+
+    expect(getStdout()).toBe("ok workflow sub-flow completed in 123ms\n");
+  });
+
+  it("workflow.invocation.failed prints failure status", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.handle({
+      type: "workflow.invocation.failed",
+      payload: { workflowName: "sub-flow", durationMs: 456 }
+    } as any);
+
+    expect(getStdout()).toBe("error workflow sub-flow failed in 456ms\n");
+  });
 });

@@ -1,9 +1,7 @@
 import { ErrorCode } from "../../errors/codes.js";
 import { OpenFlowError } from "../../errors/types.js";
 import { loadConfig } from "../../config/load.js";
-import { loadWorkflow } from "../../workflow/load.js";
-import { parseWorkflow } from "../../workflow/parse.js";
-import { validateWorkflow } from "../../workflow/validate.js";
+import { discoverWorkflowRegistry } from "../../workflow/discovery.js";
 import { loadSharedAgentRegistry } from "../../shared-agents/load.js";
 import { printValidationSuccess, printValidationIssues } from "../print.js";
 import { resolveUserPath } from "../paths.js";
@@ -28,37 +26,28 @@ export async function validateCommand(input: ValidateCommandInput): Promise<void
     }
   });
 
-  // Load workflow
-  const loaded = await loadWorkflow(workflowPath, config.cwd);
-
-  // Parse workflow metadata
-  const parsed = parseWorkflow(loaded);
-
   // Load shared agent registry
-  const registry = await loadSharedAgentRegistry({
+  const sharedAgentRegistry = await loadSharedAgentRegistry({
     cwd: config.cwd,
     dir: config.sharedAgents?.dir,
     maxDefinitions: config.sharedAgents?.maxDefinitions,
     strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
   });
 
-  // Validate restrictions
-  const issues = validateWorkflow(parsed, {
-    allowImports: false,
-    allowShell: false,
-    allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds,
-    knownSharedAgentIds: new Set(registry.list().map(entry => entry.id)),
-    sharedAgentRegistry: registry
+  // Discover and validate workflow registry (this performs full validation)
+  const workflowRegistry = await discoverWorkflowRegistry({
+    rootWorkflowPath: workflowPath,
+    cwd: config.cwd,
+    include: config.workflow.discovery.include,
+    sharedAgentRegistry,
+    allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds
   });
 
-  if (issues.length > 0) {
-    printValidationIssues(issues);
-    const summary = issues.map((issue) => issue.message).join("\n");
-    throw new OpenFlowError(
-      ErrorCode.WORKFLOW_VALIDATION_ERROR,
-      `Workflow validation failed:\n${summary}`
-    );
-  }
+  // Find root workflow name for success message
+  const rootWorkflowName = (await import("node:path")).basename(workflowPath, (await import("node:path")).extname(workflowPath));
+  // Better: find it in registry by path
+  const absoluteRootPath = (await import("node:path")).resolve(config.cwd, workflowPath);
+  const rootDefinition = workflowRegistry.list().find(d => d.sourcePath === absoluteRootPath);
 
-  printValidationSuccess(parsed.meta.name);
+  printValidationSuccess(rootDefinition?.name || rootWorkflowName);
 }

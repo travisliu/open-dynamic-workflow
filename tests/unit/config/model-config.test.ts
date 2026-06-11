@@ -29,6 +29,12 @@ const baseConfig: OpenFlowConfig = {
     allowDynamicIds: false,
     maxDefinitions: 100,
     strictPromptTemplateVariables: true
+  },
+  workflow: {
+    discovery: {
+      include: ["workflows/**/*.ts"]
+    },
+    maxDepth: 8
   }
 };
 

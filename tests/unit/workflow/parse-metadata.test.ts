@@ -108,4 +108,80 @@ describe("Parse Workflow Metadata", () => {
     };`;
     expect(() => parseWorkflow({ sourcePath: "test.js", sourceText })).toThrow(OpenFlowError);
   });
+
+  it("parses static inputSchema metadata", () => {
+    const sourceText = `export const meta = {
+      name: "schema-workflow",
+      description: "A workflow with schema",
+      inputSchema: {
+        type: "object",
+        properties: {
+          target: { type: "string" }
+        },
+        required: ["target"]
+      }
+    };`;
+
+    const parsed = parseWorkflow({ sourcePath: "test.js", sourceText });
+    expect(parsed.meta.inputSchema).toEqual({
+      type: "object",
+      properties: {
+        target: { type: "string" }
+      },
+      required: ["target"]
+    });
+  });
+
+  it("rejects dynamic inputSchema metadata", () => {
+    const sourceText = `const schema = {};
+    export const meta = {
+      name: "bad-schema",
+      description: "Dynamic schema",
+      inputSchema: schema
+    };`;
+    expect(() => parseWorkflow({ sourcePath: "test.js", sourceText })).toThrow(OpenFlowError);
+  });
+
+  it("rejects spread in inputSchema metadata", () => {
+    const sourceText = `export const meta = {
+      name: "bad-schema",
+      description: "Spread schema",
+      inputSchema: {
+        ...{ type: "object" }
+      }
+    };`;
+    expect(() => parseWorkflow({ sourcePath: "test.js", sourceText })).toThrow(OpenFlowError);
+  });
+
+  it("keeps inputSchema optional for existing workflows", () => {
+    const sourceText = `export const meta = {
+      name: "no-schema",
+      description: "No schema"
+    };`;
+    const parsed = parseWorkflow({ sourcePath: "test.js", sourceText });
+    expect(parsed.meta.inputSchema).toBeUndefined();
+  });
+
+  it("rejects non-JSON inputSchema constructs", () => {
+    const cases = [
+      { name: "shorthand", prop: "prop" },
+      { name: "computed", prop: '["prop"]: "value"' },
+      { name: "function", prop: 'prop: () => {}' },
+      { name: "class", prop: 'prop: new class {}' },
+      { name: "undefined", prop: 'prop: undefined' },
+      { name: "template", prop: 'prop: `val ${1}`' },
+      { name: "method", prop: 'method() {}' }
+    ];
+
+    for (const c of cases) {
+      const sourceText = `export const meta = {
+        name: "bad",
+        description: "bad",
+        inputSchema: {
+          ${c.prop}
+        }
+      };`;
+      expect(() => parseWorkflow({ sourcePath: "test.js", sourceText }), `Case ${c.name} should throw`).toThrow(OpenFlowError);
+    }
+  });
 });

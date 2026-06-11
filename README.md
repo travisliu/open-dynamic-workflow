@@ -36,6 +36,7 @@ OpenFlow supports:
   - `agent()`
   - `parallel()`
   - `pipeline()`
+  - `workflow()`
   - `phase()`
   - `log()`
 - Provider adapters:
@@ -497,6 +498,38 @@ The `PipelineStageContext` (`ctx`) object passed to each stage contains:
 - `signal`: AbortSignal for the stage.
 - `sleep(ms)`: Utility to pause execution within the stage.
 
+### `workflow(input)`
+
+Invokes another workflow as a child of the current workflow. Child workflows run in a fresh isolated context with their own `args`, `phase` state, and cancellation signal.
+
+```ts
+const result = await workflow({
+  name: "security-review",
+  args: { target: "src/auth.ts" }
+});
+```
+
+Supported input:
+
+```ts
+type WorkflowCallInput = {
+  name: string;
+  args?: JsonObject;
+  failureMode?: "throw" | "settled";
+  timeoutMs?: number;
+  concurrency?: number;
+  metadata?: JsonObject;
+};
+```
+
+Behavior:
+- `failureMode: "throw"` (default): Rejects if the child workflow fails.
+- `failureMode: "settled"`: Resolves to a `WorkflowSettledResult` containing success/failure status and output.
+- `timeoutMs`: Limits the execution time of the child workflow invocation.
+- `concurrency`: Sets a local concurrency ceiling for agent tasks within the child invocation subtree.
+- Recursion and excessive depth (default max 8) are rejected.
+- Child workflows inherit root security policy and provider configuration.
+
 ---
 
 ## Structured Output
@@ -708,6 +741,12 @@ Every run creates a local artifact directory.
       validation-error.json
       permissions.json
       metadata.json
+  workflows/
+    <workflowInvocationId>/
+      input.json
+      result.json
+      error.json
+      summary.json
 ```
 
 Artifacts are always enabled so failed or partial runs remain debuggable.

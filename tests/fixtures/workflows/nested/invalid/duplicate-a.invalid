@@ -1,0 +1,4 @@
+export const meta = {
+  name: "duplicate-name",
+  description: "Duplicate A"
+};

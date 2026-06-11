@@ -1,9 +1,7 @@
 import { ErrorCode } from "../../errors/codes.js";
 import { OpenFlowError } from "../../errors/types.js";
 import { loadConfig } from "../../config/load.js";
-import { loadWorkflow } from "../../workflow/load.js";
-import { parseWorkflow } from "../../workflow/parse.js";
-import { validateWorkflow } from "../../workflow/validate.js";
+import { discoverWorkflowRegistry } from "../../workflow/discovery.js";
 import { parseKeyValueArgs, parsePositiveInteger, parseReportMode } from "../args.js";
 import { printDryRunSummary } from "../print.js";
 import { DefaultRuntimeRunner, type RuntimeRunner, type WorkflowRunResult } from "../../runtime/public.js";
@@ -94,41 +92,38 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     cli: cliOverrides
   });
 
-  // Load workflow
-  const loaded = await loadWorkflow(workflowPath, config.cwd);
-
-  // Parse workflow
-  const parsed = parseWorkflow(loaded);
-
   // Load shared agent registry
-  const registry = await loadSharedAgentRegistry({
+  const sharedAgentRegistry = await loadSharedAgentRegistry({
     cwd: config.cwd,
     dir: config.sharedAgents?.dir,
     maxDefinitions: config.sharedAgents?.maxDefinitions,
     strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
   });
 
-  // Validate restrictions
-  const issues = validateWorkflow(parsed, {
-    allowImports: false,
-    allowShell: false,
-    allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds,
-    knownSharedAgentIds: new Set(registry.list().map(entry => entry.id)),
-    sharedAgentRegistry: registry
+  // Discover and validate workflow registry
+  const workflowRegistry = await discoverWorkflowRegistry({
+    rootWorkflowPath: workflowPath,
+    cwd: config.cwd,
+    include: config.workflow.discovery.include,
+    sharedAgentRegistry,
+    allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds
   });
 
-  if (issues.length > 0) {
-    const summary = issues.map((issue) => issue.message).join("\n");
+  // Retrieve root workflow
+  const absoluteRootPath = path.resolve(config.cwd, workflowPath);
+  const rootDefinition = workflowRegistry.list().find(d => d.sourcePath === absoluteRootPath);
+  if (!rootDefinition) {
     throw new OpenFlowError(
-      ErrorCode.WORKFLOW_VALIDATION_ERROR,
-      `Workflow validation failed:\n${summary}`
+      ErrorCode.WORKFLOW_DEFINITION_NOT_FOUND,
+      `Root workflow definition not found in discovery: ${absoluteRootPath}`
     );
   }
+  const parsed = rootDefinition.parsedWorkflow;
 
   // Dry run check
   if (rawOptions.dryRun) {
     printDryRunSummary({
-      workflowFile: loaded.sourcePath,
+      workflowFile: rootDefinition.sourcePath,
       workflowName: parsed.meta.name,
       description: parsed.meta.description,
       phases: parsed.meta.phases || [],
@@ -151,8 +146,8 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   await artifactStore.createRun({
     runId: runIdGenerated,
     outDir: runOutDir,
-    workflowPath: loaded.sourcePath,
-    workflowSource: loaded.sourceText || "",
+    workflowPath: rootDefinition.sourcePath,
+    workflowSource: rootDefinition.parsedWorkflow.sourceText || "",
     workflowHash: parsed.sourceHash,
     resolvedConfig: config,
     openflowVersion: parsed.meta.version || "0.0.0",
@@ -222,9 +217,10 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   try {
     const result = await runner.run({
       parsedWorkflow: parsed,
+      workflowRegistry,
       config: config as any,
       cli: {
-        workflowFile: loaded.sourcePath,
+        workflowFile: rootDefinition.sourcePath,
         provider: rawOptions.provider,
         model: rawOptions.model,
         args: parsedArgs,
@@ -240,7 +236,7 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
         verbose: config.reporting.verbose
       },
       signal: abortController.signal,
-      sharedAgentRegistry: registry
+      sharedAgentRegistry
     }, (() => {
       let pipelineCounter = 0;
       return {
