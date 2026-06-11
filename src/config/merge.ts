@@ -39,6 +39,11 @@ export function mergeConfig(
     reporting: {
       ...defaults.reporting,
       ...(fileConfig.reporting ?? {})
+    },
+    sharedAgents: {
+      ...defaults.sharedAgents,
+      ...(fileConfig.sharedAgents ?? {}),
+      allowDynamicIds: false
     }
   };
 

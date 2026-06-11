@@ -123,3 +123,14 @@ When evaluating configuration keys (like `model` or `timeoutMs`), the runtime re
 2.  **CLI Flag Overrides**: Arguments provided directly on shell execution (e.g. `openflow run --model overridden-model`).
 3.  **YAML File Configuration**: Properties declared in `.openflow/config.yaml`.
 4.  **Built-in Defaults**: Fallback values defined in OpenFlow's core engine defaults.
+
+---
+
+## 4. Shared Agents Configuration (`sharedAgents`)
+
+Shared agent settings dictate how reusable, code-based agent definitions are loaded and validated:
+*   `sharedAgents`:
+    *   `dir`: Directory path scanned for shared agent definitions (defaults to `".openflow/agents"`).
+    *   `maxDefinitions`: Positive integer limit on the maximum definitions loaded (defaults to 100).
+    *   `allowDynamicIds`: Must be strictly `false` (dynamic shared agent IDs are rejected for security reasons).
+    *   `strictPromptTemplateVariables`: Boolean specifying if template variables must match declared schema properties.

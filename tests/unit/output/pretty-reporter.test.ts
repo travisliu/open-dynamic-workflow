@@ -214,4 +214,41 @@ describe("PrettyReporter", () => {
 
     expect(getStdout()).toBe("✓ agent-1 succeeded [mock] 1.5s [dangerously-full-access]\n");
   });
+
+  it("prints sanitized agent metadata in verbose mode", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams, { verbose: true });
+
+    reporter.handle({
+      type: "agent.completed",
+      payload: {
+        agentId: "agent-1",
+        provider: "mock",
+        durationMs: 100,
+        metadata: { sharedAgentId: "test-agent", foo: "bar", secret: "redact-me" }
+      }
+    } as any);
+
+    expect(getStdout()).toContain("✓ agent-1 succeeded [mock] 100ms\n");
+    // "foo" and "secret" should be dropped
+    expect(getStdout()).toContain('  Metadata: {"sharedAgentId":"test-agent"}\n');
+  });
+
+  it("prints size-limited agent metadata in verbose mode", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams, { verbose: true });
+
+    const longString = "a".repeat(300);
+    reporter.handle({
+      type: "agent.completed",
+      payload: {
+        agentId: "agent-1",
+        provider: "mock",
+        durationMs: 100,
+        metadata: { sharedAgentId: longString }
+      }
+    } as any);
+
+    expect(getStdout()).toContain('  Metadata: {"sharedAgentId":"' + "a".repeat(256) + '..."}\n');
+  });
 });

@@ -33,10 +33,17 @@ export function exitCodeForError(error: unknown): ExitCode {
       return ExitCode.CliUsage;
     case ErrorCode.WORKFLOW_PARSE_ERROR:
     case ErrorCode.WORKFLOW_VALIDATION_ERROR:
+    case ErrorCode.SHARED_AGENT_NOT_FOUND:
+    case ErrorCode.SHARED_AGENT_INVALID_DEFINITION:
+    case ErrorCode.SHARED_AGENT_DUPLICATE_ID:
+    case ErrorCode.SHARED_AGENT_CONTEXT_VALIDATION_FAILED:
+    case ErrorCode.SHARED_AGENT_PROMPT_RENDER_FAILED:
+    case ErrorCode.SHARED_AGENT_UNDECLARED_PROMPT_VARIABLE:
       return ExitCode.WorkflowInvalid;
     case ErrorCode.PROVIDER_UNAVAILABLE:
       return ExitCode.ProviderUnavailable;
     case ErrorCode.SECURITY_POLICY_VIOLATION:
+    case ErrorCode.SHARED_AGENT_SECURITY_POLICY_VIOLATION:
       return ExitCode.SecurityPolicyViolation;
     case ErrorCode.USER_CANCELLED:
       return ExitCode.UserCancelled;
@@ -45,6 +52,7 @@ export function exitCodeForError(error: unknown): ExitCode {
     case ErrorCode.PROVIDER_PROCESS_FAILED:
     case ErrorCode.SCHEMA_VALIDATION_FAILED:
     case ErrorCode.UNSUPPORTED_CAPABILITY:
+    case ErrorCode.SHARED_AGENT_RUNTIME_FAILED:
       return ExitCode.WorkflowFailed;
     default:
       return ExitCode.InternalError;

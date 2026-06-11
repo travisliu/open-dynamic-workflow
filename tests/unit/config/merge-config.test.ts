@@ -59,4 +59,26 @@ describe("Merge Config", () => {
     expect(merged.security.allowShell).toBe(false);
     expect(merged.security.allowWorkflowImports).toBe(false);
   });
+
+  it("sharedAgents.dir overrides defaults", () => {
+    const fileConfig: any = {
+      sharedAgents: {
+        dir: "custom/agents"
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.sharedAgents.dir).toEqual("custom/agents");
+    // Other defaults should remain
+    expect(merged.sharedAgents.maxDefinitions).toBe(100);
+  });
+
+  it("sharedAgents.allowDynamicIds is forced to false", () => {
+    const fileConfig: any = {
+      sharedAgents: {
+        allowDynamicIds: true
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.sharedAgents.allowDynamicIds).toBe(false);
+  });
 });

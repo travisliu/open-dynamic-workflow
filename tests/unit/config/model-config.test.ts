@@ -23,6 +23,12 @@ const baseConfig: OpenFlowConfig = {
   reporting: {
     mode: "pretty",
     verbose: false
+  },
+  sharedAgents: {
+    dir: ".openflow/agents",
+    allowDynamicIds: false,
+    maxDefinitions: 100,
+    strictPromptTemplateVariables: true
   }
 };
 

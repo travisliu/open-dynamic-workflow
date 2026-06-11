@@ -7,6 +7,7 @@ import type { AgentExecutor } from "../agents/execution-types.js";
 import type { RuntimeEventSink } from "../orchestration/scheduler.js";
 import type { PipelineSummary } from "../pipeline/types.js";
 import type { RuntimeCallCache } from "../artifacts/call-cache.js";
+import type { SharedAgentRegistry } from "../shared-agents/registry.js";
 
 export type { ParsedWorkflow, WorkflowMeta };
 
@@ -46,6 +47,7 @@ export interface RuntimeState {
   pipelineSummaries?: PipelineSummary[] | undefined;
   idGenerator?: IdGenerator | undefined;
   failFast?: boolean | undefined;
+  sharedAgentRegistry?: SharedAgentRegistry | undefined;
 }
 
 export interface IdGenerator {

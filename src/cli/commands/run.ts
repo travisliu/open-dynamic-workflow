@@ -12,6 +12,7 @@ import { createDefaultProviderRegistry } from "../../agents/registry.js";
 import { DefaultAgentExecutor } from "../../agents/execute-agent.js";
 import { createReporter } from "../../output/reporter.js";
 import { EventBus } from "../../orchestration/event-bus.js";
+import { loadSharedAgentRegistry } from "../../shared-agents/load.js";
 import * as path from "node:path";
 import { resolveUserPath } from "../paths.js";
 
@@ -99,10 +100,21 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   // Parse workflow
   const parsed = parseWorkflow(loaded);
 
+  // Load shared agent registry
+  const registry = await loadSharedAgentRegistry({
+    cwd: config.cwd,
+    dir: config.sharedAgents?.dir,
+    maxDefinitions: config.sharedAgents?.maxDefinitions,
+    strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
+  });
+
   // Validate restrictions
   const issues = validateWorkflow(parsed, {
     allowImports: false,
-    allowShell: false
+    allowShell: false,
+    allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds,
+    knownSharedAgentIds: new Set(registry.list().map(entry => entry.id)),
+    sharedAgentRegistry: registry
   });
 
   if (issues.length > 0) {
@@ -227,7 +239,8 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
         failFast: !!rawOptions.failFast,
         verbose: config.reporting.verbose
       },
-      signal: abortController.signal
+      signal: abortController.signal,
+      sharedAgentRegistry: registry
     }, (() => {
       let pipelineCounter = 0;
       return {

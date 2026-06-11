@@ -47,7 +47,7 @@ OpenFlow exposes these workflow DSL primitives:
 
 | API          | Purpose                                         |
 | ------------ | ----------------------------------------------- |
-| `agent()`    | Run one provider-backed agent task.             |
+| `agent()`    | Run one provider-backed agent task or a shared agent definition. |
 | `parallel()` | Run independent async task thunks concurrently. |
 | `pipeline()` | Process many items through ordered stages.      |
 | `phase()`    | Mark the current workflow phase.                |
@@ -72,7 +72,9 @@ const result = await agent({
 ### Conceptual input type
 
 ```ts
-type AgentCallInput = {
+type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
+
+type DirectAgentCallInput = {
   id?: string;
   label?: string;
   provider?: "codex" | "gemini" | "mock" | string;
@@ -86,6 +88,24 @@ type AgentCallInput = {
   cwd?: string;
   permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
+};
+
+type DefinitionAgentCallInput = {
+  id?: string;
+  definition: string;
+  label?: string;
+  provider?: "codex" | "gemini" | "mock" | string;
+  prompt?: string;
+  model?: string;
+  schema?: JsonSchema;
+  structuredOutput?: {
+    transport?: "auto" | "prompt" | "validate-only" | "native";
+  };
+  timeoutMs?: number;
+  cwd?: string;
+  permissions?: { mode: "dangerously-full-access" };
+  metadata?: Record<string, unknown>;
+  [key: string]: any; // Custom variables required by the shared agent
 };
 ```
 

@@ -153,6 +153,15 @@ describe("DSL: agent()", () => {
     await expect(dsl.agent({} as any)).rejects.toThrow(InvalidDslCallError);
   });
 
+  it("agent({ definition: 'x' }) does not hit direct prompt validation branch", async () => {
+    const runtime = makeRuntimeState();
+    const dsl = createDsl(runtime);
+
+    // If it hit direct validation, it would throw InvalidDslCallError("agent() requires a non-empty prompt string.")
+    // Instead it hits the shared-agent branch and throws about missing registry
+    await expect(dsl.agent({ definition: "x" })).rejects.toThrow(/Shared agent registry is not available/);
+  });
+
   it("missing input throws InvalidDslCallError", async () => {
     const runtime = makeRuntimeState();
     const dsl = createDsl(runtime);

@@ -23,6 +23,13 @@ export interface SecurityConfig {
   allowWorkflowImports: false;
 }
 
+export interface SharedAgentsConfig {
+  dir: string;
+  allowDynamicIds: false;
+  maxDefinitions: number;
+  strictPromptTemplateVariables: boolean;
+}
+
 export interface OpenFlowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
@@ -30,6 +37,7 @@ export interface OpenFlowConfig {
   defaultModel?: string | null;
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
+  sharedAgents: SharedAgentsConfig;
   reporting: {
     mode: ReporterMode;
     verbose: boolean;

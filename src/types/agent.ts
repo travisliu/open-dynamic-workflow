@@ -16,7 +16,7 @@ export type AgentPermissions =
   | { mode: "default" }
   | { mode: "dangerously-full-access" };
 
-export interface AgentCallInput {
+export interface DirectAgentCallInput {
   id?: string | undefined;
   label?: string | undefined;
   provider?: ProviderName | undefined;
@@ -29,6 +29,23 @@ export interface AgentCallInput {
   permissions?: AgentPermissionsInput | undefined;
   metadata?: Record<string, unknown> | undefined;
 }
+
+export interface DefinitionAgentCallInput {
+  id?: string | undefined;
+  definition: string;
+  label?: string | undefined;
+  provider?: ProviderName | undefined;
+  prompt?: string | undefined;
+  model?: string | undefined;
+  schema?: JsonSchema | undefined;
+  structuredOutput?: StructuredOutputConfig | undefined;
+  timeoutMs?: number | undefined;
+  cwd?: string | undefined;
+  permissions?: AgentPermissionsInput | undefined;
+  metadata?: Record<string, unknown> | undefined;
+}
+
+export type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
 
 export type AgentTaskState =
   | "queued"
@@ -60,11 +77,9 @@ export interface AgentSuccessResult {
   exitCode: number;
   durationMs: number;
   artifacts: AgentArtifacts;
-<<<<<<< HEAD
-  cache?: AgentResultCacheInfo | undefined;
-=======
   permissions: AgentPermissions;
->>>>>>> ba8754c (feat: implement dangerously-full-access permission mode)
+  cache?: AgentResultCacheInfo | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentFailureResult {
@@ -81,6 +96,7 @@ export interface AgentFailureResult {
   artifacts: AgentArtifacts;
   error: SerializedError;
   permissions: AgentPermissions;
+<<<<<<< HEAD
   cache?: AgentResultCacheInfo | undefined;
 }
 
@@ -89,6 +105,9 @@ export interface AgentResultCacheInfo {
   callId?: string | undefined;
   previousRunId?: string | undefined;
   previousAgentId?: string | undefined;
+=======
+  metadata?: Record<string, unknown> | undefined;
+>>>>>>> 860aa8a (Add shared agent definitions to workflow runtime)
 }
 
 export interface AgentRunInput {
@@ -143,5 +162,8 @@ export interface AgentAdapter {
   name: ProviderName;
   checkHealth?(): Promise<ProviderHealth>;
   buildCommand(input: AgentRunInput): Promise<ProviderCommand>;
+  parseResult(input: ProviderParseInput): Promise<ProviderParsedResult>;
+}
+e<ProviderCommand>;
   parseResult(input: ProviderParseInput): Promise<ProviderParsedResult>;
 }
