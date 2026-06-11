@@ -97,4 +97,14 @@ describe("renderAgentPrompt", () => {
       });
     }).toThrow(/Rendered prompt must be non-empty/);
   });
+
+  it("allows variables whose values contain double curly braces", () => {
+    const result = renderAgentPrompt({
+      agentPrompt: "Value is: {{val}}",
+      context: { val: "some {{value}} with braces" },
+      declaredFields: new Set(["val"]),
+      strictVariables: true,
+    });
+    expect(result).toBe("Value is: some {{value}} with braces");
+  });
 });

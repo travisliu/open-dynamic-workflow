@@ -36,8 +36,12 @@ export function renderAgentPrompt(input: RenderAgentPromptInput): string {
     }
   );
 
-  // Reject unclosed tokens or expression-like templates
-  if (rendered.includes("{{") || rendered.includes("}}")) {
+  // Reject unclosed tokens or expression-like templates by checking the template structure (excluding valid tokens)
+  const templateWithoutValidTokens = input.agentPrompt.replace(
+    /\{\{\s*[A-Za-z_][A-Za-z0-9_]*\s*\}\}/g,
+    ""
+  );
+  if (templateWithoutValidTokens.includes("{{") || templateWithoutValidTokens.includes("}}")) {
     throw new OpenFlowError(
       ErrorCode.SHARED_AGENT_PROMPT_RENDER_FAILED,
       "agentPrompt contains unclosed tokens or unsupported expression-like templates."
