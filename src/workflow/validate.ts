@@ -70,7 +70,6 @@ function parseStaticProperties(node: ts.Node | undefined): any {
 
 export interface ValidateWorkflowOptions {
   allowImports: false;
-  allowShell: false;
   allowDynamicSharedAgentIds?: boolean | undefined;
   knownSharedAgentIds?: ReadonlySet<string> | undefined;
   sharedAgentRegistry?: SharedAgentRegistry | undefined;
@@ -1070,7 +1069,6 @@ export function validateRegistryDependencies(
     // 2. Validate current workflow first (using standard validation)
     const issues = validateWorkflow(def.parsedWorkflow, {
       allowImports: false,
-      allowShell: false,
       sharedAgentRegistry: options.sharedAgentRegistry,
       knownWorkflowNames,
       workflowInputSchemas,

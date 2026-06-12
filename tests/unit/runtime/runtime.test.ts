@@ -85,7 +85,6 @@ const defaultResolvedConfig: ResolvedConfig = {
   timeoutMs: 30000,
   providers: {},
   security: {
-    allowShell: false,
     allowWorkflowImports: false,
     passEnv: [],
     redactEnv: []

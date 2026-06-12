@@ -21,7 +21,7 @@ describe("DSL shared-agent calls", () => {
       concurrency: 1,
       timeoutMs: 30000,
       providers: {},
-      security: { allowShell: false, allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+      security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
       reporting: { mode: "pretty", verbose: false },
       sharedAgents: { paths: [], allowDynamicIds: false, maxDefinitions: 100, strictPromptTemplateVariables: true },
       cwd: "/repo",

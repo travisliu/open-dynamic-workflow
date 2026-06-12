@@ -44,11 +44,10 @@ describe("Merge Config", () => {
     expect(merged.providers.mock?.command).toBe("mock");
   });
 
-  it("allowShell: true in config is forced or rejected as false", () => {
-    // Explicit attempt to enable allowShell via fileConfig
+  it("allowWorkflowImports: true in config is forced or rejected as false", () => {
+    // Explicit attempt to enable allowWorkflowImports via fileConfig
     const fileConfig: any = {
       security: {
-        allowShell: true,
         allowWorkflowImports: true,
         passEnv: [],
         redactEnv: []
@@ -56,7 +55,6 @@ describe("Merge Config", () => {
     };
 
     const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
-    expect(merged.security.allowShell).toBe(false);
     expect(merged.security.allowWorkflowImports).toBe(false);
   });
 

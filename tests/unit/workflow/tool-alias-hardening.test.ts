@@ -20,8 +20,7 @@ describe("Tool Alias Hardening - Static Validation", () => {
       };
     `;
     const issues = validateWorkflow(mockWorkflow(source), {
-      allowImports: false,
-      allowShell: false
+      allowImports: false
     });
     expect(issues.some(i => i.message.includes("Aliasing tool() is not allowed"))).toBe(true);
   });
@@ -34,8 +33,7 @@ describe("Tool Alias Hardening - Static Validation", () => {
       };
     `;
     const issues = validateWorkflow(mockWorkflow(source), {
-      allowImports: false,
-      allowShell: false
+      allowImports: false
     });
     expect(issues.some(i => i.message.includes("Aliasing tool() is not allowed"))).toBe(true);
   });
@@ -49,8 +47,7 @@ describe("Tool Alias Hardening - Static Validation", () => {
       };
     `;
     const issues = validateWorkflow(mockWorkflow(source), {
-      allowImports: false,
-      allowShell: false
+      allowImports: false
     });
     expect(issues.some(i => i.message.includes("Aliasing tool() is not allowed"))).toBe(true);
   });

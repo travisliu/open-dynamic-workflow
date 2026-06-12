@@ -18,7 +18,7 @@ const defaultConfig: ResolvedConfig = {
   concurrency: 2,
   timeoutMs: 30000,
   providers: {},
-  security: { allowShell: false, allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+  security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
   reporting: { mode: "pretty", verbose: false },
   cwd: "/workspace",
   outDir: "/workspace/.openflow/runs",

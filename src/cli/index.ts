@@ -46,19 +46,7 @@ export async function main(argv: string[]): Promise<void> {
     .option("--dry-run", "Validate and print summary without invoking providers")
     .option("--fail-fast", "Stop immediately on first agent step failure")
     .option("-v, --verbose", "Enable verbose logging")
-    .option("--allow-shell", "Enable shell execution (unsupported)")
-    .option("--isolation <type>", "Isolation mechanism (unsupported)")
-    .option("--retry", "Retry count (unsupported)")
     .action(async (workflowFile, options) => {
-      if (options.allowShell) {
-        throw new OpenFlowError(ErrorCode.CLI_USAGE_ERROR, "--allow-shell is not supported in the MVP.");
-      }
-      if (options.isolation) {
-        throw new OpenFlowError(ErrorCode.CLI_USAGE_ERROR, `--isolation is not supported in the MVP.`);
-      }
-      if (options.retry) {
-        throw new OpenFlowError(ErrorCode.CLI_USAGE_ERROR, "--retry is not supported in the MVP.");
-      }
       await runCommand({ workflowFile, rawOptions: options });
     });
 

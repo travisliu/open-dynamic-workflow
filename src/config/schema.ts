@@ -160,12 +160,6 @@ export function validateConfig(config: OpenFlowConfig): void {
       );
     }
   }
-  if (config.security.allowShell !== false) {
-    throw new OpenFlowError(
-      ErrorCode.CONFIG_VALIDATION_ERROR,
-      "Config value 'security.allowShell' must be false in MVP."
-    );
-  }
   if (config.security.allowWorkflowImports !== false) {
     throw new OpenFlowError(
       ErrorCode.CONFIG_VALIDATION_ERROR,

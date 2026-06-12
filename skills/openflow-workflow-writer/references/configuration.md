@@ -88,7 +88,6 @@ Enforces sandbox constraints for workflow execution.
 
 | Option | Type | Default | Validation Rules | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `allowShell` | `boolean` | `false` | Must be strictly `false` in MVP. | Blocks workflows from initiating direct OS shell commands. |
 | `allowWorkflowImports` | `boolean` | `false` | Must be strictly `false` in MVP. | Blocks workflows from importing arbitrary packages. |
 | `passEnv` | `string[]` | `[]` | Array of strings. | Allowlist of environment variables propagated to provider processes. |
 | `redactEnv` | `string[]` | *(See below)* | Array of strings. | List of environment variable values redacted from outputs and logs. |

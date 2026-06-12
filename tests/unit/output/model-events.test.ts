@@ -120,7 +120,6 @@ describe("Model Events, Reports, and Artifacts", () => {
         security: {
           passEnv: [],
           redactEnv: [],
-          allowShell: false,
           allowWorkflowImports: false
         },
         reporting: {

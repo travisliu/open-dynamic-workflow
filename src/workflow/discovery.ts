@@ -187,7 +187,6 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
     // First pass validation (standalone)
     assertWorkflowValid(parsed, {
       allowImports: false,
-      allowShell: false,
       sharedAgentRegistry,
       allowDynamicSharedAgentIds: input.allowDynamicSharedAgentIds,
       toolRegistry: input.toolRegistry

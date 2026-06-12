@@ -31,7 +31,6 @@ export interface MockProviderResponse {
 }
 
 export interface SecurityConfig {
-  allowShell: false;
   allowWorkflowImports: false;
   passEnv: string[];
   redactEnv: string[];

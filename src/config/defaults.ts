@@ -26,7 +26,6 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
     }
   },
   security: {
-    allowShell: false,
     allowWorkflowImports: false,
     passEnv: [],
     redactEnv: [

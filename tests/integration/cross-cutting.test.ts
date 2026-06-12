@@ -143,16 +143,4 @@ describe("Cross-Cutting Requirements", () => {
     const agent = report.agents.find((a: any) => a.id === "delay-agent");
     expect(agent.status).toBe("timed_out");
   });
-
-  it("Unsupported MVP flags are rejected clearly", async () => {
-    const result = await runCli([
-      "run",
-      "tests/fixtures/workflows/mock-success.workflow.js",
-      "--allow-shell"
-    ]);
-    
-    expect(result.error).toBeDefined();
-    expect(result.error.code).toBe("CLI_USAGE_ERROR");
-    expect(result.error.message).toContain("--allow-shell is not supported");
-  });
 });

@@ -19,7 +19,6 @@ export interface ProviderConfig {
 export interface SecurityConfig {
   passEnv: string[];
   redactEnv: string[];
-  allowShell: false;
   allowWorkflowImports: false;
 }
 

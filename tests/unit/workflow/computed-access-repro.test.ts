@@ -3,7 +3,7 @@ import { validateWorkflow } from "../../../src/workflow/validate.js";
 import type { ParsedWorkflow } from "../../../src/workflow/types.js";
 
 describe("Tool Computed Access Validation", () => {
-  const options = { allowImports: false as const, allowShell: false as const };
+  const options = { allowImports: false as const };
 
   const createParsed = (bodyText: string): ParsedWorkflow => ({
     meta: { name: "test", description: "test" },

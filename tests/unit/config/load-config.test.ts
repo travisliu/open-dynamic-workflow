@@ -24,7 +24,6 @@ describe("Load Config", () => {
 
     expect(config.defaultProvider).toBe("mock");
     expect(config.concurrency).toBe(4);
-    expect(config.security.allowShell).toBe(false);
     expect(config.sharedAgents.dir).toEqual(".openflow/agents");
     expect(config.sharedAgents.maxDefinitions).toBe(100);
     expect(config.sharedAgents.strictPromptTemplateVariables).toBe(true);

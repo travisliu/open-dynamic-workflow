@@ -33,7 +33,6 @@ export function mergeConfig(
     security: {
       ...defaults.security,
       ...(fileConfig.security ?? {}),
-      allowShell: false,
       allowWorkflowImports: false
     },
     reporting: {

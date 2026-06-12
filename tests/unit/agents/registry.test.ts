@@ -51,7 +51,6 @@ describe("ProviderRegistry", () => {
         gemini: { command: "gemini" }
       },
       security: {
-        allowShell: false,
         allowWorkflowImports: false,
         passEnv: [],
         redactEnv: []

@@ -17,7 +17,6 @@ const baseConfig: OpenFlowConfig = {
   security: {
     passEnv: [],
     redactEnv: [],
-    allowShell: false,
     allowWorkflowImports: false
   },
   reporting: {

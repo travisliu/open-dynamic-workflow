@@ -43,7 +43,6 @@ describe("DefaultAgentExecutor environment and redaction", () => {
         }
       },
       security: {
-        allowShell: false,
         allowWorkflowImports: false,
         passEnv: ["PASSED_VAR_FOR_TEST"],
         redactEnv: ["*_KEY_FOR_TEST"]
@@ -295,7 +294,6 @@ describe("DefaultAgentExecutor environment and redaction", () => {
         }
       },
       security: {
-        allowShell: false,
         allowWorkflowImports: false,
         passEnv: [],
         redactEnv: []

@@ -5,7 +5,6 @@ import type { ParsedWorkflow } from "../../../src/workflow/types.js";
 describe("Tool Input Static Validation (T002)", () => {
   const options = {
     allowImports: false as const,
-    allowShell: false as const,
     knownToolIds: new Set(["read-json"]),
     toolRegistry: {
       get: (id: string) => {
