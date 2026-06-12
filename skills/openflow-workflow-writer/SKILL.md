@@ -1,6 +1,6 @@
 ---
 name: openflow-workflow-writer
-description: Create, review, validate, and improve OpenFlow workflow scripts that orchestrate Codex, Gemini, and mock provider agents through agent(), parallel(), pipeline(), phase(), and log().
+description: Create, review, validate, and improve OpenFlow workflow scripts that orchestrate Codex, Gemini, and mock provider agents through agent(), parallel(), pipeline(), phase(), log(), and tool().
 ---
 
 # Purpose
@@ -23,7 +23,7 @@ Do not use this skill when the user only wants a general explanation of agent or
 
 Consult these files when needed:
 
-- `references/api-document.md`: Syntax reference for workflow file shape, `agent()`, `parallel()`, `pipeline()`, `phase()`, `log()`, providers, reports, artifacts, exit codes, templates, and common validation mistakes.
+- `references/api-document.md`: Syntax reference for workflow file shape, `agent()`, `parallel()`, `pipeline()`, `phase()`, `log()`, `workflow()`, `tool()`, providers, reports, artifacts, exit codes, templates, and common validation mistakes.
 - `references/cli-commands.md`: Command reference for `openflow run`, `openflow validate`, and `openflow doctor`.
 - `references/configuration.md`: Configuration reference for `.openflow/config.yaml`, provider settings, security settings, reporting settings, and precedence rules.
 
@@ -56,6 +56,7 @@ When using this skill:
    - Use `ctx.agent()` inside pipeline stage `run()` functions.
    - Use `phase()` to mark major progress points.
    - Use `log()` only for non-sensitive operational metadata.
+   - Use `tool()` for invoking registered, deterministic tool definitions (only at workflow top level or inside a child workflow, not inside `parallel()` or pipeline stages).
 
 5. Select providers intentionally.
    - Use `codex` for correctness, security, code reasoning, implementation review, and safety checks.
@@ -95,6 +96,7 @@ When using this skill:
    - Check that `parallel()` receives functions.
    - Check that `pipeline()` stages are named objects.
    - Check that pipeline stages use `ctx.agent()`.
+   - Check that `tool()` is only called at top level or inside child workflows, and uses valid/registered definition IDs.
    - Check for secrets in prompts/logs.
    - Check that `permissions` is only present where autonomous execution is explicitly intended, and that a comment explains why.
    - Check that the final result is exported.
@@ -104,12 +106,13 @@ When using this skill:
 # Rules
 
 - Do not invent unsupported OpenFlow APIs.
-- Do not use arbitrary imports, `require()`, filesystem APIs, process APIs, shell commands, or host capabilities inside workflow files.
+- Do not use arbitrary imports, `require()`, filesystem APIs, process APIs, shell commands, or host capabilities inside workflow files (use `tool()` to invoke registered, trusted tool definitions for these operations).
 - Do not place anything before `export const meta`.
 - Do not use dynamic metadata values.
 - Do not pass already-started promises into `parallel()`.
 - Do not use anonymous callback shorthand as a pipeline stage.
 - Do not call global `agent()` from inside a pipeline stage; use `ctx.agent()`.
+- Do not call `tool()` inside `parallel()` callbacks, pipeline stages, or `defineAgent.run()`.
 - Do not assume automatic patch application, automatic commits, automatic merge, approval gates, DAG pipelines, retries, worktree isolation, container isolation, distributed execution, or resumable runs are available unless explicitly implemented.
 - Do not log secrets, tokens, credentials, full private source dumps, or unnecessary raw provider output.
 - Only set `permissions: { mode: "dangerously-full-access" }` when the workflow explicitly requires autonomous execution without approval prompts. Document the reason in a workflow comment adjacent to the agent call.

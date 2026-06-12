@@ -8,3 +8,4 @@ export * from "./process.js";
 export * from "./reporter.js";
 export * from "./scheduler.js";
 export * from "./workflow.js";
+export * from "./tool.js";

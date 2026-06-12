@@ -135,3 +135,24 @@ Shared agent settings dictate how reusable, code-based agent definitions are loa
     *   `maxDefinitions`: Positive integer limit on the maximum definitions loaded (defaults to 100).
     *   `allowDynamicIds`: Must be strictly `false` (dynamic shared agent IDs are rejected for security reasons).
     *   `strictPromptTemplateVariables`: Boolean specifying if template variables must match declared schema properties.
+
+---
+
+## 5. Tools Configuration (`tools`)
+
+Tools settings dictate how reusable, trusted application extensions declared with `defineTool()` are loaded, validated, and executed:
+
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `dir` | `string` | `".openflow/tools"` | Non-empty path string. | Directory path scanned for tool definitions. |
+| `concurrency` | `integer` | `4` | Positive integer (>= 1). | Maximum parallel tool calls executed concurrently by the tool execution lane. |
+| `maxDefinitions` | `integer` | `100` | Positive integer (>= 1). | Limit on the maximum tool definitions loaded. |
+
+Example config snippet:
+```yaml
+tools:
+  dir: ".openflow/tools"
+  concurrency: 4
+  maxDefinitions: 100
+```
+

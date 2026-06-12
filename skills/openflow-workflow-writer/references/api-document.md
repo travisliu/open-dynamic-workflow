@@ -53,6 +53,7 @@ OpenFlow exposes these workflow DSL primitives:
 | `phase()`    | Mark the current workflow phase.                |
 | `log()`      | Emit a workflow log event.                      |
 | `workflow()` | Invoke another workflow as a child.            |
+| `tool()`     | Run a registered deterministic tool definition. |
 
 ---
 
@@ -519,7 +520,98 @@ type WorkflowCallInput = {
 
 ---
 
-## 9. Providers
+## 9. `tool()`
+
+Runs a registered, deterministic tool definition.
+
+### Object form
+
+```ts
+const data = await tool({
+  definition: "read-json",
+  args: {
+    path: "reports/findings.json"
+  },
+  timeoutMs: 10000,
+  failureMode: "throw",
+  metadata: {
+    purpose: "load-findings"
+  }
+});
+```
+
+### Conceptual input type
+
+```ts
+type ToolCallInput = {
+  definition: string;
+  args: unknown;
+  id?: string;
+  label?: string;
+  timeoutMs?: number;
+  failureMode?: "throw" | "settled";
+  metadata?: Record<string, unknown>;
+};
+```
+
+### Fields
+
+| Field | Required | Description |
+|---|---:|---|
+| `definition` | Yes | Stable ID of a registered tool definition. |
+| `args` | Yes | Input passed to the tool. Must be serializable JSON. |
+| `id` | No | Stable call identifier used in events and artifact paths. |
+| `label` | No | Human-readable label for terminal output and reports. |
+| `timeoutMs` | No | Per-call timeout in milliseconds. |
+| `failureMode` | No | `"throw"` (default) or `"settled"`. Controls failure handling. |
+| `metadata` | No | Descriptive metadata for reports or artifacts. |
+
+### Return value
+
+* With the default `failureMode: "throw"`, a successful call returns the tool output directly:
+  ```ts
+  const output = await tool({
+    definition: "read-json",
+    args: { path: "report.json" }
+  });
+  ```
+* With `failureMode: "settled"`, the call resolves to a result envelope:
+  ```ts
+  type ToolSettledResult<T> =
+    | {
+        status: "succeeded";
+        ok: true;
+        toolCallId: string;
+        definition: string;
+        value: T;
+        startedAt: string;
+        finishedAt: string;
+        durationMs: number;
+        artifactPath: string;
+      }
+    | {
+        status: "failed" | "cancelled" | "timed_out";
+        ok: false;
+        toolCallId: string;
+        definition: string;
+        error: SerializedError;
+        startedAt?: string;
+        finishedAt: string;
+        durationMs: number;
+        artifactPath: string;
+      };
+  ```
+  Note: Input validation and definition lookup failures represent programming errors and will always throw an error even in `"settled"` mode.
+
+### Allowed contexts
+
+* Top-level workflow execution.
+* Top-level inside child workflows invoked via `workflow()`.
+* **Not allowed**: inside `parallel()`, inside pipeline stages (`pipeline()`), inside `defineAgent.run()`, or nested inside tool definitions.
+
+---
+
+## 10. Providers
 
 OpenFlow provider adapters coordinate external agent CLIs.
 
@@ -545,7 +637,7 @@ The `permissions` field on `agent()` affects provider CLI arguments at the adapt
 
 ---
 
-## 10. Model Selection
+## 11. Model Selection
 
 Model selection can be configured globally, per provider, from the CLI, or per agent.
 
@@ -570,7 +662,7 @@ const result = await agent({
 
 ---
 
-## 11. Reports
+## 12. Reports
 
 OpenFlow supports three report modes.
 
@@ -604,7 +696,7 @@ Use for CI logs, dashboards, and live event consumers.
 
 ---
 
-## 12. Artifacts
+## 13. Artifacts
 
 Every run creates a local artifact directory.
 
@@ -639,6 +731,12 @@ Every run creates a local artifact directory.
       result.json
       error.json
       summary.json
+  tools/
+    <toolCallId>/
+      metadata.json
+      input.json
+      output.json
+      error.json
 ```
 
 Use artifacts to debug:
@@ -655,7 +753,7 @@ Artifacts may contain prompts, source snippets, and model outputs. Treat them as
 
 ---
 
-## 13. Pipeline Events
+## 14. Pipeline Events
 
 Pipeline execution emits events such as:
 
@@ -676,7 +774,7 @@ JSONL consumers should treat unknown event types as forward-compatible and ignor
 
 ---
 
-## 14. Exit Codes
+## 15. Exit Codes
 
 | Code | Meaning                            |
 | ---: | ---------------------------------- |
@@ -692,7 +790,7 @@ JSONL consumers should treat unknown event types as forward-compatible and ignor
 
 ---
 
-## 15. Out-of-Scope or Gated Capabilities
+## 16. Out-of-Scope or Gated Capabilities
 
 Do not assume these are available unless explicitly implemented or enabled:
 
@@ -712,7 +810,7 @@ Do not assume these are available unless explicitly implemented or enabled:
 
 ---
 
-## 16. Common Validation Mistakes
+## 17. Common Validation Mistakes
 
 Bad: metadata is not first.
 
@@ -876,9 +974,47 @@ const result = await agent({
 });
 ```
 
+Bad: calling `tool()` inside a `parallel()` block.
+
+```ts
+const results = await parallel({
+  load: () => tool({ definition: "read-json", args: { path: "data.json" } }) // ❌ tool() is not allowed in parallel context.
+});
+```
+
+Good: call `tool()` first, then pass the result to `parallel()`.
+
+```ts
+const data = await tool({ definition: "read-json", args: { path: "data.json" } });
+const results = await parallel({
+  analyze: () => agent({ prompt: `Analyze: ${JSON.stringify(data)}` })
+});
+```
+
+Bad: calling `tool()` inside a pipeline stage.
+
+```ts
+const results = await pipeline(
+  files,
+  [
+    {
+      name: "process",
+      run: (file) => tool({ definition: "process-file", args: { file } }) // ❌ tool() is not allowed in pipeline context.
+    }
+  ]
+);
+```
+
+Bad: aliasing `tool()`.
+
+```ts
+const myTool = tool; // ❌ Aliasing tool() is not allowed.
+await myTool({ definition: "read-json", args: { path: "data.json" } });
+```
+
 ---
 
-## 17. Minimal Workflow Template
+## 18. Minimal Workflow Template
 
 ```ts
 export const meta = {
@@ -916,7 +1052,7 @@ export default {
 
 ---
 
-## 18. Parallel Workflow Template
+## 19. Parallel Workflow Template
 
 ```ts
 export const meta = {
@@ -963,7 +1099,7 @@ export default {
 
 ---
 
-## 19. Pipeline Workflow Template
+## 20. Pipeline Workflow Template
 
 ```ts
 export const meta = {
@@ -1042,7 +1178,43 @@ export default {
 
 ---
 
-## 20. Workflow Patterns
+## 21. Tool Workflow Template
+
+```ts
+export const meta = {
+  name: "tool-workflow",
+  description: "Run a workflow that invokes a registered tool and processes the result with an agent",
+  phases: ["fetch", "analyze"]
+};
+
+phase("fetch");
+
+// Invoke a registered deterministic tool to read data
+const data = await tool({
+  definition: "read-json",
+  args: {
+    path: "input.json"
+  }
+});
+
+phase("analyze");
+
+// Pass the tool output directly to a provider-backed agent
+const analysis = await agent({
+  id: "analyze-data",
+  provider: "codex",
+  prompt: `Analyze this dataset for anomalies and correctness:\n${JSON.stringify(data, null, 2)}`
+});
+
+export default {
+  data,
+  analysis
+};
+```
+
+---
+
+## 22. Workflow Patterns
 
 These patterns show standard architectures for organizing OpenFlow workflows.
 
@@ -1138,5 +1310,21 @@ const summary = await agent({
   id: "summary",
   provider: "gemini",
   prompt: `Summarize:\n${JSON.stringify(reviews, null, 2)}`
+});
+```
+
+### Pattern 5: Tool Integration
+
+Use `tool()` to fetch data or perform operations, then pass the result to an agent.
+
+```ts
+const data = await tool({
+  definition: "my-tool",
+  args: { key: "value" }
+});
+
+const result = await agent({
+  id: "process-tool-output",
+  prompt: `Process: ${JSON.stringify(data)}`
 });
 ```

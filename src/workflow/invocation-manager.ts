@@ -10,6 +10,7 @@ import type {
   WorkflowInvocationManager 
 } from "./invocation-types.js";
 import { withActiveWorkflowInvocation } from "./invocation-types.js";
+import { getDslExecutionScope, withDslExecutionScope, deriveChildWorkflowToolScope } from "./scope.js";
 import { normalizeWorkflowCall } from "./workflow-call.js";
 import { cloneJsonValue } from "./json.js";
 import type { RuntimeState } from "./types.js";
@@ -480,7 +481,11 @@ export class DefaultWorkflowInvocationManager implements WorkflowInvocationManag
   }
 
   private executeInContext(context: WorkflowInvocationContext): Promise<unknown> {
-    return withActiveWorkflowInvocation(context, () => this.evaluate(context));
+    const parentScope = getDslExecutionScope();
+    const childScope = deriveChildWorkflowToolScope(parentScope, context);
+    return withActiveWorkflowInvocation(context, () => 
+      withDslExecutionScope(childScope, () => this.evaluate(context))
+    );
   }
 
   private recordSummary(ctx: WorkflowInvocationContext, finishedAt: string, status: WorkflowSettledStatus, error?: any, artifactPath?: string) {

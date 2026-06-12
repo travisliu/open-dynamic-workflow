@@ -2,6 +2,7 @@ import type { AgentCallInput, AgentResult } from "./agent.js";
 import type { JsonObject, JsonValue, WorkflowStatus } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
+import type { ToolSummary, ToolCallInput, ToolExecutionResult, ToolSettledResult } from "./tool.js";
 
 export type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary };
 
@@ -102,6 +103,9 @@ export interface WorkflowRuntimeContext {
     stages: PipelineStage<any, any>[],
     options?: PipelineOptions
   ): Promise<PipelineResult<O>>;
+  tool<T = unknown>(input: ToolCallInput & { failureMode?: "throw" }): Promise<T>;
+  tool<T = unknown>(input: ToolCallInput & { failureMode: "settled" }): Promise<ToolSettledResult<T>>;
+  tool<T = unknown>(input: ToolCallInput): Promise<T | ToolSettledResult<T>>;
   workflow<T = JsonValue>(input: WorkflowThrowCallInput): Promise<T>;
   workflow<T = JsonValue>(input: WorkflowSettledCallInput): Promise<WorkflowSettledResult<T>>;
   workflow<T = JsonValue>(input: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>>;
@@ -116,6 +120,7 @@ export interface WorkflowRunResult {
   agents: AgentResult[];
   pipelines?: PipelineSummary[] | undefined;
   workflows?: WorkflowInvocationSummary[] | undefined;
+  tools?: ToolSummary[] | undefined;
   startedAt: string;
   finishedAt: string;
   durationMs: number;

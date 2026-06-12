@@ -112,66 +112,90 @@ export class PrettyReporter implements Reporter {
       }
       case "agent.cancelled": {
         const label = displayAgentLabel(payload);
-        const errMsg = payload.error?.message || "Cancelled";
         const providerStr = this.verbose && payload.model ? `${payload.provider}/${payload.model}` : payload.provider;
         const permStr = payload.permissions?.mode === "dangerously-full-access" ? " [dangerously-full-access]" : "";
-        this.stdout.write(`✕ ${label} cancelled [${providerStr}] ${errMsg}${permStr}\n`);
+        this.stdout.write(`• ${label} cancelled [${providerStr}]${permStr}\n`);
         if (this.verbose && payload.metadata && Object.keys(payload.metadata).length > 0) {
           this.stdout.write(`  Metadata: ${JSON.stringify(sanitizeMetadata(payload.metadata))}\n`);
         }
         break;
       }
-      case "pipeline.started": {
-        const labelText = payload.label ? ` (${payload.label})` : "";
-        this.stdout.write(`◇ Pipeline ${payload.pipelineId}${labelText} started [strategy: ${payload.strategy}, items: ${payload.itemCount}]\n`);
-        break;
-      }
-      case "pipeline.stage.started": {
+      case "tool.queued": {
         if (this.verbose) {
-          this.stdout.write(`  → Item ${payload.itemIndex}: Stage ${payload.stageName} started\n`);
+          const label = payload.label ?? payload.definition;
+          this.stdout.write(`• ${label} tool queued\n`);
         }
         break;
       }
-      case "pipeline.stage.completed": {
+      case "tool.started": {
         if (this.verbose) {
-          const dur = formatDuration(payload.durationMs);
-          this.stdout.write(`  ✓ Item ${payload.itemIndex}: Stage ${payload.stageName} completed ${dur}\n`);
+          const label = payload.label ?? payload.definition;
+          this.stdout.write(`▶ ${label} tool started\n`);
         }
         break;
       }
-      case "pipeline.stage.failed": {
+      case "tool.completed": {
+        const label = payload.label ?? payload.definition;
+        const dur = formatDuration(payload.executionDurationMs);
+        this.stdout.write(`✓ ${label} tool ${dur}\n`);
+        break;
+      }
+      case "tool.failed": {
+        const label = payload.label ?? payload.definition;
         const errMsg = payload.error?.message || "Unknown error";
-        this.stdout.write(`  ✕ Item ${payload.itemIndex}: Stage ${payload.stageName} failed: ${errMsg}\n`);
-        break;
-      }
-      case "pipeline.completed":
-      case "pipeline.cancelled":
-      case "pipeline.failed": {
-        const dur = formatDuration(payload.durationMs);
-        if (type === "pipeline.completed") {
-          this.stdout.write(`✓ Pipeline ${payload.pipelineId} completed successfully ${dur}\n`);
-        } else if (type === "pipeline.cancelled") {
-          this.stdout.write(`✕ Pipeline ${payload.pipelineId} cancelled ${dur}\n`);
-        } else {
-          this.stdout.write(`✕ Pipeline ${payload.pipelineId} failed ${dur}\n`);
-        }
+        this.stdout.write(`✕ ${label} tool failed: ${errMsg}\n`);
         if (payload.artifactPath) {
           this.stdout.write(`  Artifacts: ${payload.artifactPath}\n`);
         }
         break;
       }
-      case "workflow.completed": {
-        this.stdout.write(`✓ Workflow completed successfully\n`);
+      case "tool.timed_out": {
+        const label = payload.label ?? payload.definition;
+        this.stdout.write(`✕ ${label} tool timed out\n`);
+        if (payload.artifactPath) {
+          this.stdout.write(`  Artifacts: ${payload.artifactPath}\n`);
+        }
         break;
       }
-      case "workflow.failed": {
-        const errMsg = payload.error?.message || "Unknown error";
-        this.stdout.write(`✕ Workflow failed: ${errMsg}\n`);
+      case "tool.cancelled": {
+        if (this.verbose) {
+          const label = payload.label ?? payload.definition;
+          this.stdout.write(`• ${label} tool cancelled\n`);
+        }
+        break;
+      }
+      case "pipeline.started": {
+        const labelStr = payload.label ? ` (${payload.label})` : "";
+        this.stdout.write(`◇ Pipeline ${payload.pipelineId}${labelStr} started [strategy: ${payload.strategy}, items: ${payload.itemCount}]\n`);
+        break;
+      }
+      case "pipeline.stage.started": {
+        this.stdout.write(`  → Item ${payload.itemIndex}: Stage ${payload.stageName} started\n`);
+        break;
+      }
+      case "pipeline.stage.completed": {
+        const dur = formatDuration(payload.durationMs);
+        this.stdout.write(`  ✓ Item ${payload.itemIndex}: Stage ${payload.stageName} completed ${dur}\n`);
+        break;
+      }
+      case "pipeline.stage.failed": {
+        this.stdout.write(`  ✕ Item ${payload.itemIndex}: Stage ${payload.stageName} failed: ${payload.error?.message || "Unknown error"}\n`);
+        break;
+      }
+      case "pipeline.completed": {
+        const dur = formatDuration(payload.durationMs);
+        this.stdout.write(`✓ Pipeline ${payload.pipelineId} completed successfully ${dur}\n`);
+        if (payload.artifactPath) {
+          this.stdout.write(`  Artifacts: ${payload.artifactPath}\n`);
+        }
+        break;
+      }
+      case "pipeline.failed": {
+        this.stdout.write(`✕ Pipeline ${payload.pipelineId} failed\n`);
         break;
       }
       case "workflow.invocation.started": {
-        const idStr = payload.workflowInvocationId ? ` (${payload.workflowInvocationId})` : "";
-        this.stdout.write(`> workflow ${payload.workflowName} started${idStr}\n`);
+        this.stdout.write(`> workflow ${payload.workflowName} started (${payload.workflowInvocationId})\n`);
         break;
       }
       case "workflow.invocation.completed": {
@@ -179,18 +203,26 @@ export class PrettyReporter implements Reporter {
         this.stdout.write(`ok workflow ${payload.workflowName} completed in ${dur}\n`);
         break;
       }
-      case "workflow.invocation.failed":
-      case "workflow.invocation.timed_out":
-      case "workflow.invocation.cancelled": {
+      case "workflow.invocation.failed": {
         const dur = formatDuration(payload.durationMs);
-        const statusStr = type.split(".").pop();
-        this.stdout.write(`error workflow ${payload.workflowName} ${statusStr} in ${dur}\n`);
+        this.stdout.write(`error workflow ${payload.workflowName} failed in ${dur}\n`);
         break;
       }
     }
   }
 
   finish(result: WorkflowRunResult): void {
-    this.stdout.write(`Artifacts: ${result.artifactsDir}\n`);
+    const dur = formatDuration(result.durationMs);
+    const artifactsDir = result.artifactsDir;
+    if (artifactsDir) {
+      this.stdout.write(`Artifacts: ${artifactsDir}\n`);
+    }
+    if (result.status === "succeeded") {
+      this.stdout.write(`✔ Finished in ${dur}\n`);
+    } else if (result.status === "cancelled") {
+      this.stdout.write(`• Cancelled after ${dur}\n`);
+    } else if (result.status === "failed") {
+      this.stdout.write(`✘ Failed in ${dur}\n`);
+    }
   }
 }

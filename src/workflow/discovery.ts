@@ -5,6 +5,7 @@ import { parseWorkflow } from "./parse.js";
 import { assertWorkflowValid, validateRegistryDependencies } from "./validate.js";
 import { createWorkflowRegistry, type WorkflowDefinition, type WorkflowRegistry } from "./registry.js";
 import type { SharedAgentRegistry } from "../shared-agents/registry.js";
+import type { ToolRegistry } from "../types/tool.js";
 import { OpenFlowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 
@@ -15,6 +16,7 @@ export interface DiscoverWorkflowRegistryInput {
   sharedAgentRegistry?: SharedAgentRegistry;
   candidatePaths?: string[];
   allowDynamicSharedAgentIds?: boolean;
+  toolRegistry?: ToolRegistry;
 }
 
 async function* walk(dir: string): AsyncGenerator<string> {
@@ -187,7 +189,8 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
       allowImports: false,
       allowShell: false,
       sharedAgentRegistry,
-      allowDynamicSharedAgentIds: input.allowDynamicSharedAgentIds
+      allowDynamicSharedAgentIds: input.allowDynamicSharedAgentIds,
+      toolRegistry: input.toolRegistry
     });
 
     definitions.push({
@@ -205,7 +208,8 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
   // Second validation pass (cross-references & dependency graph/cycles)
   validateRegistryDependencies(registry, {
     sharedAgentRegistry,
-    allowDynamicSharedAgentIds: input.allowDynamicSharedAgentIds
+    allowDynamicSharedAgentIds: input.allowDynamicSharedAgentIds,
+    toolRegistry: input.toolRegistry
   });
 
   return registry;

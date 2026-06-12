@@ -45,6 +45,11 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
     maxDefinitions: 100,
     strictPromptTemplateVariables: true
   },
+  tools: {
+    dir: ".openflow/tools",
+    concurrency: 4,
+    maxDefinitions: 100
+  },
   workflow: {
     discovery: {
       include: ["workflows/**/*.ts"]

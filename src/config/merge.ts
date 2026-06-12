@@ -45,6 +45,10 @@ export function mergeConfig(
       ...(fileConfig.sharedAgents ?? {}),
       allowDynamicIds: false
     },
+    tools: {
+      ...defaults.tools,
+      ...(fileConfig.tools ?? {})
+    },
     workflow: {
       ...defaults.workflow,
       ...(fileConfig.workflow ?? {}),
