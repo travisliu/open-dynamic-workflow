@@ -37,6 +37,7 @@ OpenFlow supports:
   - `parallel()`
   - `pipeline()`
   - `workflow()`
+  - `tool()`
   - `phase()`
   - `log()`
 - Provider adapters:
@@ -529,6 +530,73 @@ Behavior:
 - `concurrency`: Sets a local concurrency ceiling for agent tasks within the child invocation subtree.
 - Recursion and excessive depth (default max 8) are rejected.
 - Child workflows inherit root security policy and provider configuration.
+
+### `tool(input)`
+
+Invokes a registered tool. Tools are deterministic, trusted host extensions that run locally. They are intended for operations that need direct filesystem, process, or network access that the restricted workflow DSL cannot perform.
+
+```ts
+const result = await tool({
+  definition: "read-json",
+  args: { path: "package.json" }
+});
+```
+
+Supported input:
+
+```ts
+type ToolCallInput = {
+  definition: string;
+  args: JsonObject;
+  id?: string;
+  label?: string;
+  timeoutMs?: number;
+  failureMode?: "throw" | "settled";
+  metadata?: JsonObject;
+};
+```
+
+Behavior:
+- `tool()` can only be called from the top-level of a root or child workflow. It is forbidden in `parallel()` tasks, `pipeline()` stages, or shared-agent execution.
+- `failureMode: "throw"` (default): Throws an error if the tool execution fails.
+- `failureMode: "settled"`: Returns a `ToolSettledResult` object.
+- Tools are **not** provider-native tools; they are local TypeScript modules registered in the project.
+
+---
+
+## Tools
+
+Tools allow workflows to perform privileged operations. They are defined in `.openflow/tools/` and must export a default `defineTool()` result.
+
+### Creating a Tool
+
+```ts
+// .openflow/tools/read-json.ts
+import { defineTool } from "@prmflow/openflow";
+
+export default defineTool({
+  id: "read-json",
+  description: "Reads and parses a JSON file",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: { type: "string" }
+    },
+    required: ["path"]
+  },
+  run: async ({ path }) => {
+    const content = await fs.readFile(path, "utf8");
+    return JSON.parse(content);
+  }
+});
+```
+
+### Security Warning: Trusted Extensions
+
+Registered tool definition modules are **trusted host extensions**.
+- Module-level code and the `run()` function execute with the same effective filesystem, process, environment, network, and package access as the OpenFlow process.
+- Tool modules are loaded and evaluated during `run`, `validate`, and `doctor`.
+- **Do not place untrusted code in the tools directory.**
 
 ---
 

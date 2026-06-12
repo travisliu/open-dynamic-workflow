@@ -61,7 +61,14 @@ export function exitCodeForError(error: unknown): ExitCode {
     case ErrorCode.UNSUPPORTED_CAPABILITY:
     case ErrorCode.SHARED_AGENT_RUNTIME_FAILED:
     case ErrorCode.WORKFLOW_RESULT_SERIALIZATION_FAILED:
+    case ErrorCode.TOOL_EXECUTION_FAILED:
+    case ErrorCode.TOOL_CANCELLED:
+    case ErrorCode.TOOL_TIMEOUT:
+    case ErrorCode.TOOL_INVALID_OUTPUT:
+    case ErrorCode.TOOL_ARTIFACT_WRITE_FAILED:
+    case ErrorCode.TOOL_SERIALIZATION_FAILED:
       return ExitCode.WorkflowFailed;
+
     default:
       return ExitCode.InternalError;
   }

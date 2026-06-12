@@ -1,4 +1,4 @@
-openflow-workflow-author/
+openflow-workflow-writer/
   SKILL.md
   references/
     README.md
@@ -9,3 +9,4 @@ openflow-workflow-author/
     basic-workflow.template.js
     parallel-workflow.template.js
     pipeline-workflow.template.js
+    tool-workflow.template.js

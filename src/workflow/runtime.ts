@@ -24,6 +24,9 @@ import { DefaultWorkflowInvocationManager } from "./invocation-manager.js";
 import type { WorkflowInvocationContext } from "./invocation-types.js";
 import { withActiveWorkflowInvocation, getActiveWorkflowInvocation } from "./invocation-types.js";
 import { cloneJsonValue, cloneJsonObject } from "./json.js";
+import { withDslExecutionScope, withToolTopLevelWindow } from "./scope.js";
+import type { ToolRegistry } from "../types/tool.js";
+import type { ToolExecutor } from "../tools/executor-types.js";
 
 export interface Clock {
   now(): Date;
@@ -40,6 +43,7 @@ export interface RuntimeRunInput {
   cli: CliRunOptions;
   signal?: AbortSignal;
   sharedAgentRegistry?: SharedAgentRegistry;
+  toolRegistry?: ToolRegistry;
 }
 
 export interface RuntimeDependencies {
@@ -49,6 +53,7 @@ export interface RuntimeDependencies {
   clock?: Clock;
   idGenerator?: IdGenerator;
   sharedAgentRegistry?: SharedAgentRegistry;
+  toolExecutor?: ToolExecutor;
 }
 
 export interface RuntimeRunner {
@@ -110,7 +115,11 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       idGenerator: deps.idGenerator !== undefined ? deps.idGenerator : undefined,
       failFast: input.cli.failFast,
       sharedAgentRegistry: input.sharedAgentRegistry || deps.sharedAgentRegistry,
-      schedulerConcurrency
+      schedulerConcurrency,
+      toolRegistry: input.toolRegistry,
+      toolExecutor: deps.toolExecutor,
+      toolCallIds: new Set(),
+      toolCounter: 0
     };
 
     const invocationManager = new DefaultWorkflowInvocationManager({
@@ -161,16 +170,19 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         throw new OpenFlowError(ErrorCode.WORKFLOW_CANCELLED, String(runtimeAbortController.signal.reason || "Workflow cancelled before execution started."));
       }
 
-      const workflowResult = await invocationManager.executeRoot(
+      const workflowResult = await withDslExecutionScope({
+        runId: runtime.runId,
+        workflowInvocationId: runtime.runId,
+        location: "workflow-top-level",
+        toolAllowed: true,
+        topLevelWindow: false
+      }, () => invocationManager.executeRoot(
         registry.require(input.parsedWorkflow.meta.name),
         runtime.args
-      );
+      ));
 
       // Wait for scheduler to drain all pending tasks
       await scheduler.drain();
-
-      const finishTime = deps.clock ? deps.clock.now() : new Date();
-      const durationMs = finishTime.getTime() - startTime.getTime();
 
       // Check if scheduler is aborted
       const schedulerSnapshot = (scheduler as any).getSnapshot();
@@ -180,6 +192,12 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         const reasonMsg = typeof abortReason === "string" ? abortReason : abortReason?.message;
 
         if (isFailFast) {
+          if (runtime.toolExecutor) {
+            runtime.toolExecutor.cancel({ name: "FailFastError", message: reasonMsg || "Fail-fast triggered", code: "FAIL_FAST" });
+            await runtime.toolExecutor.close().catch(() => {});
+          }
+          const finishTime = deps.clock ? deps.clock.now() : new Date();
+          const durationMs = finishTime.getTime() - startTime.getTime();
           // Build failed run result for fail-fast
           const result = buildFailedRunResult(runtime, new Error(reasonMsg), durationMs, finishTime.toISOString(), deps.artifactStore);
           if (deps.eventSink) {
@@ -194,6 +212,12 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           }
           return result;
         } else {
+          if (runtime.toolExecutor) {
+            runtime.toolExecutor.cancel({ name: "WorkflowCancelledError", message: reasonMsg || "Workflow cancelled", code: "USER_CANCELLED" });
+            await runtime.toolExecutor.close().catch(() => {});
+          }
+          const finishTime = deps.clock ? deps.clock.now() : new Date();
+          const durationMs = finishTime.getTime() - startTime.getTime();
           // Build cancelled run result
           const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), reasonMsg, deps.artifactStore);
           if (deps.eventSink) {
@@ -210,6 +234,13 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         }
       }
 
+      if (runtime.toolExecutor) {
+        await runtime.toolExecutor.close();
+      }
+
+      const finishTime = deps.clock ? deps.clock.now() : new Date();
+      const durationMs = finishTime.getTime() - startTime.getTime();
+
       // Build succeeded run result
       const result = buildSucceededRunResult(runtime, workflowResult, durationMs, finishTime.toISOString(), deps.artifactStore);
       if (deps.eventSink) {
@@ -225,6 +256,10 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       return result;
 
     } catch (err: any) {
+      if (runtime.toolExecutor) {
+        runtime.toolExecutor.cancel(serializeError(err));
+        await runtime.toolExecutor.close().catch(() => {});
+      }
       const finishTime = deps.clock ? deps.clock.now() : new Date();
       const durationMs = finishTime.getTime() - startTime.getTime();
 
@@ -284,12 +319,14 @@ export async function executeWorkflowModule(runtime: RuntimeState, invocationCon
   const wrappedBody = `(async () => {\n${transformedBody}\n})()`;
 
   try {
-    const promise = vm.runInContext(wrappedBody, context, {
+    const promise = withToolTopLevelWindow(parsedWorkflow.sourcePath, () => vm.runInContext(wrappedBody, context, {
       filename: parsedWorkflow.sourcePath,
       lineOffset: -1
-    });
+    }));
 
-    await promise;
+    await withToolTopLevelWindow(parsedWorkflow.sourcePath, async () => {
+      await promise;
+    });
     const workflowFn = (context as any).__default;
     let result: unknown;
     if (typeof workflowFn === "function") {
@@ -305,7 +342,7 @@ export async function executeWorkflowModule(runtime: RuntimeState, invocationCon
         artifactsDir: runtime.artifactsDir,
         signal: activeInvocation?.signal || runtime.abortController.signal
       };
-      result = await workflowFn(dslContext);
+      result = await withToolTopLevelWindow(parsedWorkflow.sourcePath, () => workflowFn(dslContext));
     } else {
       result = workflowFn;
     }
@@ -363,6 +400,7 @@ export function buildSucceededRunResult(
     agents: runtime.agentResults,
     pipelines: runtime.pipelineSummaries,
     workflows: runtime.workflowSummaries,
+    tools: runtime.toolExecutor && runtime.toolExecutor.getSummaries().length > 0 ? [...runtime.toolExecutor.getSummaries()] : undefined,
     startedAt: runtime.startedAt,
     finishedAt,
     durationMs,
@@ -399,6 +437,7 @@ export function buildFailedRunResult(
     agents: runtime.agentResults,
     pipelines: runtime.pipelineSummaries,
     workflows: runtime.workflowSummaries,
+    tools: runtime.toolExecutor && runtime.toolExecutor.getSummaries().length > 0 ? [...runtime.toolExecutor.getSummaries()] : undefined,
     startedAt: runtime.startedAt,
     finishedAt,
     durationMs,
@@ -436,6 +475,7 @@ export function buildCancelledRunResult(
     agents: runtime.agentResults,
     pipelines: runtime.pipelineSummaries,
     workflows: runtime.workflowSummaries,
+    tools: runtime.toolExecutor && runtime.toolExecutor.getSummaries().length > 0 ? [...runtime.toolExecutor.getSummaries()] : undefined,
     startedAt: runtime.startedAt,
     finishedAt,
     durationMs,

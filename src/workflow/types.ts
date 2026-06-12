@@ -11,6 +11,8 @@ import type { SharedAgentRegistry } from "../shared-agents/registry.js";
 import type { WorkflowRegistry } from "./registry.js";
 import type { WorkflowInvocationManager, WorkflowInvocationContext } from "./invocation-types.js";
 import type { JsonObject } from "../types/common.js";
+import type { ToolRegistry } from "../types/tool.js";
+import type { ToolExecutor } from "../tools/executor-types.js";
 
 export type { ParsedWorkflow, WorkflowMeta };
 
@@ -56,6 +58,10 @@ export interface RuntimeState {
   failFast?: boolean | undefined;
   sharedAgentRegistry?: SharedAgentRegistry | undefined;
   schedulerConcurrency: number;
+  toolRegistry?: ToolRegistry | undefined;
+  toolExecutor?: ToolExecutor | undefined;
+  toolCallIds?: Set<string> | undefined;
+  toolCounter?: number | undefined;
 }
 
 export interface IdGenerator {

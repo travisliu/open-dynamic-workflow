@@ -205,6 +205,45 @@ export function validateConfig(config: OpenFlowConfig): void {
     );
   }
 
+  // tools validation
+  if (config.tools !== undefined) {
+    if (typeof config.tools !== "object" || config.tools === null) {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'tools' must be an object."
+      );
+    }
+
+    const validToolsKeys = ["dir", "concurrency", "maxDefinitions"];
+    for (const key of Object.keys(config.tools)) {
+      if (!validToolsKeys.includes(key)) {
+        throw new OpenFlowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Config value 'tools.${key}' is not a supported key.`
+        );
+      }
+    }
+
+    if (typeof config.tools.dir !== "string" || config.tools.dir.trim() === "") {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'tools.dir' must be a non-empty string."
+      );
+    }
+    if (!Number.isInteger(config.tools.concurrency) || config.tools.concurrency < 1) {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'tools.concurrency' must be a positive integer."
+      );
+    }
+    if (!Number.isInteger(config.tools.maxDefinitions) || config.tools.maxDefinitions < 1) {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'tools.maxDefinitions' must be a positive integer."
+      );
+    }
+  }
+
   // workflow validation
   if (typeof config.workflow !== "object" || config.workflow === null) {
     throw new OpenFlowError(

@@ -1,6 +1,7 @@
 import { ErrorCode } from "../../errors/codes.js";
 import { OpenFlowError } from "../../errors/types.js";
 import { loadConfig } from "../../config/load.js";
+import { loadToolRegistry } from "../../tools/load.js";
 import type { ProviderHealthChecker, DoctorResult } from "../../doctors/public.js";
 import { createDefaultProviderRegistry } from "../../agents/registry.js";
 import * as fs from "node:fs/promises";
@@ -92,6 +93,19 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
       verbose: rawOptions.verbose !== undefined ? !!rawOptions.verbose : undefined
     }
   });
+
+  // Load tool registry
+  try {
+    const toolRegistry = await loadToolRegistry({
+      cwd: config.cwd,
+      dir: config.tools?.dir,
+      maxDefinitions: config.tools?.maxDefinitions ?? 100
+    });
+    const toolCount = toolRegistry.list().length;
+    console.log(`✓ Tool registry loaded (${toolCount} tools)`);
+  } catch (err: any) {
+    console.log(`✕ Tool registry failed to load: ${err.message}`);
+  }
 
   const checker = input.deps?.providerHealthChecker ?? defaultProviderHealthChecker;
   const result = await checker.checkAll(config);

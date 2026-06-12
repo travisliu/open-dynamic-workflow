@@ -37,6 +37,14 @@ export interface CreateRunInput {
   configPath?: string | undefined;
 }
 
+export interface ToolArtifacts {
+  dir: string;
+  metadataPath: string;
+  inputPath: string;
+  outputPath?: string;
+  errorPath?: string;
+}
+
 export interface RunArtifacts {
   runId: string;
   rootDir: string;
@@ -49,6 +57,7 @@ export interface RunArtifacts {
   eventsPath: string;
   reportPath: string;
   agentDir(agentId: string): string;
+  toolDir(toolCallId: string): string;
   workflowInvocationDir(workflowInvocationId: string): string;
 }
 

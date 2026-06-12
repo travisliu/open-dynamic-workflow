@@ -19,7 +19,11 @@ import {
 } from "../artifacts/call-cache.js";
 import { executeSharedAgent } from "../shared-agents/execute.js";
 import { serializeError } from "../errors/serialize.js";
+import { cloneJsonValue } from "./json.js";
 import { getActiveWorkflowInvocation } from "./invocation-types.js";
+import { assertToolAllowed, withToolForbidden } from "./scope.js";
+import type { ToolCallInput, ToolExecutionResult, ToolSettledResult } from "../types/tool.js";
+import type { PreparedToolCall } from "../tools/executor-types.js";
 import type { 
   PipelineStage, 
   PipelineOptions, 
@@ -27,6 +31,85 @@ import type {
   WorkflowCallInput, 
   WorkflowSettledResult 
 } from "../types/workflow.js";
+
+function normalizeToolCallInput(input: unknown, runtime: RuntimeState): ToolCallInput {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new InvalidDslCallError("tool() requires an input object.");
+  }
+
+  const allowedKeys = ["definition", "args", "id", "label", "timeoutMs", "failureMode", "metadata"];
+  const unknownKeys = Object.keys(input).filter(k => !allowedKeys.includes(k));
+  if (unknownKeys.length > 0) {
+    throw new InvalidDslCallError(`tool() call contains unknown keys: ${unknownKeys.join(", ")}`);
+  }
+
+  const typedInput = input as ToolCallInput;
+
+  if (!typedInput.definition || typeof typedInput.definition !== "string") {
+    throw new InvalidDslCallError("tool() 'definition' must be a non-empty string.");
+  }
+
+  if (typedInput.args === undefined) {
+    throw new InvalidDslCallError("tool() 'args' is required.");
+  }
+
+  if (typedInput.id !== undefined) {
+    if (typeof typedInput.id !== "string" || typedInput.id.trim() === "") {
+      throw new InvalidDslCallError("tool() 'id' must be a non-empty string.");
+    }
+    if (/[^a-zA-Z0-9_-]/.test(typedInput.id)) {
+      throw new InvalidDslCallError(`tool() 'id' contains unsafe characters: "${typedInput.id}"`);
+    }
+    if (runtime.toolCallIds?.has(typedInput.id)) {
+      throw new InvalidDslCallError(`tool() 'id' is already used in this run: "${typedInput.id}"`);
+    }
+  }
+
+  if (typedInput.timeoutMs !== undefined) {
+    if (typeof typedInput.timeoutMs !== "number" || typedInput.timeoutMs <= 0 || !Number.isInteger(typedInput.timeoutMs)) {
+      throw new InvalidDslCallError("tool() 'timeoutMs' must be a positive integer.");
+    }
+  }
+
+  if (typedInput.failureMode !== undefined && typedInput.failureMode !== "throw" && typedInput.failureMode !== "settled") {
+    throw new InvalidDslCallError('tool() \'failureMode\' must be "throw" or "settled".');
+  }
+
+  if (typedInput.label !== undefined && (typeof typedInput.label !== "string" || typedInput.label.trim() === "")) {
+    throw new InvalidDslCallError("tool() 'label' must be a non-empty string.");
+  }
+
+  if (typedInput.metadata !== undefined) {
+    if (typeof typedInput.metadata !== "object" || typedInput.metadata === null || Array.isArray(typedInput.metadata)) {
+      throw new InvalidDslCallError("tool() 'metadata' must be an object.");
+    }
+    const proto = Object.getPrototypeOf(typedInput.metadata);
+    if (proto !== null && proto.constructor?.name !== "Object") {
+      throw new InvalidDslCallError("tool() 'metadata' must be a plain object.");
+    }
+    try {
+      cloneJsonValue(typedInput.metadata, "tool metadata");
+    } catch (err: any) {
+      throw new OpenFlowError(ErrorCode.TOOL_SERIALIZATION_FAILED, err.message, { cause: err });
+    }
+  }
+
+  // Also validate args for serializability early
+  try {
+    cloneJsonValue(typedInput.args, "tool args");
+  } catch (err: any) {
+    throw new OpenFlowError(ErrorCode.TOOL_SERIALIZATION_FAILED, err.message, { cause: err });
+  }
+
+  return typedInput;
+}
+
+function nextToolCallId(runtime: RuntimeState, definitionId: string): string {
+  const counter = (runtime.toolCounter || 0) + 1;
+  runtime.toolCounter = counter;
+  const suffix = definitionId.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
+  return `tool-${counter.toString().padStart(4, "0")}-${suffix}`;
+}
 
 export function createDsl(runtime: RuntimeState) {
   const logWorkflow = (message: string, data?: unknown): void => {
@@ -399,6 +482,99 @@ export function createDsl(runtime: RuntimeState) {
     return runDirectAgent(input as any);
   };
 
+  const runTool = async (input: ToolCallInput): Promise<unknown> => {
+    const scope = assertToolAllowed();
+    const normalizedInput = normalizeToolCallInput(input, runtime);
+    
+    if (!runtime.toolRegistry || !runtime.toolExecutor) {
+      throw new OpenFlowError(ErrorCode.TOOL_INVALID_CONTEXT, "tool() is not configured for this run.");
+    }
+
+    const definition = runtime.toolRegistry.require(normalizedInput.definition);
+    
+    const inputValidation = definition.validateInput(normalizedInput.args);
+    if (!inputValidation.ok) {
+      const errors = inputValidation.errors.map(e => `${e.path} ${e.message}`).join(", ");
+      throw new OpenFlowError(
+        ErrorCode.TOOL_INVALID_INPUT,
+        `Input validation failed for tool '${normalizedInput.definition}': ${errors}`
+      );
+    }
+
+    let toolCallId = normalizedInput.id;
+    if (!toolCallId) {
+      toolCallId = nextToolCallId(runtime, normalizedInput.definition);
+    }
+    runtime.toolCallIds?.add(toolCallId);
+
+    const failureMode = normalizedInput.failureMode || "throw";
+    const activeInvocation = getActiveWorkflowInvocation();
+
+    const preparedCall: PreparedToolCall = {
+      toolCallId,
+      definition,
+      args: cloneJsonValue(normalizedInput.args, "tool args"),
+      label: normalizedInput.label,
+      failureMode,
+      timeoutMs: normalizedInput.timeoutMs || definition.definition.defaultTimeoutMs,
+      deadline: activeInvocation?.deadlineAt,
+      metadata: normalizedInput.metadata ? (cloneJsonValue(normalizedInput.metadata, "tool metadata") as Record<string, unknown>) : undefined,
+      workflowInvocationId: scope.workflowInvocationId,
+      parentWorkflowInvocationId: scope.parentWorkflowInvocationId,
+      queuedAt: new Date().toISOString(),
+      artifactPath: `tools/${toolCallId}`,
+      invocationSignal: activeInvocation?.signal || runtime.abortController.signal
+    };
+
+    const result = await runtime.toolExecutor.execute(preparedCall);
+
+    if (failureMode === "throw") {
+      if (!result.ok) {
+        let code: ErrorCode = ErrorCode.TOOL_EXECUTION_FAILED;
+        if (result.status === "cancelled") code = ErrorCode.TOOL_CANCELLED;
+        if (result.status === "timed_out") code = ErrorCode.TOOL_TIMEOUT;
+
+        const error = result.error || { name: "ToolExecutionError", message: `Tool '${normalizedInput.definition}' failed` };
+        throw new OpenFlowError(
+          code,
+          `Tool execution ${result.status}: ${error.message}`,
+          { cause: error }
+        );
+      }
+      return result.output;
+    }
+
+    if (result.ok) {
+      return {
+        status: result.status,
+        ok: true,
+        toolCallId: result.toolCallId,
+        definition: result.definitionId,
+        value: result.output,
+        startedAt: result.startedAt!,
+        finishedAt: result.finishedAt!,
+        durationMs: result.durationMs,
+        artifactPath: result.artifactPath!
+      } as ToolSettledResult;
+    }
+
+    return {
+      status: result.status as any,
+      ok: false,
+      toolCallId: result.toolCallId,
+      definition: result.definitionId,
+      error: result.error?.error || {
+        name: "ToolExecutionError",
+        message: result.error?.message || `Tool '${normalizedInput.definition}' failed`,
+        code: result.error?.code
+      },
+      startedAt: result.startedAt,
+      finishedAt: result.finishedAt!,
+      durationMs: result.durationMs,
+      artifactPath: result.artifactPath!
+    } as ToolSettledResult;
+  };
+
   return {
     phase: (name: string): void => {
       if (!name || typeof name !== "string" || name.trim() === "") {
@@ -427,6 +603,7 @@ export function createDsl(runtime: RuntimeState) {
 
     log: logWorkflow,
     agent: runAgentCall,
+    tool: runTool,
 
     parallel: async <T>(
       tasks: Record<string, () => Promise<T>> | Array<() => Promise<T>>
@@ -440,7 +617,7 @@ export function createDsl(runtime: RuntimeState) {
           if (typeof task !== "function") {
             throw new InvalidDslCallError(`parallel() task at index ${idx} must be a function.`);
           }
-          return task();
+          return withToolForbidden("parallel-task", () => task());
         });
         return Promise.all(promises);
       } else {
@@ -450,7 +627,7 @@ export function createDsl(runtime: RuntimeState) {
           if (typeof task !== "function") {
             throw new InvalidDslCallError(`parallel() task '${key}' must be a function.`);
           }
-          return task();
+          return withToolForbidden("parallel-task", () => task());
         });
         const results = await Promise.all(promises);
         const resultObj: Record<string, T> = {};
@@ -471,7 +648,7 @@ export function createDsl(runtime: RuntimeState) {
       return runPipeline({
         items,
         stages,
-        options,
+        options: options || {},
         runtime,
         signal: activeInvocation?.signal || runtime.abortController.signal
       });

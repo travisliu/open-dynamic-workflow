@@ -32,7 +32,13 @@ export type EventType =
   | "workflow.invocation.completed"
   | "workflow.invocation.failed"
   | "workflow.invocation.timed_out"
-  | "workflow.invocation.cancelled";
+  | "workflow.invocation.cancelled"
+  | "tool.queued"
+  | "tool.started"
+  | "tool.completed"
+  | "tool.failed"
+  | "tool.timed_out"
+  | "tool.cancelled";
 
 export interface EventEnvelope<TPayload = unknown> {
   schemaVersion: "openflow.event.v1";
@@ -272,6 +278,22 @@ export interface WorkflowInvocationTerminalPayload {
   durationMs: number;
   artifactPath?: string;
   error?: SerializedError;
+}
+
+export interface ToolEventPayload {
+  toolCallId: string;
+  definition: string;
+  label?: string;
+  workflowInvocationId: string;
+  parentWorkflowInvocationId?: string;
+  queueDurationMs?: number;
+  executionDurationMs?: number;
+  status?: "succeeded" | "failed" | "cancelled" | "timed_out";
+  error?: SerializedError;
+  metadata?: Record<string, unknown>;
+  artifactPath: string;
+  inputPreview?: unknown;
+  outputPreview?: unknown;
 }
 
 export function isEventEnvelope(value: unknown): value is EventEnvelope {

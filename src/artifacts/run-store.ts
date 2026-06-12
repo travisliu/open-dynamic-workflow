@@ -16,8 +16,8 @@ export async function createRunDir(runId: string, cwd = process.cwd()): Promise<
   return dir;
 }
 
-function safeFileName(input: string): string {
-  return input.replace(/[^a-zA-Z0-9._:-]/g, "_");
+export function safeFileName(input: string): string {
+  return input.replace(/[^a-zA-Z0-9._:\-]/g, "_");
 }
 
 function resolveInsideRoot(rootDir: string, relativePath: string): string {
@@ -166,6 +166,9 @@ export class FileSystemArtifactStore implements ArtifactStore {
       reportPath: path.join(rootDir, "report.json"),
       agentDir: (agentId: string) => {
         return path.join(rootDir, "agents", safeFileName(agentId));
+      },
+      toolDir: (toolCallId: string) => {
+        return path.join(rootDir, "tools", safeFileName(toolCallId));
       },
       workflowInvocationDir: (workflowInvocationId: string) => {
         return path.join(rootDir, "workflows", safeFileName(workflowInvocationId));

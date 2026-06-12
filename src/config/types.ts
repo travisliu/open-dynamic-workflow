@@ -30,6 +30,12 @@ export interface SharedAgentsConfig {
   strictPromptTemplateVariables: boolean;
 }
 
+export interface ToolsConfig {
+  dir: string;
+  concurrency: number;
+  maxDefinitions: number;
+}
+
 export interface WorkflowDiscoveryConfig {
   include: string[];
 }
@@ -51,6 +57,7 @@ export interface OpenFlowConfig {
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
   sharedAgents: SharedAgentsConfig;
+  tools: ToolsConfig;
   workflow: WorkflowConfig;
   orchestration?: OrchestrationConfig;
   reporting: {

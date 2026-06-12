@@ -9,7 +9,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "openflow": "dist/index.js"
+    "openflow": "dist/bin/openflow.js"
   },
   "files": [
     "dist",
@@ -39,12 +39,12 @@
     "clean": "rm -rf dist",
     "build": "tsc",
     "postbuild": "node scripts/fix-bin-permissions.mjs",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx src/bin/openflow.ts",
+    "start": "node dist/bin/openflow.js",
     "typecheck": "npm run check",
     "check": "tsc --noEmit",
     "lint": "npm run check",
-    "test": "vitest run",
+    "test": "vitest run --reporter=dot",
     "prepack": "npm run clean && npm run build",
     "pack:local": "npm pack",
     "publish:dry-run": "npm publish --dry-run",

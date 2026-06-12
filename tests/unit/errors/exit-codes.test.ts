@@ -80,6 +80,11 @@ describe("Exit Codes Mapping", () => {
     expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);
   });
 
+  it("maps TOOL_INVALID_OUTPUT to WorkflowFailed (1)", () => {
+    const err = new OpenFlowError(ErrorCode.TOOL_INVALID_OUTPUT, "tool output validation failed");
+    expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);
+  });
+
   it("maps unknown or standard error to InternalError (8)", () => {
     const stdErr = new Error("something went wrong");
     expect(exitCodeForError(stdErr)).toBe(ExitCode.InternalError);

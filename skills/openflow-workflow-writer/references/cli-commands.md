@@ -63,6 +63,8 @@ openflow validate workflows/review.ts
 * Obviously invalid `pipeline()` usage is rejected.
 * Shared agent definitions in `sharedAgents.dir` are loaded and validated.
 * Verifies that `agent({ definition })` and `ctx.agent({ definition })` calls use string literal IDs that exist in the shared agent registry (when `sharedAgents.allowDynamicIds` is false).
+* Tool definitions in `tools.dir` are loaded and validated.
+* Verifies that `tool({ definition })` calls use string literal IDs that exist in the tool registry.
 
 ---
 
@@ -88,3 +90,13 @@ openflow doctor
 When executing `openflow run` or `openflow validate`, OpenFlow scans the configured `sharedAgents.dir` directory.
 If a file contains unauthorized symbols or attempts host operations violating the validation restrictions, a `SHARED_AGENT_SECURITY_POLICY_VIOLATION` error is thrown, halting execution or validation immediately.
 Literal shared agent IDs referenced in `agent({ definition })` or `ctx.agent({ definition })` are checked against this loaded registry.
+
+---
+
+## Tool Loading & Trust Model
+
+When executing `openflow run` or `openflow validate`, OpenFlow scans the configured `tools.dir` directory (defaults to `.openflow/tools`).
+Unlike workflows or shared agents, tool definitions are trusted application extensions. They may execute unrestricted JavaScript with host access (e.g., read/write files, execute shell commands, import packages, or perform network requests).
+However, tool definitions must be declared with `defineTool()` and have valid default exports. Duplicate or invalid tool definitions will cause a `TOOL_INVALID_DEFINITION` or `TOOL_DUPLICATE_DEFINITION` validation error.
+Individual `tool({ definition })` calls are checked statically during validation to ensure they reference a registered tool ID.
+

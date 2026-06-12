@@ -4,6 +4,7 @@ import type { DirectAgentCallInput, AgentResult } from "../types/agent.js";
 import type { ResolvedConfig } from "../types/config.js";
 import { sanitizeMetadata } from "../security/metadata.js";
 import { normalizeSharedAgentContext } from "./context.js";
+import { withToolForbidden } from "../workflow/scope.js";
 import type { SharedAgentRegistry } from "./registry.js";
 import { renderAgentPrompt } from "./render.js";
 import { resolveSharedAgent } from "./resolver.js";
@@ -91,7 +92,9 @@ export async function executeSharedAgent(
   }
 
   try {
-    return await definition.run(context, runtimeObj);
+    return await withToolForbidden("shared-agent-definition", async () => {
+      return await definition.run(context, runtimeObj);
+    });
   } catch (err: any) {
     throw new OpenFlowError(
       ErrorCode.SHARED_AGENT_RUNTIME_FAILED,

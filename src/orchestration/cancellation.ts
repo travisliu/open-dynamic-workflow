@@ -1,20 +1,25 @@
 import type { SerializedError } from "../types/errors.js";
 
 /**
- * Creates an AbortController whose signal is aborted when the parent signal is aborted.
+ * Creates an AbortController whose signal is aborted when any of the parent signals are aborted.
  */
-export function createLinkedAbortController(parent?: AbortSignal): AbortController {
+export function createLinkedAbortController(...parents: Array<AbortSignal | undefined>): AbortController {
   const controller = new AbortController();
-  if (parent) {
+  
+  for (const parent of parents) {
+    if (!parent) continue;
+    
     if (parent.aborted) {
       controller.abort(parent.reason);
+      break;
     } else {
       const onAbort = () => {
         controller.abort(parent.reason);
       };
-      parent.addEventListener("abort", onAbort);
+      parent.addEventListener("abort", onAbort, { once: true });
     }
   }
+  
   return controller;
 }
 

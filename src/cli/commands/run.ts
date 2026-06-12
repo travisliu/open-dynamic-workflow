@@ -11,6 +11,8 @@ import { DefaultAgentExecutor } from "../../agents/execute-agent.js";
 import { createReporter } from "../../output/reporter.js";
 import { EventBus } from "../../orchestration/event-bus.js";
 import { loadSharedAgentRegistry } from "../../shared-agents/load.js";
+import { loadToolRegistry } from "../../tools/load.js";
+import { DefaultToolExecutor } from "../../tools/executor.js";
 import * as path from "node:path";
 import { resolveUserPath } from "../paths.js";
 
@@ -100,12 +102,20 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
   });
 
+  // Load tool registry
+  const toolRegistry = await loadToolRegistry({
+    cwd: config.cwd,
+    dir: config.tools?.dir,
+    maxDefinitions: config.tools?.maxDefinitions ?? 100
+  });
+
   // Discover and validate workflow registry
   const workflowRegistry = await discoverWorkflowRegistry({
     rootWorkflowPath: workflowPath,
     cwd: config.cwd,
     include: config.workflow.discovery.include,
     sharedAgentRegistry,
+    toolRegistry,
     allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds
   });
 
@@ -141,6 +151,13 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   const runIdGenerated = crypto.randomUUID();
   const runOutDir = path.join(config.outDir, runIdGenerated);
   const artifactStore = new FileSystemArtifactStore({ rootDir: config.outDir });
+
+  // Initialize abort controller early for tools and agents
+  const abortController = new AbortController();
+  const sigIntHandler = () => {
+    abortController.abort("SIGINT received");
+  };
+  process.on("SIGINT", sigIntHandler);
 
   // Initialize artifact store before running so it's ready regardless of which runner is used.
   await artifactStore.createRun({
@@ -199,6 +216,29 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     eventBus
   });
 
+  // Collect secrets for tool redaction
+  const secretPatterns = config.security?.redactEnv ?? [];
+  const secretValues: string[] = [];
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value && typeof value === "string") {
+      const { shouldRedactEnvName } = await import("../../security/env.js");
+      if (shouldRedactEnvName(key, secretPatterns)) {
+        secretValues.push(value);
+      }
+    }
+  }
+
+  const toolExecutor = new DefaultToolExecutor({
+    concurrency: config.tools?.concurrency ?? 1,
+    eventSink: eventBus,
+    artifactStore,
+    runArtifacts: artifactStore.getRunArtifacts(),
+    runId: runIdGenerated,
+    cwd: config.cwd,
+    rootSignal: abortController.signal,
+    redactedSecrets: secretValues
+  });
+
   reporter.start({
     runId: runIdGenerated,
     meta: parsed.meta,
@@ -207,12 +247,6 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
 
   const defaultRunner = new DefaultRuntimeRunner();
   const runner = input.deps?.runtimeRunner ?? defaultRunner;
-
-  const abortController = new AbortController();
-  const sigIntHandler = () => {
-    abortController.abort("SIGINT received");
-  };
-  process.on("SIGINT", sigIntHandler);
 
   try {
     const result = await runner.run({
@@ -236,13 +270,15 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
         verbose: config.reporting.verbose
       },
       signal: abortController.signal,
-      sharedAgentRegistry
+      sharedAgentRegistry,
+      toolRegistry
     }, (() => {
       let pipelineCounter = 0;
       return {
         agentExecutor,
         eventSink: eventBus,
         artifactStore,
+        toolExecutor,
         idGenerator: {
           nextId: (prefix: string) => {
             if (prefix === "run") return runIdGenerated;
