@@ -8,7 +8,7 @@ import type {
   ProviderConfig
 } from "./types.js";
 import { runProcess } from "./process-runner.js";
-import { shouldRedactEnvName } from "../security/env.js";
+import { buildProviderEnv, shouldRedactEnvName } from "../security/env.js";
 import { appendModelArg } from "./model-args.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenFlowError } from "../errors/types.js";
@@ -34,7 +34,12 @@ export class CodexExecAdapter implements AgentAdapter {
         command,
         args: ["--help"],
         cwd: process.cwd(),
-        timeoutMs: 2000
+        env: buildProviderEnv({
+          baseEnv: process.env,
+          passEnv: [],
+          explicitEnv: {}
+        }),
+        timeoutMs: 5000
       });
       return {
         provider: "codex",
