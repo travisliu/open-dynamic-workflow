@@ -25,6 +25,16 @@ providers:
       invalid-schema:
         json:
           wrongField: true
+      verbose-review:
+        json:
+          summary: "Review complete for SECRET_FROM_ENV"
+        stdout: "mock stdout SECRET_FROM_ENV"
+        stderr: "mock stderr SECRET_FROM_ENV"
+      verbose-timeout:
+        delayMs: 1000
+        timeout: true
+        stdout: "partial stdout"
+        stderr: "partial stderr"
 
 security:
   passEnv: []

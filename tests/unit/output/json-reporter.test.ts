@@ -70,14 +70,59 @@ describe("JsonReporter", () => {
     expect(parsed).toEqual(dummyResult);
   });
 
-  it("warn() writes to stderr, not stdout", () => {
+  it("verbose true writes verbose command/result blocks to stderr", () => {
     const { streams, getStdout, getStderr } = createMockStreams();
-    const reporter = new JsonReporter(streams);
+    const reporter = new JsonReporter(streams, { verbose: true });
 
-    reporter.warn("low disk");
+    reporter.handle({
+      type: "agent.verbose.command",
+      sequence: 1,
+      timestamp: "2026-06-13T12:00:00.000Z",
+      payload: {
+        agentId: "agent-1",
+        label: "my-label",
+        provider: "mock",
+        cwd: "/repo",
+        command: {
+          command: "ls",
+          args: ["-la"],
+          env: { NODE_ENV: "test" }
+        },
+        prompt: "test",
+        permissions: { mode: "dangerously-full-access" },
+        metadata: { sharedAgentId: "test-agent" },
+        artifacts: {
+          dir: "agents/agent-1",
+          promptPath: "agents/agent-1/prompt.txt",
+          stdoutPath: "agents/agent-1/stdout.log",
+          stderrPath: "agents/agent-1/stderr.log"
+        }
+      }
+    } as any);
 
     expect(getStdout()).toBe("");
-    expect(getStderr()).toBe("warning: low disk\n");
+    expect(getStderr()).toContain("Agent command: my-label");
+    expect(getStderr()).toContain("  Event: #1 2026-06-13T12:00:00.000Z");
+    expect(getStderr()).toContain("Command Environment:");
+    expect(getStderr()).toContain('    "NODE_ENV": "test"');
+    expect(getStderr()).toContain("Permissions: dangerously-full-access");
+    expect(getStderr()).toContain("Metadata:");
+    expect(getStderr()).toContain('    "sharedAgentId": "test-agent"');
+    expect(getStderr()).toContain("Artifacts:");
+    expect(getStderr()).toContain("    dir: agents/agent-1");
+  });
+
+  it("verbose false ignores verbose events", () => {
+    const { streams, getStdout, getStderr } = createMockStreams();
+    const reporter = new JsonReporter(streams, { verbose: false });
+
+    reporter.handle({
+      type: "agent.verbose.command",
+      payload: { agentId: "agent-1" }
+    } as any);
+
+    expect(getStdout()).toBe("");
+    expect(getStderr()).toBe("");
   });
 
   it("finish() output includes agent permissions", () => {
@@ -127,5 +172,38 @@ describe("JsonReporter", () => {
     const parsed = JSON.parse(output.trim());
     expect(parsed.workflows).toHaveLength(1);
     expect(parsed.workflows[0].workflowName).toBe("child");
+  });
+
+  it("verbose result block in stderr includes parse warnings", () => {
+    const { streams, getStderr } = createMockStreams();
+    const reporter = new JsonReporter(streams, { verbose: true });
+
+    reporter.handle({
+      type: "agent.verbose.result",
+      payload: {
+        agentId: "agent-1",
+        label: "my-label",
+        status: "succeeded",
+        durationMs: 12,
+        exitCode: 0,
+        stdout: "mock stdout",
+        stderr: "",
+        normalized: { summary: "done" },
+        parseWarnings: ["Warning 1"],
+        permissions: { mode: "default" },
+        artifacts: {
+          dir: "agents/agent-1",
+          promptPath: "agents/agent-1/prompt.txt",
+          stdoutPath: "agents/agent-1/stdout.log",
+          stderrPath: "agents/agent-1/stderr.log"
+        }
+      }
+    } as any);
+
+    expect(getStderr()).toContain("Parse warnings:");
+    expect(getStderr()).toContain("    - Warning 1");
+    expect(getStderr()).toContain("Permissions: default");
+    expect(getStderr()).toContain("Artifacts:");
+    expect(getStderr()).toContain("    stdout: agents/agent-1/stdout.log");
   });
 });

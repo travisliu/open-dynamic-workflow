@@ -1,7 +1,8 @@
-import type { Reporter, ReporterStartInput, ReporterStreams } from "./reporter.js";
+import type { Reporter, ReporterStartInput, ReporterStreams, ReporterOptions } from "./reporter.js";
 import type { EventEnvelope } from "./events.js";
 import type { WorkflowRunResult } from "../types/workflow.js";
 import { sanitizeMetadata } from "../security/metadata.js";
+import { renderVerboseEvent } from "./verbose-formatter.js";
 
 function formatDuration(ms?: number): string {
   if (typeof ms !== "number") return "";
@@ -19,7 +20,7 @@ export class PrettyReporter implements Reporter {
 
   constructor(
     private readonly streams: ReporterStreams,
-    private readonly options?: { verbose?: boolean }
+    private readonly options?: ReporterOptions
   ) {
     this.stdout = streams.stdout;
     this.verbose = !!options?.verbose;
@@ -33,6 +34,15 @@ export class PrettyReporter implements Reporter {
   handle(event: EventEnvelope): void {
     const type = event.type;
     const payload = event.payload as any;
+
+    // Handle verbose command/result blocks
+    if (this.verbose) {
+      const verboseBlock = renderVerboseEvent(event);
+      if (verboseBlock) {
+        this.stdout.write(verboseBlock);
+        return;
+      }
+    }
 
     switch (type) {
       case "phase.started": {
@@ -66,9 +76,8 @@ export class PrettyReporter implements Reporter {
         break;
       }
       case "agent.output": {
-        if (this.verbose) {
-          this.stdout.write(`[${payload.agentId}] ${payload.data}`);
-        }
+        // In verbose mode, we suppress agent.output to avoid interleaving with command/result blocks.
+        // It's already rendered in the result block.
         break;
       }
       case "agent.completed": {

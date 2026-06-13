@@ -143,7 +143,8 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
       concurrency: config.concurrency,
       timeoutMs: config.timeoutMs,
       reportMode: config.reporting.mode,
-      outDir: config.outDir
+      outDir: config.outDir,
+      verbose: config.reporting.verbose
     });
     return;
   }

@@ -26,28 +26,31 @@ export interface ReporterStreams {
   stderr: NodeJS.WritableStream;
 }
 
+export interface ReporterOptions {
+  verbose?: boolean;
+}
+
 export function createReporter(options: {
   mode: ReporterMode;
   streams?: Partial<ReporterStreams>;
-  verbose?: boolean;
-}): Reporter {
+} & ReporterOptions): Reporter {
   const streams: ReporterStreams = {
     stdout: options.streams?.stdout ?? process.stdout,
     stderr: options.streams?.stderr ?? process.stderr
   };
 
+  const reporterOptions: ReporterOptions = {};
+  if (options.verbose !== undefined) {
+    reporterOptions.verbose = options.verbose;
+  }
+
   switch (options.mode) {
-    case "pretty": {
-      const prettyOpts: { verbose?: boolean } = {};
-      if (options.verbose !== undefined) {
-        prettyOpts.verbose = options.verbose;
-      }
-      return new PrettyReporter(streams, prettyOpts);
-    }
+    case "pretty":
+      return new PrettyReporter(streams, reporterOptions);
     case "json":
-      return new JsonReporter(streams);
+      return new JsonReporter(streams, reporterOptions);
     case "jsonl":
-      return new JsonlReporter(streams);
+      return new JsonlReporter(streams, reporterOptions);
     default:
       throw new Error(`Unsupported reporter mode: ${options.mode}`);
   }

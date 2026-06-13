@@ -109,7 +109,7 @@ describe("PrettyReporter", () => {
     expect(getStdout()).toBe("");
   });
 
-  it("agent.output is shown when verbose is true", () => {
+  it("agent.output is hidden when verbose is true", () => {
     const { streams, getStdout } = createMockStreams();
     const reporter = new PrettyReporter(streams, { verbose: true });
 
@@ -118,7 +118,120 @@ describe("PrettyReporter", () => {
       payload: { agentId: "agent-1", data: "some output\n" }
     } as any);
 
-    expect(getStdout()).toBe("[agent-1] some output\n");
+    expect(getStdout()).toBe("");
+  });
+
+  it("agent.verbose.command is shown when verbose is true", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams, { verbose: true });
+
+    reporter.handle({
+      type: "agent.verbose.command",
+      sequence: 42,
+      timestamp: "2026-06-13T12:34:56.789Z",
+      payload: {
+        agentId: "agent-1",
+        label: "my-label",
+        provider: "mock",
+        cwd: "/repo",
+        command: {
+          command: "ls",
+          args: ["-la"],
+          env: { NODE_ENV: "test" }
+        },
+        prompt: "list files",
+        permissions: { mode: "dangerously-full-access" },
+        metadata: { sharedAgentId: "test-agent" },
+        artifacts: {
+          dir: "agents/agent-1",
+          promptPath: "agents/agent-1/prompt.txt",
+          stdoutPath: "agents/agent-1/stdout.log",
+          stderrPath: "agents/agent-1/stderr.log",
+          metadataPath: "agents/agent-1/metadata.json"
+        }
+      }
+    } as any);
+
+    const output = getStdout();
+    expect(output).toContain("Agent command: my-label");
+    expect(output).toContain("  Event: #42 2026-06-13T12:34:56.789Z");
+    expect(output).toContain("Provider: mock");
+    expect(output).toContain("CWD: /repo");
+    expect(output).toContain("Command:");
+    expect(output).toContain("  ls -la");
+    expect(output).toContain("Command Environment:");
+    expect(output).toContain('    "NODE_ENV": "test"');
+    expect(output).toContain("Prompt:");
+    expect(output).toContain("  list files");
+    expect(output).toContain("Permissions: dangerously-full-access");
+    expect(output).toContain("Metadata:");
+    expect(output).toContain('    "sharedAgentId": "test-agent"');
+    expect(output).toContain("Artifacts:");
+    expect(output).toContain("    dir: agents/agent-1");
+    expect(output).toContain("    prompt: agents/agent-1/prompt.txt");
+    expect(output).toContain("    stdout: agents/agent-1/stdout.log");
+    expect(output).toContain("    stderr: agents/agent-1/stderr.log");
+    expect(output).toContain("    metadata: agents/agent-1/metadata.json");
+  });
+
+  it("agent.verbose.result is shown when verbose is true", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams, { verbose: true });
+
+    reporter.handle({
+      type: "agent.verbose.result",
+      sequence: 43,
+      timestamp: "2026-06-13T12:34:57.001Z",
+      payload: {
+        agentId: "agent-1",
+        label: "my-label",
+        status: "succeeded",
+        durationMs: 12,
+        exitCode: 0,
+        stdout: "mock stdout",
+        stderr: "",
+        normalized: { summary: "done" },
+        permissions: { mode: "default" },
+        metadata: { foo: "bar" },
+        artifacts: {
+          dir: "agents/agent-1",
+          promptPath: "agents/agent-1/prompt.txt",
+          stdoutPath: "agents/agent-1/stdout.log",
+          stderrPath: "agents/agent-1/stderr.log"
+        }
+      }
+    } as any);
+
+    const output = getStdout();
+    expect(output).toContain("Agent result: my-label succeeded 12ms");
+    expect(output).toContain("  Event: #43 2026-06-13T12:34:57.001Z");
+    expect(output).toContain("Exit code: 0");
+    expect(output).toContain("stdout:");
+    expect(output).toContain("  mock stdout");
+    expect(output).toContain("stderr:");
+    expect(output).toContain("  (empty)");
+    expect(output).toContain("Normalized response:");
+    expect(output).toContain('    {\n      "summary": "done"\n    }');
+    expect(output).toContain("Permissions: default");
+    expect(output).toContain("Metadata:");
+    expect(output).toContain('    "foo": "bar"');
+    expect(output).toContain("Artifacts:");
+    expect(output).toContain("    dir: agents/agent-1");
+    expect(output).toContain("    prompt: agents/agent-1/prompt.txt");
+    expect(output).toContain("    stdout: agents/agent-1/stdout.log");
+    expect(output).toContain("    stderr: agents/agent-1/stderr.log");
+  });
+
+  it("agent.verbose.command is hidden when verbose is false", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams, { verbose: false });
+
+    reporter.handle({
+      type: "agent.verbose.command",
+      payload: { agentId: "agent-1" }
+    } as any);
+
+    expect(getStdout()).toBe("");
   });
 
   it("pipeline.started prints pipeline start details", () => {
@@ -286,5 +399,80 @@ describe("PrettyReporter", () => {
     } as any);
 
     expect(getStdout()).toBe("error workflow sub-flow failed in 456ms\n");
+  });
+
+  it("agent.verbose.result shows parse warnings when present", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams, { verbose: true });
+
+    reporter.handle({
+      type: "agent.verbose.result",
+      payload: {
+        agentId: "agent-1",
+        label: "my-label",
+        status: "succeeded",
+        durationMs: 12,
+        exitCode: 0,
+        stdout: "mock stdout",
+        stderr: "",
+        normalized: { summary: "done" },
+        parseWarnings: ["Warning 1", "Warning 2"],
+        permissions: { mode: "default" },
+        artifacts: {
+          dir: "agents/agent-1",
+          promptPath: "agents/agent-1/prompt.txt",
+          stdoutPath: "agents/agent-1/stdout.log",
+          stderrPath: "agents/agent-1/stderr.log"
+        }
+      }
+    } as any);
+
+    const output = getStdout();
+    expect(output).toContain("Parse warnings:");
+    expect(output).toContain("    - Warning 1");
+    expect(output).toContain("    - Warning 2");
+  });
+
+  it("omits Command Environment block when env is missing or empty", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams, { verbose: true });
+
+    reporter.handle({
+      type: "agent.verbose.command",
+      payload: {
+        agentId: "agent-1",
+        provider: "mock",
+        cwd: "/repo",
+        command: {
+          command: "ls",
+          args: ["-la"],
+          env: undefined
+        },
+        prompt: "list",
+        permissions: { mode: "default" },
+        artifacts: { dir: "dir", promptPath: "p", stdoutPath: "o", stderrPath: "e" }
+      }
+    } as any);
+
+    expect(getStdout()).not.toContain("Command Environment:");
+
+    reporter.handle({
+      type: "agent.verbose.command",
+      payload: {
+        agentId: "agent-2",
+        provider: "mock",
+        cwd: "/repo",
+        command: {
+          command: "ls",
+          args: ["-la"],
+          env: {}
+        },
+        prompt: "list",
+        permissions: { mode: "default" },
+        artifacts: { dir: "dir", promptPath: "p", stdoutPath: "o", stderrPath: "e" }
+      }
+    } as any);
+
+    expect(getStdout()).not.toContain("Command Environment:");
   });
 });

@@ -24,6 +24,21 @@ describe("Merge Config", () => {
     expect(merged.reporting.mode).toBe("jsonl");
   });
 
+  it("CLI verbose overrides config default according to precedence", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, { reporting: { verbose: false } }, { verbose: true });
+    expect(merged.reporting.verbose).toBe(true);
+  });
+
+  it("Config verbose remains enabled without CLI flag", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, { reporting: { verbose: true } }, {});
+    expect(merged.reporting.verbose).toBe(true);
+  });
+
+  it("CLI verbose false overrides config verbose true", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, { reporting: { verbose: true } }, { verbose: false });
+    expect(merged.reporting.verbose).toBe(false);
+  });
+
   it("provider configs merge instead of replace all providers", () => {
     const fileConfig: Partial<OpenFlowConfig> = {
       providers: {

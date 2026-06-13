@@ -10,6 +10,7 @@ export interface DryRunSummary {
   timeoutMs: number;
   reportMode: string;
   outDir: string;
+  verbose?: boolean;
 }
 
 export function printValidationSuccess(workflowName: string): void {
@@ -46,6 +47,15 @@ export function printDryRunSummary(summary: DryRunSummary): void {
   console.log(`Concurrency: ${summary.concurrency}`);
   console.log(`Timeout: ${summary.timeoutMs} ms`);
   console.log(`Report mode: ${summary.reportMode}`);
+  if (summary.verbose) {
+    console.log(`Verbose logging: enabled`);
+  }
   console.log(`Artifacts root: ${summary.outDir}\n`);
+
+  if (summary.verbose) {
+    console.log(`Agent Command Previews:`);
+    console.log(`  (Command previews are unavailable in dry-run mode)\n`);
+  }
+
   console.log(`No providers were invoked.`);
 }
