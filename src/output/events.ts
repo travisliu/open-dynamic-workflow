@@ -18,6 +18,8 @@ export type EventType =
   | "agent.failed"
   | "agent.timed_out"
   | "agent.cancelled"
+  | "agent.verbose.command"
+  | "agent.verbose.result"
   | "pipeline.started"
   | "pipeline.completed"
   | "pipeline.failed"
@@ -306,4 +308,44 @@ export function isEventEnvelope(value: unknown): value is EventEnvelope {
       typeof (value as EventEnvelope).timestamp === "string" &&
       typeof (value as EventEnvelope).type === "string"
   );
+}
+
+export interface RedactedProviderCommand {
+  command: string;
+  args: string[];
+  cwd: string;
+  stdin?: string | undefined;
+  env?: Record<string, string> | undefined;
+}
+
+export interface AgentVerboseCommandPayload {
+  agentId: string;
+  label?: string | undefined;
+  provider: string;
+  model?: string | undefined;
+  cwd: string;
+  command?: RedactedProviderCommand | undefined;
+  prompt: string;
+  artifacts: AgentArtifacts;
+  permissions: AgentPermissions;
+  metadata?: Record<string, unknown> | undefined;
+  note?: string | undefined;
+}
+
+export interface AgentVerboseResultPayload {
+  agentId: string;
+  label?: string | undefined;
+  provider: string;
+  model?: string | undefined;
+  status: "succeeded" | "failed" | "timed_out" | "cancelled" | "skipped";
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  durationMs: number;
+  normalized?: unknown;
+  error?: SerializedError | undefined;
+  parseWarnings?: string[] | undefined;
+  artifacts: AgentArtifacts;
+  permissions: AgentPermissions;
+  metadata?: Record<string, unknown> | undefined;
 }

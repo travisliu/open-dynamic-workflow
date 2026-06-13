@@ -256,6 +256,25 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       return result;
 
     } catch (err: any) {
+      let abortType: "user" | "timeout" | "other" = "other";
+      if (err?.code === ErrorCode.WORKFLOW_TIMEOUT) {
+        abortType = "timeout";
+      } else if (
+        err?.code === ErrorCode.WORKFLOW_CANCELLED ||
+        err?.code === ErrorCode.USER_CANCELLED ||
+        err?.name === "AbortError" ||
+        err?.name === "WorkflowCancelledError" ||
+        (err?.name === "OpenFlowError" && (err?.code === ErrorCode.WORKFLOW_CANCELLED || err?.code === ErrorCode.USER_CANCELLED))
+      ) {
+        abortType = "user";
+      }
+
+      scheduler.abort({
+        type: abortType,
+        message: err.message || "Workflow error"
+      });
+      await scheduler.drain().catch(() => {});
+
       if (runtime.toolExecutor) {
         runtime.toolExecutor.cancel(serializeError(err));
         await runtime.toolExecutor.close().catch(() => {});

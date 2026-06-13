@@ -1,3 +1,5 @@
+import type { ProviderCommand } from "../types/agent.js";
+
 export const DEFAULT_REDACT_PATTERNS = [
   "*_KEY",
   "*_TOKEN",
@@ -142,4 +144,70 @@ export class StreamRedactor {
     this.buffer = "";
     return redacted;
   }
+}
+
+export function collectSecretValues(
+  baseEnv: NodeJS.ProcessEnv,
+  patterns: string[] = DEFAULT_REDACT_PATTERNS
+): string[] {
+  const values: string[] = [];
+  for (const [key, value] of Object.entries(baseEnv)) {
+    if (value && shouldRedactEnvName(key, patterns)) {
+      values.push(value);
+    }
+  }
+  return values;
+}
+
+/**
+ * Redacts string values inside a JSON-like structure.
+ * Accepts JSON-like values only; must not contain circular references.
+ */
+export function redactJsonValue(value: unknown, secretValues: string[]): unknown {
+  if (typeof value === "string") {
+    return redactText(value, secretValues);
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => redactJsonValue(v, secretValues));
+  }
+  if (value !== null && typeof value === "object") {
+    const redacted: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      redacted[key] = redactJsonValue(val, secretValues);
+    }
+    return redacted;
+  }
+  return value;
+}
+
+export function redactProviderCommand(command: ProviderCommand, secretValues: string[]): ProviderCommand {
+  const redacted: ProviderCommand = {
+    ...command,
+    command: redactText(command.command, secretValues),
+    args: command.args.map((arg) => redactText(arg, secretValues)),
+    stdin: command.stdin ? redactText(command.stdin, secretValues) : command.stdin,
+  };
+
+  if (command.env) {
+    const env: Record<string, string> = {};
+    for (const [key, value] of Object.entries(command.env)) {
+      env[key] = redactText(value, secretValues);
+    }
+    redacted.env = env;
+  } else {
+    redacted.env = undefined;
+  }
+
+  return redacted;
+}
+
+export function redactSerializedError<T extends { message?: string; stack?: string }>(
+  error: T,
+  secretValues: string[]
+): T {
+  return {
+    ...error,
+    message: error.message ? redactText(error.message, secretValues) : error.message,
+    stack: error.stack ? redactText(error.stack, secretValues) : error.stack
+  };
 }

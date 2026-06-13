@@ -1,14 +1,28 @@
 import type { AgentExecutor, AgentExecutionInput } from "./execution-types.js";
-import type { AgentResult, AgentSuccessResult, AgentFailureResult, AgentRunInput, AgentPermissions } from "../types/agent.js";
+import type { AgentResult, AgentSuccessResult, AgentFailureResult, AgentRunInput, AgentPermissions, ProviderCommand } from "../types/agent.js";
 import type { ResolvedConfig } from "../types/config.js";
 import type { ArtifactStore, AgentArtifacts } from "../types/artifacts.js";
+import type {
+  AgentVerboseCommandPayload,
+  AgentVerboseResultPayload
+} from "../output/events.js";
 import { EventBus } from "../orchestration/event-bus.js";
 import { createDefaultProviderRegistry } from "./registry.js";
 import { runProcess } from "./process-runner.js";
 import { validateJson } from "../structured/validate-json.js";
 import { normalizeAgentOutput } from "../structured/normalize-agent-output.js";
-import { buildProviderEnv, shouldRedactEnvName, redactText, StreamRedactor } from "../security/env.js";
+import {
+  buildProviderEnv,
+  shouldRedactEnvName,
+  redactText,
+  StreamRedactor,
+  collectSecretValues,
+  redactJsonValue,
+  redactProviderCommand,
+  redactSerializedError
+} from "../security/env.js";
 import { sanitizeMetadata } from "../security/metadata.js";
+import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 
 const MAX_IN_MEMORY_LOG_SIZE = 1024 * 1024; // 1MB limit for in-memory results
 
@@ -39,6 +53,41 @@ export class DefaultAgentExecutor implements AgentExecutor {
   async execute(input: AgentExecutionInput): Promise<AgentResult> {
     const result = await this.executeInternal(input);
     return removeUndefinedProperties(result);
+  }
+
+  private async emitVerboseCommand(input: AgentExecutionInput, details: {
+    commandInput?: ProviderCommand | undefined;
+    prompt: string;
+    artifacts: AgentArtifacts;
+    permissions: AgentPermissions;
+    metadata?: Record<string, unknown> | undefined;
+    secretValues: string[];
+    note?: string | undefined;
+  }): Promise<void> {
+    const payload: AgentVerboseCommandPayload = {
+      agentId: input.id,
+      label: input.label,
+      provider: input.provider,
+      model: input.model,
+      cwd: input.cwd,
+      command: details.commandInput
+        ? redactProviderCommand(details.commandInput, details.secretValues)
+        : undefined,
+      prompt: redactText(details.prompt, details.secretValues),
+      artifacts: cloneArtifacts(details.artifacts),
+      permissions: details.permissions,
+      metadata: details.metadata,
+      note: details.note
+    };
+    await this.eventBus.emit("agent.verbose.command", removeUndefinedProperties(payload));
+  }
+
+  private async emitVerboseResult(payload: AgentVerboseResultPayload): Promise<void> {
+    const snapped = {
+      ...payload,
+      artifacts: cloneArtifacts(payload.artifacts)
+    };
+    await this.eventBus.emit("agent.verbose.result", removeUndefinedProperties(snapped));
   }
 
   private async executeInternal(input: AgentExecutionInput): Promise<AgentResult> {
@@ -72,13 +121,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
     await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, "");
     await this.artifactStore.writeText(`agents/${input.id}/stderr.log`, "");
 
-    const secretPatterns = this.config.security?.redactEnv ?? [];
-    const secretValues: string[] = [];
-    for (const [key, value] of Object.entries(process.env)) {
-      if (value && shouldRedactEnvName(key, secretPatterns)) {
-        secretValues.push(value);
-      }
-    }
+    const secretValues = collectSecretValues(process.env, this.config.security?.redactEnv);
 
     const stdoutRedactor = new StreamRedactor(secretValues);
     const stderrRedactor = new StreamRedactor(secretValues);
@@ -139,13 +182,24 @@ export class DefaultAgentExecutor implements AgentExecutor {
     };
 
     let executionResult: { exitCode: number | null; timedOut: boolean; cancelled: boolean };
-    let commandInput: any;
+    let commandInput: ProviderCommand | undefined;
     try {
-      if (input.provider === "mock" && isMockAdapter(adapter)) {
-        await adapter.buildCommand(runInput);
-      } else {
-        commandInput = await adapter.buildCommand(runInput);
-      }
+      commandInput = await adapter.buildCommand(runInput);
+
+      const resolvedPrompt = resolveStructuredOutputPrompt({
+        prompt: input.prompt,
+        schema: input.schema,
+        structuredOutput: input.structuredOutput
+      }).prompt;
+
+      await this.emitVerboseCommand(input, {
+        commandInput,
+        prompt: resolvedPrompt,
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata,
+        secretValues
+      });
     } catch (err: any) {
       // Flush redactors
       const finalStdout = stdoutRedactor.flush();
@@ -170,6 +224,22 @@ export class DefaultAgentExecutor implements AgentExecutor {
       if (err?.stack) {
         errorPayload.stack = err.stack;
       }
+
+      await this.emitVerboseResult({
+        agentId: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        status: "failed",
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode: null,
+        durationMs,
+        error: redactSerializedError(errorPayload, secretValues),
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
+      });
 
       const failureResult: AgentFailureResult = {
         ok: false,
@@ -222,6 +292,23 @@ export class DefaultAgentExecutor implements AgentExecutor {
 
     if (timedOut) {
       const errPayload = { name: "TimeoutError", message: "Agent execution timed out", code: "PROCESS_TIMEOUT" };
+
+      await this.emitVerboseResult({
+        agentId: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        status: "timed_out",
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode: null,
+        durationMs,
+        error: redactSerializedError(errPayload, secretValues),
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
+      });
+
       const failureResult: AgentFailureResult = {
         ok: false,
         status: "timed_out",
@@ -244,6 +331,23 @@ export class DefaultAgentExecutor implements AgentExecutor {
 
     if (cancelled) {
       const errPayload = { name: "CancelledError", message: "Agent execution was cancelled", code: "USER_CANCELLED" };
+
+      await this.emitVerboseResult({
+        agentId: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        status: "cancelled",
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode: null,
+        durationMs,
+        error: redactSerializedError(errPayload, secretValues),
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
+      });
+
       const failureResult: AgentFailureResult = {
         ok: false,
         status: "cancelled",
@@ -265,6 +369,28 @@ export class DefaultAgentExecutor implements AgentExecutor {
     }
 
     if (exitCode !== null && exitCode !== 0) {
+      const errPayload = {
+        name: "ProviderProcessFailed",
+        message: stderrInMemory.trim() || `Process exited with code ${exitCode}`,
+        code: "PROVIDER_PROCESS_FAILED"
+      };
+
+      await this.emitVerboseResult({
+        agentId: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        status: "failed",
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode,
+        durationMs,
+        error: redactSerializedError(errPayload, secretValues),
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
+      });
+
       const failureResult: AgentFailureResult = {
         ok: false,
         status: "failed",
@@ -277,11 +403,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode,
         durationMs,
         artifacts: agentArtifacts,
-        error: {
-          name: "ProviderProcessFailed",
-          message: stderrInMemory.trim() || `Process exited with code ${exitCode}`,
-          code: "PROVIDER_PROCESS_FAILED"
-        },
+        error: errPayload,
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
@@ -298,6 +420,31 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode
       });
     } catch (err: any) {
+      const errPayload = {
+        name: "ParseError",
+        message: `Parser crashed: ${err.message}`,
+        code: "INTERNAL_ERROR" as const
+      };
+      if (err.stack) {
+        (errPayload as any).stack = err.stack;
+      }
+
+      await this.emitVerboseResult({
+        agentId: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        status: "failed",
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode,
+        durationMs,
+        error: redactSerializedError(errPayload, secretValues),
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata
+      });
+
       const failureResult: AgentFailureResult = {
         ok: false,
         status: "failed",
@@ -310,11 +457,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode,
         durationMs,
         artifacts: agentArtifacts,
-        error: {
-          name: "ParseError",
-          message: `Parser crashed: ${err.message}`,
-          code: "INTERNAL_ERROR"
-        },
+        error: errPayload,
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
@@ -351,6 +494,30 @@ export class DefaultAgentExecutor implements AgentExecutor {
         await this.artifactStore.writeJson(`agents/${input.id}/validation-error.json`, normalized.error.errors);
       }
 
+      const errPayload = {
+        name: "ValidationError",
+        message: normalized.error.message,
+        code: normalized.error.code as any
+      };
+
+      await this.emitVerboseResult({
+        agentId: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        status: "failed",
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode,
+        durationMs,
+        normalized: redactJsonValue({ validation: "failed", errors: normalized.error.errors }, secretValues),
+        error: redactSerializedError(errPayload, secretValues),
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata,
+        parseWarnings: redactJsonValue(parseResult.parseWarnings, secretValues) as string[]
+      });
+
       const failureResult: AgentFailureResult = {
         ok: false,
         status: "failed",
@@ -363,11 +530,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         exitCode,
         durationMs,
         artifacts: agentArtifacts,
-        error: {
-          name: "ValidationError",
-          message: normalized.error.message,
-          code: normalized.error.code as any
-        },
+        error: errPayload,
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
@@ -375,6 +538,23 @@ export class DefaultAgentExecutor implements AgentExecutor {
     }
 
     await this.artifactStore.writeJson(`agents/${input.id}/normalized-result.json`, normalized.json ?? normalized.text);
+
+    await this.emitVerboseResult({
+      agentId: input.id,
+      label: input.label,
+      provider: input.provider,
+      model: input.model,
+      status: "succeeded",
+      stdout: stdoutInMemory,
+      stderr: stderrInMemory,
+      exitCode: exitCode ?? 0,
+      durationMs,
+      normalized: redactJsonValue(normalized.json ?? normalized.text, secretValues),
+      artifacts: agentArtifacts,
+      permissions: resolvedPerms,
+      metadata: sanitizedMetadata,
+      parseWarnings: redactJsonValue(parseResult.parseWarnings, secretValues) as string[]
+    });
 
     const successResult: AgentSuccessResult = {
       ok: true,
@@ -502,4 +682,8 @@ function removeUndefinedProperties<T>(obj: T): T {
     }
   }
   return result;
+}
+
+function cloneArtifacts(artifacts: AgentArtifacts): AgentArtifacts {
+  return { ...artifacts };
 }
