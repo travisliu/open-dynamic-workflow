@@ -15,6 +15,7 @@ describe("Load Config", () => {
 
     // Assert
     expect(config.defaultProvider).toBe("mock");
+    expect(config.providers.copilot.command).toBe("copilot");
     expect(config.providers.opencode.command).toBe("opencode");
     expect(config.providers.antigravity.command).toBe("agy");
     expect(config.providers.pi.command).toBe("pi");
@@ -28,6 +29,8 @@ describe("Load Config", () => {
     mkdirSync(tempDir, { recursive: true });
     const configContent = `
 providers:
+  copilot:
+    permissionPolicy: passthrough
   opencode:
     permissionPolicy: passthrough
   antigravity:
@@ -44,6 +47,7 @@ providers:
     const config = await loadConfig({ cwd: tempDir, cli: {} });
 
     // Assert
+    expect(config.providers.copilot.permissionPolicy).toBe("passthrough");
     expect(config.providers.opencode.permissionPolicy).toBe("passthrough");
     expect(config.providers.antigravity.promptFlag).toBe("--prompt");
     expect(config.providers.pi.safeTools).toEqual(["read", "grep"]);
@@ -76,6 +80,41 @@ providers:
     expect(config.providers.pi.args).toBeUndefined();
 
     rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("36. Copilot can be configured as default provider explicitly", async () => {
+    // Arrange
+    const tempDir = join(tmpdir(), "openflow-test-default-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = "defaultProvider: copilot";
+    const configDir = join(tempDir, ".openflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    // Act
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
+
+    // Assert
+    expect(config.defaultProvider).toBe("copilot");
+    expect(config.providers.copilot.command).toBe("copilot");
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("37. security defaults do not pass Copilot tokens automatically", async () => {
+    // Arrange
+    const emptyDir = join(tmpdir(), "openflow-test-security-" + Date.now());
+    mkdirSync(emptyDir, { recursive: true });
+
+    // Act
+    const config = await loadConfig({ cwd: emptyDir, cli: {} });
+
+    // Assert
+    expect(config.security.passEnv).not.toContain("COPILOT_GITHUB_TOKEN");
+    expect(config.security.passEnv).not.toContain("GH_TOKEN");
+    expect(config.security.passEnv).not.toContain("GITHUB_TOKEN");
+
+    rmSync(emptyDir, { recursive: true, force: true });
   });
 
   // Keep some core existing tests to ensure no regressions

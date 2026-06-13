@@ -79,7 +79,7 @@ type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
 type DirectAgentCallInput = {
   id?: string;
   label?: string;
-  provider?: "codex" | "gemini" | "mock" | "opencode" | "antigravity" | "pi" | string;
+  provider?: "codex" | "gemini" | "copilot" | "mock" | "opencode" | "antigravity" | "pi" | string;
   prompt: string;
   model?: string;
   schema?: JsonSchema;
@@ -96,7 +96,7 @@ type DefinitionAgentCallInput = {
   id?: string;
   definition: string;
   label?: string;
-  provider?: "codex" | "gemini" | "mock" | "opencode" | "antigravity" | "pi" | string;
+  provider?: "codex" | "gemini" | "copilot" | "mock" | "opencode" | "antigravity" | "pi" | string;
   prompt?: string;
   model?: string;
   schema?: JsonSchema;
@@ -117,7 +117,7 @@ type DefinitionAgentCallInput = {
 | ----------------- | -------: | ------------------------------------------------------------------------------ |
 | `id`              |       No | Stable identifier for the agent call and artifacts.                            |
 | `label`           |       No | Human-readable label for output.                                               |
-| `provider`        |       No | Provider to use: `codex`, `gemini`, `mock`, or configured provider.            |
+| `provider`        |       No | Provider to use: `mock`, `codex`, `gemini`, `copilot`, `opencode`, `antigravity`, or `pi`. |
 | `prompt`          |      Yes | Prompt sent to the provider.                                                   |
 | `model`           |       No | Model override for this call.                                                  |
 | `schema`          |       No | JSON Schema used to validate structured output.                                |
@@ -197,6 +197,7 @@ Per-provider effect:
 | -------- | ----------------------------------- |
 | `codex`  | Appends `--dangerously-bypass-approvals-and-sandbox` to the provider command. |
 | `gemini` | Replaces `--approval-mode <value>` with `--approval-mode yolo` in the provider command. |
+| `copilot`| Appends `--yolo`. This provider targets the standalone `copilot` binary and NOT the deprecated `gh copilot` extension. Authentication and login must be handled via the Copilot CLI itself; OpenFlow does not manage Copilot credentials. |
 | `opencode`| Appends `--dangerously-skip-permissions` and skips read-only config injection. |
 | `antigravity`| Appends `--dangerously-skip-permissions`. |
 | `pi`      | Switches from `safeTools` to `fullAccessTools`. |
@@ -625,6 +626,7 @@ Built-in providers:
 | `mock`   | Tests, examples, smoke workflows, deterministic CI.                |
 | `codex`  | Code review, correctness, security, implementation reasoning.      |
 | `gemini` | Test strategy, operational review, broad synthesis, summarization. |
+| `copilot`| General purpose coding agent from GitHub.                          |
 | `opencode` | General purpose coding agent with read-only config injection. |
 | `antigravity` | High-fidelity terminal-first agent with sandbox support. |
 | `pi` | Tool-use coding agent with explicit safe/full toolsets. |
@@ -639,6 +641,7 @@ The `permissions` field on `agent()` affects provider CLI arguments at the adapt
 | -------- | --------------------- | -------------------------------- |
 | `codex`  | Ephemeral sandbox with approvals | Appends `--dangerously-bypass-approvals-and-sandbox` |
 | `gemini` | `--approval-mode plan` (or config default) | Replaces `--approval-mode <value>` with `--approval-mode yolo` |
+| `copilot`| Default mode (no broad allow-all/yolo flags) | Appends `--yolo` |
 | `mock`   | No subprocess approval concept | Field is accepted and recorded; no runtime effect |
 
 ---

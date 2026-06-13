@@ -219,10 +219,17 @@ export function validateConfig(config: OpenFlowConfig): void {
             `Provider 'antigravity' permissionPolicy must be 'sandbox' or 'native'.`
           );
         }
-      } else if (!["read-only", "passthrough", "sandbox", "native"].includes(provider.permissionPolicy)) {
+      } else if (name === "copilot") {
+        if (!["restricted", "passthrough"].includes(provider.permissionPolicy)) {
+          throw new OpenFlowError(
+            ErrorCode.CONFIG_VALIDATION_ERROR,
+            `Provider 'copilot' permissionPolicy must be 'restricted' or 'passthrough'.`
+          );
+        }
+      } else if (!["read-only", "passthrough", "sandbox", "native", "restricted"].includes(provider.permissionPolicy)) {
         throw new OpenFlowError(
           ErrorCode.CONFIG_VALIDATION_ERROR,
-          `Provider '${name}' permissionPolicy must be 'read-only', 'passthrough', 'sandbox', or 'native'.`
+          `Provider '${name}' permissionPolicy must be 'read-only', 'passthrough', 'sandbox', 'native', or 'restricted'.`
         );
       }
     }

@@ -24,6 +24,21 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
       defaultModel: "gemini-3-flash-preview",
       promptMode: "stdin"
     },
+    copilot: {
+      command: "copilot",
+      args: [
+        "-s",
+        "--no-ask-user",
+        "--no-auto-update",
+        "--output-format=json"
+      ],
+      defaultModel: null,
+      modelArg: { flag: "--model" },
+      promptMode: "arg",
+      promptFlag: "-p",
+      dangerouslySkipPermissionsFlag: "--yolo",
+      permissionPolicy: "restricted"
+    },
     opencode: {
       command: "opencode",
       args: ["run", "--format", "json"],

@@ -78,6 +78,21 @@ providers:
       - "plan"
     defaultModel: "gemini-3-flash-preview"
     promptMode: "stdin"
+  copilot:
+    # Targets the standalone 'copilot' binary, NOT 'gh copilot'.
+    # Authentication must be handled via 'copilot auth login'.
+    command: "copilot"
+    args:
+      - "-s"
+      - "--no-ask-user"
+      - "--no-auto-update"
+      - "--output-format=json"
+    defaultModel: null
+    modelArg: { flag: "--model" }
+    promptMode: "arg"
+    promptFlag: "-p"
+    dangerouslySkipPermissionsFlag: "--yolo"
+    permissionPolicy: "restricted"
   opencode:
     command: "opencode"
     args: ["run", "--format", "json"]
@@ -133,6 +148,13 @@ The following keys are supported by specific provider adapters.
 | `formatFlag` | `string` | `undefined` | Non-empty string. | Flag used to specify the output format. |
 | `format` | `string` | `undefined` | Non-empty string. | Output format value (e.g., `"json"`). |
 | `dangerouslySkipPermissionsFlag` | `string` | `undefined` | Non-empty string. | Flag to skip OpenCode-side permission checks. |
+
+**GitHub Copilot (copilot)**
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `permissionPolicy` | `string` | `"restricted"` | `"restricted"` or `"passthrough"`. | Default `"restricted"` does not add broad allow-all or yolo flags; `"passthrough"` skips it. |
+| `promptFlag` | `string` | `"-p"` | Non-empty string. | Flag used to pass the prompt. |
+| `dangerouslySkipPermissionsFlag` | `string` | `"--yolo"` | Non-empty string. | Flag to skip permission checks. |
 
 **Antigravity (antigravity)**
 | Option | Type | Default | Validation Rules | Description |

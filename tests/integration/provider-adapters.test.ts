@@ -97,7 +97,8 @@ describe("Provider adapter execution", () => {
     const providers = [
       { id: "opencode-test", provider: "opencode", subcase: "03.05" },
       { id: "antigravity-test", provider: "antigravity", subcase: "03.06" },
-      { id: "pi-test", provider: "pi", subcase: "03.07" }
+      { id: "pi-test", provider: "pi", subcase: "03.07" },
+      { id: "copilot-test", provider: "copilot", subcase: "03.11" }
     ];
 
     for (const p of providers) {
@@ -130,6 +131,10 @@ describe("Provider adapter execution", () => {
       expect(agent.ok).toBe(true);
       expect(agent.provider).toBe(p.provider);
       
+      if (p.provider === "copilot") {
+        expect(agent.text).toBe("Fake Copilot provider response");
+      }
+      
       const agentDir = path.join(runDir, `agents/${agent.id}`);
       expect(await fs.access(path.join(agentDir, "stdout.log")).then(() => true)).toBe(true);
       expect(await fs.access(path.join(agentDir, "stderr.log")).then(() => true)).toBe(true);
@@ -137,6 +142,105 @@ describe("Provider adapter execution", () => {
       const stderr = JSON.parse(await fs.readFile(path.join(agentDir, "stderr.log"), "utf8"));
       expect(stderr.argv).toBeDefined();
     }
+  });
+
+  it("70. Copilot structured output validates through existing local schema path", async () => {
+    // Arrange
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    // Act
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--report", "json",
+      "--arg", "subcase=03.13"
+    ]);
+
+    // Assert
+    expect(result.error).toBeNull();
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    const agent = report.agents.find((a: any) => a.id === "copilot-json");
+    expect(agent.ok).toBe(true);
+    expect(agent.json).toEqual({ ok: true, files: ["src/agents/github-copilot-cli.ts"] });
+  });
+
+  it("71. Invalid Copilot structured output produces failed agent result", async () => {
+    // Arrange
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    // Act (invalid JSON)
+    const result1 = await runCli([
+      "run",
+      workflowPath,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--report", "json",
+      "--arg", "subcase=03.14"
+    ]);
+
+    // Assert 1
+    const runs1 = await fs.readdir(TEMP_DIR);
+    const runDir1 = path.join(TEMP_DIR, runs1[0]!);
+    const report1 = JSON.parse(await fs.readFile(path.join(runDir1, "report.json"), "utf8"));
+    const agent1 = report1.agents.find((a: any) => a.id === "copilot-invalid-json");
+    expect(agent1.ok).toBe(false);
+    expect(agent1.error.code).toBe("SCHEMA_VALIDATION_FAILED");
+
+    // Act (schema-invalid JSON)
+    await fs.rm(TEMP_DIR, { recursive: true, force: true });
+    await fs.mkdir(TEMP_DIR, { recursive: true });
+    const result2 = await runCli([
+      "run",
+      workflowPath,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--report", "json",
+      "--arg", "subcase=03.15"
+    ]);
+
+    // Assert 2
+    const runs2 = await fs.readdir(TEMP_DIR);
+    const runDir2 = path.join(TEMP_DIR, runs2[0]!);
+    const report2 = JSON.parse(await fs.readFile(path.join(runDir2, "report.json"), "utf8"));
+    const agent2 = report2.agents.find((a: any) => a.id === "copilot-schema-invalid");
+    expect(agent2.ok).toBe(false);
+    expect(agent2.error.code).toBe("SCHEMA_VALIDATION_FAILED");
+  });
+
+  it("72. Secrets are not passed to Copilot command environment", async () => {
+    // Arrange
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    // Act
+    process.env.GITHUB_TOKEN = "secret-token";
+    process.env.MY_APP_SECRET = "secret-value";
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--arg", "subcase=03.11"
+    ]);
+    delete process.env.GITHUB_TOKEN;
+    delete process.env.MY_APP_SECRET;
+
+    // Assert
+    expect(result.error).toBeNull();
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const agentDir = path.join(runDir, "agents/copilot-test");
+    const stderr = JSON.parse(await fs.readFile(path.join(agentDir, "stderr.log"), "utf8"));
+    
+    expect(stderr.env.GITHUB_TOKEN).toBeUndefined();
+    expect(stderr.env.GH_TOKEN).toBeUndefined();
+    expect(stderr.env.MY_APP_SECRET).toBeUndefined();
   });
 
   it("69. dangerous permission artifacts remain explicit for new providers", async () => {
@@ -152,7 +256,8 @@ describe("Provider adapter execution", () => {
         subcase: "03.10",
         expectedArgv: ["--tools", "read,bash,edit,write,grep,find,ls"],
         forbiddenArgv: ["--approve"]
-      }
+      },
+      { id: "copilot-full-access", subcase: "03.12", expectedArgv: ["--yolo"] }
     ];
 
     for (const a of agents) {

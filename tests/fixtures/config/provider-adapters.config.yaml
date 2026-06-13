@@ -36,6 +36,17 @@ providers:
     args:
       - tests/fixtures/providers/fake-provider-cli.mjs
     executionMode: json
+  copilot:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+      - --provider
+      - copilot
+    defaultModel: null
+    modelArg:
+      flag: --model
+    promptMode: arg
+    promptFlag: -p
 
 security:
   passEnv: []

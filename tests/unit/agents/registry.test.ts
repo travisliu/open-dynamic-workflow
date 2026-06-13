@@ -12,6 +12,7 @@ describe("ProviderRegistry", () => {
       providers: {
         codex: { command: "codex" },
         gemini: { command: "gemini" },
+        copilot: { command: "copilot" },
         opencode: { command: "opencode" },
         antigravity: { command: "agy" },
         pi: { command: "pi" }
@@ -35,13 +36,14 @@ describe("ProviderRegistry", () => {
     const providers = registry.list().map(a => a.name);
 
     // Assert
-    expect(providers).toEqual(["mock", "codex", "gemini", "opencode", "antigravity", "pi"]);
+    expect(providers).toEqual(["mock", "codex", "gemini", "copilot", "opencode", "antigravity", "pi"]);
   });
 
   it("55. retrieves new provider adapters by name", () => {
     // Arrange
     const dummyConfig = {
       providers: {
+        copilot: { command: "copilot" },
         opencode: { command: "opencode" },
         antigravity: { command: "agy" },
         pi: { command: "pi" }
@@ -50,11 +52,13 @@ describe("ProviderRegistry", () => {
     const registry = createDefaultProviderRegistry({ config: dummyConfig });
 
     // Act
+    const copilot = registry.get("copilot");
     const opencode = registry.get("opencode");
     const antigravity = registry.get("antigravity");
     const pi = registry.get("pi");
 
     // Assert
+    expect(copilot.name).toBe("copilot");
     expect(opencode.name).toBe("opencode");
     expect(antigravity.name).toBe("antigravity");
     expect(pi.name).toBe("pi");

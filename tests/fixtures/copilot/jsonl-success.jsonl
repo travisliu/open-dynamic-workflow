@@ -1,0 +1,2 @@
+{"type":"session_started","id":"s1"}
+{"type":"assistant_message","message":{"role":"assistant","content":"Use the scheduler path for provider execution."}}

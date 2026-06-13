@@ -1,4 +1,4 @@
-export type ProviderName = "codex" | "gemini" | "mock" | "opencode" | "antigravity" | "pi" | string;
+export type ProviderName = "codex" | "gemini" | "mock" | "copilot" | "opencode" | "antigravity" | "pi" | string;
 export type ReporterMode = "pretty" | "json" | "jsonl";
 
 export interface ProviderModelArgConfig {

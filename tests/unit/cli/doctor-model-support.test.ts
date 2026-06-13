@@ -50,7 +50,8 @@ describe("Doctor Model Support Output", () => {
         providers: [
           { provider: "opencode", ok: true, message: "available", defaultModel: "gpt-4", supportsModelSelection: true },
           { provider: "antigravity", ok: true, message: "available", defaultModel: "claude-3", supportsModelSelection: false },
-          { provider: "pi", ok: true, message: "available", defaultModel: null, supportsModelSelection: true }
+          { provider: "pi", ok: true, message: "available", defaultModel: null, supportsModelSelection: true },
+          { provider: "copilot", ok: true, message: "available", defaultModel: null, supportsModelSelection: true }
         ]
       })
     };
@@ -59,7 +60,8 @@ describe("Doctor Model Support Output", () => {
       providers: {
         opencode: { command: "opencode", defaultModel: "gpt-4" },
         antigravity: { command: "agy", defaultModel: "claude-3" },
-        pi: { command: "pi" }
+        pi: { command: "pi" },
+        copilot: { command: "copilot" }
       },
       cwd: "/root",
       outDir: "/root/out"
@@ -78,7 +80,34 @@ describe("Doctor Model Support Output", () => {
     expect(allOutput).toContain("antigravity");
     expect(allOutput).toContain("claude-3");
     expect(allOutput).toContain("pi");
+    expect(allOutput).toContain("copilot");
     
     consoleSpy.mockRestore();
+  });
+
+  it("46. Unavailable Copilot fails doctor when Copilot is the default provider", async () => {
+    // Arrange
+    const mockChecker = {
+      checkAll: vi.fn().mockResolvedValue({
+        ok: false,
+        providers: [
+          { provider: "copilot", ok: false, message: "not found", defaultModel: null, supportsModelSelection: true }
+        ]
+      })
+    };
+    vi.mocked(loadConfig).mockResolvedValue({
+      defaultProvider: "copilot",
+      providers: {
+        copilot: { command: "copilot" }
+      },
+      cwd: "/root",
+      outDir: "/root/out"
+    } as any);
+
+    const rawOptions = { config: "config.yaml" };
+    vi.spyOn(console, "log").mockImplementation(() => {});
+
+    // Act & Assert
+    await expect(doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any } })).rejects.toThrow();
   });
 });

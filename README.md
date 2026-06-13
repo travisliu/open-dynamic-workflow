@@ -44,6 +44,7 @@ OpenFlow supports:
   - `mock`
   - `codex`
   - `gemini`
+  - `copilot`
   - `opencode`
   - `antigravity`
   - `pi`
@@ -72,6 +73,7 @@ Recommended baseline:
 - Optional provider CLIs:
   - Codex CLI for the `codex` provider
   - Gemini CLI for the `gemini` provider
+  - GitHub Copilot CLI for the `copilot` provider
   - OpenCode CLI for the `opencode` provider
   - Antigravity CLI for the `antigravity` provider
   - Pi Coding Agent for the `pi` provider
@@ -224,7 +226,7 @@ openflow run <workflow-file> [options]
 Common options:
 
 ```bash
---provider <codex|gemini|mock>
+--provider <codex|gemini|copilot|mock>
 --arg key=value
 --config <path>
 --cwd <path>
@@ -302,6 +304,7 @@ Typical checks:
 - Provider CLIs are present when configured.
 - `codex` is available for Codex workflows.
 - `gemini` is available for Gemini workflows.
+- `copilot` is available for GitHub Copilot workflows.
 - Required provider commands can be executed.
 - Secret-like environment values are not printed.
 
@@ -683,6 +686,18 @@ providers:
       - json
     defaultModel: gemini-3-flash-preview
 
+  copilot:
+    command: copilot
+    args:
+      - -s
+      - --no-ask-user
+      - --no-auto-update
+      - --output-format=json
+    defaultModel: null
+    modelArg:
+      flag: --model
+    promptMode: arg
+
   opencode:
     command: opencode
     args: ["run", "--format", "json"]
@@ -739,7 +754,7 @@ When resolving which model to use for an agent task, OpenFlow applies the follow
 
 ### Provider Flag Customization (`modelArg`)
 
-By default, the `codex` provider CLI uses `--model <model>` and the `gemini` provider CLI uses `-m <model>`. You can customize this flag or disable model selection entirely for any provider in `.openflow/config.yaml`:
+By default, the `codex` and `copilot` provider CLIs use `--model <model>` and the `gemini` provider CLI uses `-m <model>`. You can customize this flag or disable model selection entirely for any provider in `.openflow/config.yaml`:
 
 ```yaml
 defaultModel: gemini-3-flash-preview # Global default model
@@ -868,6 +883,9 @@ Default security behavior:
 - Provider prompts and outputs are stored as artifacts.
 - Provider CLIs may still access files, network, and credentials according to their own behavior and permissions.
 
+### GitHub Copilot CLI Note
+The `copilot` provider targets the standalone [GitHub Copilot CLI](https://github.com/github/copilot-cli) binary, not the `gh copilot` extension. Authentication is handled by the provider CLI. In CI environments, you may need to pass authentication tokens through `security.passEnv`.
+
 ### Agent Permissions & Write Access
 
 Workflows can request write-capable access for specific agents:
@@ -888,6 +906,7 @@ agent({
 - **Provider Support Behavior:**
   - `codex`: Maps `dangerously-full-access` to the Codex write-capable flag (`--dangerously-bypass-approvals-and-sandbox`).
   - `gemini`: Supports `dangerously-full-access`. By default, Gemini runs in read-only `--approval-mode plan`. Specifying `dangerously-full-access` switches Gemini to `--approval-mode yolo`, enabling write-capable execution. This is the explicit opt-in; Gemini's own trust and sandbox rules still apply.
+  - `copilot`: Default mode does not add broad allow-all or yolo flags. `dangerously-full-access` maps to `--yolo`.
   - `opencode`: Maps `dangerously-full-access` to `--dangerously-skip-permissions` and skips read-only environment injection.
   - `antigravity`: Maps `dangerously-full-access` to `--dangerously-skip-permissions`.
   - `pi`: Switches from read-only tools to configured `fullAccessTools`. It does not imply automatic approval.
@@ -931,7 +950,7 @@ Run:
 openflow doctor
 ```
 
-If `codex` or `gemini` is missing, install the relevant provider CLI and ensure it is available in `PATH`.
+If `codex`, `gemini`, or `copilot` is missing, install the relevant provider CLI and ensure it is available in `PATH`.
 
 ### Workflow validation fails
 

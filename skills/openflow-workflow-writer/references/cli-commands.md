@@ -13,7 +13,7 @@ openflow run <workflow-file>
 ### Common options
 
 ```bash
---provider <codex|gemini|mock>
+--provider <codex|gemini|copilot|mock>
 --arg key=value
 --config <path>
 --cwd <path>
@@ -79,7 +79,8 @@ openflow doctor
 * config file can be loaded.
 * provider CLIs are present.
 * `openflow doctor` reports all built-in provider adapters.
-* Missing optional provider CLIs (like `opencode`, `agy`, or `pi`) are shown as unavailable but do not cause the doctor command to fail unless they are the configured `defaultProvider`.
+* Missing optional provider CLIs (like `copilot`, `opencode`, `agy`, or `pi`) are shown as unavailable but do not cause the doctor command to fail unless they are the configured `defaultProvider`.
+* Note: For `copilot`, the doctor command checks for the standalone `copilot` executable but does not perform authentication or login checks.
 * provider commands can be executed.
 * `secret-like environment values` are not printed.
 

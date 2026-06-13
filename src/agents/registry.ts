@@ -2,6 +2,10 @@ import type { AgentAdapter, ResolvedConfig, MockProviderConfig } from "./types.j
 import { MockAdapter } from "./mock-adapter.js";
 import { CodexExecAdapter } from "./codex-exec.js";
 import { GeminiCliAdapter } from "./gemini-cli.js";
+import {
+  GitHubCopilotCliAdapter,
+  type GitHubCopilotProviderConfig
+} from "./github-copilot-cli.js";
 import { OpenCodeCliAdapter, type OpenCodeProviderConfig } from "./opencode-cli.js";
 import { AntigravityCliAdapter, type AntigravityProviderConfig } from "./antigravity-cli.js";
 import { PiCodingAgentAdapter, type PiCodingAgentProviderConfig } from "./pi-coding-agent.js";
@@ -50,6 +54,9 @@ export function createDefaultProviderRegistry(deps: RegistryDeps): ProviderRegis
   registry.register(new MockAdapter(mockConfig));
   registry.register(new CodexExecAdapter(deps.config.providers["codex"]));
   registry.register(new GeminiCliAdapter(deps.config.providers["gemini"]));
+  registry.register(new GitHubCopilotCliAdapter(
+    deps.config.providers["copilot"] as GitHubCopilotProviderConfig
+  ));
   registry.register(new OpenCodeCliAdapter(deps.config.providers["opencode"] as OpenCodeProviderConfig));
   registry.register(new AntigravityCliAdapter(deps.config.providers["antigravity"] as AntigravityProviderConfig));
   registry.register(new PiCodingAgentAdapter(deps.config.providers["pi"] as PiCodingAgentProviderConfig));

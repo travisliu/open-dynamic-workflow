@@ -64,6 +64,7 @@ providers:
   opencode: { command: /bogus/opencode }
   antigravity: { command: /bogus/agy }
   pi: { command: /bogus/pi }
+  copilot: { command: /bogus/copilot }
 `);
 
     // Act
@@ -75,18 +76,24 @@ providers:
     expect(result.stdout).toContain("✕ opencode");
     expect(result.stdout).toContain("✕ antigravity");
     expect(result.stdout).toContain("✕ pi");
+    expect(result.stdout).toContain("✕ copilot");
   });
 
   it("65. Doctor fails when configured default provider is unavailable", async () => {
     // Arrange
-    const providers = ["codex", "gemini", "opencode", "antigravity", "pi"];
+    const providers = ["codex", "gemini", "opencode", "antigravity", "pi", "copilot"];
 
     for (const provider of providers) {
       const configPath = path.join(TEMP_DIR, `case-65-${provider}.config.yaml`);
       await fs.writeFile(configPath, `
 defaultProvider: ${provider}
 providers:
-  ${provider}: { command: /bogus/${provider} }
+  codex: { command: /bogus/codex }
+  gemini: { command: /bogus/gemini }
+  opencode: { command: /bogus/opencode }
+  antigravity: { command: /bogus/agy }
+  pi: { command: /bogus/pi }
+  copilot: { command: /bogus/copilot }
 `);
 
       // Act
@@ -108,6 +115,9 @@ providers:
   opencode: { command: "true" }
   antigravity: { command: "true" }
   pi: { command: "true" }
+  codex: { command: /bogus/codex }
+  gemini: { command: /bogus/gemini }
+  copilot: { command: /bogus/copilot }
 `);
 
     // Act

@@ -70,6 +70,42 @@ if (args.subcase === "03.01") {
       mode: "dangerously-full-access"
     }
   });
+} else if (args.subcase === "03.11") {
+  result = await agent({
+    id: "copilot-test",
+    provider: "copilot",
+    prompt: "Return a short Copilot adapter response."
+  });
+} else if (args.subcase === "03.12") {
+  result = await agent({
+    id: "copilot-full-access",
+    provider: "copilot",
+    prompt: "Test Copilot full access",
+    permissions: {
+      mode: "dangerously-full-access"
+    }
+  });
+} else if (args.subcase === "03.13") {
+  result = await agent({
+    id: "copilot-json",
+    provider: "copilot",
+    prompt: "Return JSON",
+    schema: { type: "object", properties: { ok: { const: true }, files: { type: "array" } }, required: ["ok", "files"] }
+  });
+} else if (args.subcase === "03.14") {
+  result = await agent({
+    id: "copilot-invalid-json",
+    provider: "copilot",
+    prompt: "Return invalid JSON",
+    schema: { type: "object", properties: { ok: { type: "boolean" } }, required: ["ok"] }
+  });
+} else if (args.subcase === "03.15") {
+  result = await agent({
+    id: "copilot-schema-invalid",
+    provider: "copilot",
+    prompt: "Return schema-invalid JSON",
+    schema: { type: "object", properties: { ok: { const: true } }, required: ["ok"] }
+  });
 }
 
 export default { result };

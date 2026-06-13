@@ -21,6 +21,10 @@ describe("Model Config Validation", () => {
   it("58. accepts valid provider-specific fields", () => {
     // Arrange
     const config = getValidBaseConfig();
+    config.providers.copilot = {
+      command: "copilot",
+      permissionPolicy: "restricted"
+    };
     config.providers.opencode = { 
       command: "opencode", 
       permissionPolicy: "read-only",
@@ -43,11 +47,38 @@ describe("Model Config Validation", () => {
     expect(() => validateConfig(config)).not.toThrow();
   });
 
+  it("39. accepts disabled Copilot model selection", () => {
+    const config = getValidBaseConfig();
+    config.providers.copilot = { command: "copilot", modelArg: false };
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("40. rejects empty Copilot model flag", () => {
+    const config = getValidBaseConfig();
+    config.providers.copilot = { command: "copilot", modelArg: { flag: "" } };
+    expect(() => validateConfig(config)).toThrow();
+  });
+
+  it("43. accepts Copilot prompt mode values and rejects invalid prompt mode", () => {
+    const validModes = ["arg", "stdin"];
+    for (const mode of validModes) {
+      const config = getValidBaseConfig();
+      config.providers.copilot = { command: "copilot", promptMode: mode };
+      expect(() => validateConfig(config)).not.toThrow();
+    }
+
+    const config = getValidBaseConfig();
+    config.providers.copilot = { command: "copilot", promptMode: "pipe" };
+    expect(() => validateConfig(config)).toThrow();
+  });
+
   it("59. rejects invalid enum-like provider fields", () => {
     // Arrange
     const invalidConfigs = [
       { pi: { command: "pi", executionMode: "invalid" } },
       { pi: { command: "pi", approvalMode: "invalid" } },
+      { copilot: { command: "copilot", permissionPolicy: "invalid" } },
+      { copilot: { command: "copilot", permissionPolicy: "sandbox" } },
       { opencode: { command: "opencode", permissionPolicy: "invalid" } },
       { opencode: { command: "opencode", permissionPolicy: "sandbox" } }, // invalid for opencode
       { antigravity: { command: "antigravity", permissionPolicy: "read-only" } } // invalid for antigravity
