@@ -1,0 +1,3 @@
+{"type":"agent_start","id":"test-session"}
+{"type":"tool_call","tool":"read","args":{"path":"README.md"}}
+{"type":"tool_result","tool":"read","result":"# README"}

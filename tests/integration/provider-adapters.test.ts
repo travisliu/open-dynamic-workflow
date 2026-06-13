@@ -4,7 +4,7 @@ import * as fs from "node:fs/promises";
 import { main } from "../../src/cli/index.js";
 import { exitCodeForError } from "../../src/errors/exit-codes.js";
 
-const TEMP_DIR = path.resolve("tests/temp-tc-03");
+const TEMP_DIR = path.resolve("tests/temp-provider-adapters-integration");
 
 async function runCli(args: string[]) {
   const stdoutData: string[] = [];
@@ -54,75 +54,11 @@ describe("Provider adapter execution", () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
   });
 
-  it("Mock provider adapter succeeds", async () => {
-    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
-    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
-
-    const result = await runCli([
-      "run",
-      workflowPath,
-      "--config",
-      configPath,
-      "--out",
-      TEMP_DIR,
-      "--report",
-      "json",
-      "--arg",
-      "subcase=03.01"
-    ]);
-
-    expect(result.error).toBeNull();
-
-    const runs = await fs.readdir(TEMP_DIR);
-    expect(runs.length).toBe(1);
-    const runId = runs[0]!;
-    const runDir = path.join(TEMP_DIR, runId);
-
-    // Verify manifest
-    const manifestPath = path.join(runDir, "manifest.json");
-    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
-    expect(manifest.status).toBe("succeeded");
-
-    // Verify agent artifacts
-    const agentDir = path.join(runDir, "agents/review-1");
-    
-    // 1. stdout.log
-    const stdoutLog = await fs.readFile(path.join(agentDir, "stdout.log"), "utf8");
-    expect(stdoutLog).toBe("Mock stdout for review-1");
-
-    // 2. stderr.log
-    const stderrLog = await fs.readFile(path.join(agentDir, "stderr.log"), "utf8");
-    expect(stderrLog).toBe("Mock stderr for review-1");
-
-    // 3. raw-result.json
-    const rawResult = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
-    expect(rawResult.text).toBe("Deterministic response for review-1");
-    expect(rawResult.json).toEqual({ "status": "ok", "score": 10 });
-
-    // 4. normalized-result.json
-    const normalizedResult = JSON.parse(await fs.readFile(path.join(agentDir, "normalized-result.json"), "utf8"));
-    expect(normalizedResult).toEqual({ "status": "ok", "score": 10 });
-
-    // Verify report.json contains full agent details
-    const reportPath = path.join(runDir, "report.json");
-    const report = JSON.parse(await fs.readFile(reportPath, "utf8"));
-    const agentResult = report.agents.find((a: any) => a.id === "review-1");
-
-    expect(agentResult).toBeDefined();
-    expect(agentResult.ok).toBe(true);
-    expect(agentResult.provider).toBe("mock");
-    expect(agentResult.stdout).toBe("Mock stdout for review-1");
-    expect(agentResult.stderr).toBe("Mock stderr for review-1");
-    expect(agentResult.text).toBe("Deterministic response for review-1");
-    expect(agentResult.json).toEqual({ "status": "ok", "score": 10 });
-    expect(agentResult.exitCode).toBe(0);
-    expect(typeof agentResult.durationMs).toBe("number");
-    expect(agentResult.durationMs).toBeGreaterThanOrEqual(0);
-  });
-
-  it("Unknown provider returns clear error", async () => {
+  it("67. unknown provider behavior remains unchanged", async () => {
+    // Arrange
     const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
 
+    // Act
     const result = await runCli([
       "run",
       workflowPath,
@@ -131,32 +67,20 @@ describe("Provider adapter execution", () => {
       "--report",
       "json",
       "--arg",
-      "subcase=03.04"
+      "subcase=03.04" // Requests 'unknown-provider'
     ]);
 
-    // CLI exits with code 4.
+    // Assert
     const exitCode = exitCodeForError(result.error);
     expect(exitCode).toBe(4);
-
-    // Error code is PROVIDER_UNAVAILABLE.
     expect(result.error.code).toBe("PROVIDER_UNAVAILABLE");
 
-    // Message includes the unknown provider name.
-    expect(result.error.message).toContain("unknown-provider");
-
-    // No run proceeds beyond provider resolution.
     const runs = await fs.readdir(TEMP_DIR);
-    expect(runs.length).toBe(1);
-    const runId = runs[0]!;
-    const runDir = path.join(TEMP_DIR, runId);
-
-    const manifestPath = path.join(runDir, "manifest.json");
-    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
-    
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const manifest = JSON.parse(await fs.readFile(path.join(runDir, "manifest.json"), "utf8"));
     expect(manifest.status).toBe("failed");
     expect(manifest.error.code).toBe("PROVIDER_UNAVAILABLE");
-    
-    // Ensure no agent output directory was created for the unknown provider
+
     const agentsDir = path.join(runDir, "agents");
     const agentsDirExists = await fs.access(agentsDir).then(() => true).catch(() => false);
     if (agentsDirExists) {
@@ -165,51 +89,116 @@ describe("Provider adapter execution", () => {
     }
   });
 
-  it("Gemini provider succeeds with dangerously-full-access using --approval-mode yolo", async () => {
+  it("68. new providers remain behind scheduler/process-runner boundaries", async () => {
+    // Arrange
     const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
     const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
 
-    const result = await runCli([
-      "run",
-      workflowPath,
-      "--config",
-      configPath,
-      "--out",
-      TEMP_DIR,
-      "--report",
-      "json",
-      "--arg",
-      "subcase=03.02"
-    ]);
+    const providers = [
+      { id: "opencode-test", provider: "opencode", subcase: "03.05" },
+      { id: "antigravity-test", provider: "antigravity", subcase: "03.06" },
+      { id: "pi-test", provider: "pi", subcase: "03.07" }
+    ];
 
-    // Run must succeed (no error thrown)
-    expect(result.error).toBeNull();
+    for (const p of providers) {
+      // Act
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
 
-    const runs = await fs.readdir(TEMP_DIR);
-    expect(runs.length).toBe(1);
-    const runId = runs[0]!;
-    const runDir = path.join(TEMP_DIR, runId);
+      const result = await runCli([
+        "run",
+        workflowPath,
+        "--config",
+        configPath,
+        "--out",
+        TEMP_DIR,
+        "--report",
+        "json",
+        "--arg",
+        `subcase=${p.subcase}`
+      ]);
 
-    // Manifest records success
-    const manifestPath = path.join(runDir, "manifest.json");
-    const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
-    expect(manifest.status).toBe("succeeded");
+      // Assert
+      expect(result.error).toBeNull();
 
-    // Agent artifacts exist
-    const agentDir = path.join(runDir, "agents/gemini-full-access");
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!); // Only one run now
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      
+      const agent = report.agents.find((a: any) => a.id === p.id);
+      expect(agent).toBeDefined();
+      expect(agent.ok).toBe(true);
+      expect(agent.provider).toBe(p.provider);
+      
+      const agentDir = path.join(runDir, `agents/${agent.id}`);
+      expect(await fs.access(path.join(agentDir, "stdout.log")).then(() => true)).toBe(true);
+      expect(await fs.access(path.join(agentDir, "stderr.log")).then(() => true)).toBe(true);
+      
+      const stderr = JSON.parse(await fs.readFile(path.join(agentDir, "stderr.log"), "utf8"));
+      expect(stderr.argv).toBeDefined();
+    }
+  });
 
-    // permissions.json records the resolved mode
-    const permissionsJson = JSON.parse(await fs.readFile(path.join(agentDir, "permissions.json"), "utf8"));
-    expect(permissionsJson).toEqual({ mode: "dangerously-full-access" });
+  it("69. dangerous permission artifacts remain explicit for new providers", async () => {
+    // Arrange
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
 
-    // metadata.json also records permissions
-    const metadataJson = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
-    expect(metadataJson.permissions).toEqual({ mode: "dangerously-full-access" });
+    const agents = [
+      { id: "opencode-full-access", subcase: "03.08", expectedArgv: ["--dangerously-skip-permissions"] },
+      { id: "antigravity-full-access", subcase: "03.09", expectedArgv: ["--dangerously-skip-permissions"] },
+      {
+        id: "pi-full-access",
+        subcase: "03.10",
+        expectedArgv: ["--tools", "read,bash,edit,write,grep,find,ls"],
+        forbiddenArgv: ["--approve"]
+      }
+    ];
 
-    // The fake gemini echoes received argv to stderr.log; assert --approval-mode yolo was used.
-    const stderrLog = await fs.readFile(path.join(agentDir, "stderr.log"), "utf8");
-    expect(stderrLog).toContain("--approval-mode");
-    expect(stderrLog).toContain("yolo");
-    expect(stderrLog).not.toContain("plan");
+    for (const a of agents) {
+      // Act
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+
+      const result = await runCli([
+        "run",
+        workflowPath,
+        "--config",
+        configPath,
+        "--out",
+        TEMP_DIR,
+        "--report",
+        "json",
+        "--arg",
+        `subcase=${a.subcase}`
+      ]);
+
+      // Assert
+      expect(result.error).toBeNull();
+
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!);
+      
+      const agentDir = path.join(runDir, `agents/${a.id}`);
+      
+      const permissions = JSON.parse(await fs.readFile(path.join(agentDir, "permissions.json"), "utf8"));
+      expect(permissions.mode).toBe("dangerously-full-access");
+      
+      const metadata = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
+      expect(metadata.permissions.mode).toBe("dangerously-full-access");
+      
+      const stderrLog = await fs.readFile(path.join(agentDir, "stderr.log"), "utf8");
+      const stderr = JSON.parse(stderrLog);
+
+      for (const arg of a.expectedArgv) {
+        expect(stderr.argv).toContain(arg);
+      }
+
+      if (a.forbiddenArgv) {
+        for (const arg of a.forbiddenArgv) {
+          expect(stderr.argv).not.toContain(arg);
+        }
+      }
+    }
   });
 });

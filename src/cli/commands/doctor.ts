@@ -37,7 +37,7 @@ const defaultProviderHealthChecker: ProviderHealthChecker = {
         defaultModel,
         supportsModelSelection: health.supportsModelSelection !== false
       });
-      if (!health.available) {
+      if (!health.available && adapter.name === config.defaultProvider) {
         ok = false;
       }
     }

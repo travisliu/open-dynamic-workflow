@@ -78,7 +78,95 @@ providers:
       - "plan"
     defaultModel: "gemini-3-flash-preview"
     promptMode: "stdin"
+  opencode:
+    command: "opencode"
+    args: ["run", "--format", "json"]
+    defaultModel: null
+    modelArg: { flag: "--model" }
+    promptMode: "arg"
+    permissionPolicy: "read-only"
+  antigravity:
+    command: "agy"
+    args: []
+    defaultModel: null
+    modelArg: { flag: "--model" }
+    promptMode: "arg"
+    promptFlag: "-p"
+    sandboxFlag: "--sandbox"
+    dangerouslySkipPermissionsFlag: "--dangerously-skip-permissions"
+    useSandboxByDefault: true
+    permissionPolicy: "sandbox"
+  pi:
+    command: "pi"
+    executionMode: "json"
+    defaultModel: null
+    modelArg: { flag: "--model" }
+    promptMode: "arg"
+    safeTools: ["read", "grep", "find", "ls"]
+    fullAccessTools: ["read", "bash", "edit", "write", "grep", "find", "ls"]
+    noSession: true
+    noContextFiles: true
+    noExtensions: true
+    noSkills: true
+    noPromptTemplates: true
+    noThemes: true
+    approvalMode: "no-approve"
+    deterministicEnv: true
 ```
+
+#### Adapter-specific provider keys
+
+The following keys are supported by specific provider adapters.
+
+*   **Compatibility**: Unknown provider extension keys remain allowed for compatibility with future provider versions.
+*   **Validation**: Known provider-specific fields are strictly validated when present. Invalid enum-like values, non-boolean resource flags, empty string flags, and invalid tool arrays will fail configuration validation.
+
+**OpenCode (opencode)**
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `permissionPolicy` | `string` | `"read-only"` | `"read-only"` or `"passthrough"`. | Default `"read-only"` injects OpenCode permission config; `"passthrough"` skips it. |
+| `defaultAgent` | `string` | `undefined` | Non-empty string. | Default agent name if not specified by metadata. |
+| `defaultVariant` | `string` | `undefined` | Non-empty string. | Default agent variant if not specified by metadata. |
+| `dirFlag` | `string \| false` | `undefined` | Non-empty string or `false`. | Flag used to specify the directory to OpenCode. |
+| `agentFlag` | `string` | `undefined` | Non-empty string. | Flag used to specify the agent name. |
+| `variantFlag` | `string` | `undefined` | Non-empty string. | Flag used to specify the agent variant. |
+| `formatFlag` | `string` | `undefined` | Non-empty string. | Flag used to specify the output format. |
+| `format` | `string` | `undefined` | Non-empty string. | Output format value (e.g., `"json"`). |
+| `dangerouslySkipPermissionsFlag` | `string` | `undefined` | Non-empty string. | Flag to skip OpenCode-side permission checks. |
+
+**Antigravity (antigravity)**
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `permissionPolicy` | `string` | `"sandbox"` | `"sandbox"` or `"native"`. | Dictates whether execution uses a sandbox or native environment. Execution MUST use one of these policies. |
+| `useSandboxByDefault` | `boolean` | `true` | Boolean. | Whether to default to sandbox mode. |
+| `promptFlag` | `string` | `"-p"` | Non-empty string. | Flag used to pass the prompt. |
+| `sandboxFlag` | `string` | `"--sandbox"` | Non-empty string. | Flag used to enable the sandbox. |
+| `dangerouslySkipPermissionsFlag` | `string` | `"--dangerously-skip-permissions"` | Non-empty string. | Flag to skip permission checks. |
+| `printTimeoutFlag` | `string` | `undefined` | Non-empty string. | Flag used to specify the print timeout. |
+
+*Note: Antigravity sandboxing provides environment isolation but is not a complete security sandbox.*
+
+**Pi (pi)**
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `executionMode` | `string` | `"json"` | `"json"` or `"print"`. | `"json"` uses event-stream mode; `"print"` uses standard output mode. |
+| `approvalMode` | `string` | `"no-approve"` | `"approve"`, `"no-approve"`, or `"omit"`. | Controls whether `--approve` or `--no-approve` is passed. |
+| `safeTools` | `string[]` | `["read", ...]` | Array of non-empty strings. | Tools allowed in default permission mode. |
+| `fullAccessTools` | `string[]` | `["read", ...]` | Array of non-empty strings. | Tools allowed in `dangerously-full-access` mode. |
+| `deterministicEnv` | `boolean` | `true` | Boolean. | If true, sets `PI_SKIP_VERSION_CHECK=1` and `PI_TELEMETRY=0`. |
+| `piProvider` | `string` | `undefined` | Non-empty string. | Value passed to the `--provider` flag. |
+| `providerFlag` | `string` | `"--provider"` | Non-empty string. | Flag used to specify the Pi provider. |
+| `thinking` | `string` | `undefined` | Non-empty string. | Value passed to the `--thinking` flag. |
+| `systemPrompt` | `string` | `undefined` | Non-empty string. | Value passed to the `--system-prompt` flag. |
+| `appendSystemPrompt` | `string` | `undefined` | Non-empty string. | Value passed to the `--append-system-prompt` flag. |
+| `noSession` | `boolean` | `true` | Boolean. | If true, passes `--no-session`. |
+| `noContextFiles` | `boolean` | `true` | Boolean. | If true, passes `--no-context-files`. |
+| `noExtensions` | `boolean` | `true` | Boolean. | If true, passes `--no-extensions`. |
+| `noSkills` | `boolean` | `true` | Boolean. | If true, passes `--no-skills`. |
+| `noPromptTemplates` | `boolean` | `true` | Boolean. | If true, passes `--no-prompt-templates`. |
+| `noThemes` | `boolean` | `true` | Boolean. | If true, passes `--no-themes`. |
+
+*Note: Switching to `dangerously-full-access` mode changes the active tool list to `fullAccessTools` but does NOT imply `--approve`. Approval must be configured separately via `approvalMode`.*
 
 ---
 
@@ -154,4 +242,3 @@ tools:
   concurrency: 4
   maxDefinitions: 100
 ```
-

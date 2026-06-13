@@ -21,6 +21,21 @@ providers:
       - --approval-mode
       - plan
     promptMode: stdin
+  opencode:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+    format: json
+  antigravity:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+    permissionPolicy: sandbox
+  pi:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+    executionMode: json
 
 security:
   passEnv: []

@@ -1,0 +1,5 @@
+{"type":"agent_start","id":"test-session"}
+{"type":"message_start","message":{"role":"assistant","content":[]}}
+{"type":"message_update","delta":"Done"}
+{"type":"message_end","message":{"role":"assistant","text":"Done"}}
+{"type":"agent_end","messages":[{"role":"assistant","content":[{"text":"Done"}]}]}

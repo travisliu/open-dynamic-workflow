@@ -1,0 +1,2 @@
+{"type":"agent_start","id":"test-session"}
+{"type":"agent_end","messages":[{"role":"assistant","content":[{"text":"Here is the JSON you requested:\n\n```json\n{\n  \"ok\": true,\n  \"message\": \"Success\"\n}\n```"}]}]}

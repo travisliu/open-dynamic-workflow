@@ -8,7 +8,7 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
       args,
       cwd,
       stdin,
-      env = {},
+      env,
       timeoutMs,
       signal,
       onStdout,

@@ -1,0 +1,4 @@
+{"type":"agent_start","id":"test-session"}
+{"type":"tool_call","tool":"read","args":{"path":"README.md"}}
+{"type":"tool_result","tool":"read","result":"# README"}
+{"type":"agent_end","messages":[{"role":"assistant","content":[{"text":"I read the README. It looks good."}]}]}

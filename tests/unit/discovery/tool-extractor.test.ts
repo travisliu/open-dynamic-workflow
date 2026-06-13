@@ -55,6 +55,7 @@ describe("tool-extractor", () => {
         id: "test-tool",
         description: "A test tool",
         defaultTimeoutMs: 0,
+        inputSchema: { type: "object" },
         run: async () => {}
       });
     `;

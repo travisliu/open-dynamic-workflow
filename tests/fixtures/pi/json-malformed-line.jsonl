@@ -1,0 +1,3 @@
+{"type":"agent_start","id":"test-session"}
+NOT_JSON_LINE
+{"type":"agent_end","messages":[{"role":"assistant","content":[{"text":"Recovered from malformed line"}]}]}

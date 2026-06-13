@@ -77,9 +77,9 @@ openflow doctor
 ### Checks include
 
 * config file can be loaded.
-* provider CLIs are present when configured.
-* Codex CLI is available for Codex workflows.
-* Gemini CLI is available for Gemini workflows.
+* provider CLIs are present.
+* `openflow doctor` reports all built-in provider adapters.
+* Missing optional provider CLIs (like `opencode`, `agy`, or `pi`) are shown as unavailable but do not cause the doctor command to fail unless they are the configured `defaultProvider`.
 * provider commands can be executed.
 * `secret-like environment values` are not printed.
 

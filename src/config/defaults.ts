@@ -23,6 +23,43 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
       args: ["--output-format", "json", "--approval-mode", "plan"],
       defaultModel: "gemini-3-flash-preview",
       promptMode: "stdin"
+    },
+    opencode: {
+      command: "opencode",
+      args: ["run", "--format", "json"],
+      defaultModel: null,
+      modelArg: { flag: "--model" },
+      promptMode: "arg",
+      permissionPolicy: "read-only"
+    },
+    antigravity: {
+      command: "agy",
+      args: [],
+      defaultModel: null,
+      modelArg: { flag: "--model" },
+      promptMode: "arg",
+      promptFlag: "-p",
+      sandboxFlag: "--sandbox",
+      dangerouslySkipPermissionsFlag: "--dangerously-skip-permissions",
+      useSandboxByDefault: true,
+      permissionPolicy: "sandbox"
+    },
+    pi: {
+      command: "pi",
+      executionMode: "json",
+      defaultModel: null,
+      modelArg: { flag: "--model" },
+      promptMode: "arg",
+      safeTools: ["read", "grep", "find", "ls"],
+      fullAccessTools: ["read", "bash", "edit", "write", "grep", "find", "ls"],
+      noSession: true,
+      noContextFiles: true,
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      approvalMode: "no-approve",
+      deterministicEnv: true
     }
   },
   security: {
