@@ -159,4 +159,5 @@ workflow:
 
     expect(config.outDir).toBe(resolve(config.cwd, "custom-out"));
   });
+
 });

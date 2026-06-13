@@ -5,6 +5,7 @@ import { runCommand } from "./commands/run.js";
 import { resumeCommand } from "./commands/resume.js";
 import { validateCommand } from "./commands/validate.js";
 import { doctorCommand } from "./commands/doctor.js";
+import { listCommand } from "./commands/list.js";
 import { OpenFlowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { getPackageVersion } from "./package-info.js";
@@ -30,7 +31,36 @@ export async function main(argv: string[]): Promise<void> {
     });
 
   program
+    .command("list [resourceType]")
+    .description("List discoverable workflows, shared agents, and tools")
+    .option("--dir <path>", "Directory to scan for targeted list commands")
+    .option("--workflows-dir <path>", "Directory to scan for workflows")
+    .option("--agents-dir <path>", "Directory to scan for shared agents")
+    .option("--tools-dir <path>", "Directory to scan for tools")
+    .option("-r, --report <mode>", "Output format (pretty, json, jsonl)")
+    .option("-v, --verbose", "Show extended metadata")
+    .option("--strict", "Fail if any discovered file is invalid")
+    .option("-c, --config <path>", "Path to config file")
+    .option("--cwd <path>", "Project working directory")
+    .addHelpText(
+      "after",
+      `
+Examples:
+  openflow list
+  openflow list workflows
+  openflow list agents --verbose
+  openflow list tools --report json
+  openflow list --strict
+  openflow list workflows --dir examples/workflows
+`
+    )
+    .action(async (resourceType, options) => {
+      await listCommand({ resourceType, rawOptions: options });
+    });
+
+  program
     .command("run")
+
     .argument("<workflow-file>", "Path to workflow file")
     .option("-p, --provider <name>", "Default agent provider name")
     .option("-m, --model <model>", "Default model for agent calls")

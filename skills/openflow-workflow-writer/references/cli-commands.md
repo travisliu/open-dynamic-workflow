@@ -81,7 +81,50 @@ openflow doctor
 * Codex CLI is available for Codex workflows.
 * Gemini CLI is available for Gemini workflows.
 * provider commands can be executed.
-* secret-like environment values are not printed.
+* `secret-like environment values` are not printed.
+
+---
+
+## List resources
+
+```bash
+openflow list [resourceType]
+```
+
+List discoverable workflows, shared agents, and tools. `resourceType` can be `workflows`, `agents`, or `tools`. If omitted, all resources are listed.
+
+### Common options
+
+```bash
+--dir <path>             # Directory to scan for targeted list commands
+--workflows-dir <path>   # Directory to scan for workflows
+--agents-dir <path>      # Directory to scan for shared agents
+--tools-dir <path>       # Directory to scan for tools
+-r, --report <mode>      # Output format (pretty, json, jsonl)
+-v, --verbose            # Show extended metadata
+--strict                 # Fail if any discovered file is invalid
+-c, --config <path>      # Path to config file
+--cwd <path>             # Project working directory
+```
+
+### Examples
+
+```bash
+openflow list
+openflow list workflows
+openflow list agents --verbose
+openflow list tools --report json
+openflow list --strict
+openflow list workflows --dir examples/workflows
+```
+
+### Resource Discovery
+
+* **Workflows**: Scanned from the directory configured in `workflows.dir` (defaults to `workflows`).
+* **Agents**: Scanned from the directory configured in `sharedAgents.dir` (defaults to `.openflow/agents`).
+* **Tools**: Scanned from the directory configured in `tools.dir` (defaults to `.openflow/tools`).
+
+The `list` command is lenient by default. It will report errors and warnings but exit with code `0` unless `--strict` is used. In strict mode, any discovery error (e.g., duplicate IDs, invalid definitions) results in a non-zero exit code (3).
 
 ---
 
