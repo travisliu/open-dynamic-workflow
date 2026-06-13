@@ -4,14 +4,14 @@ import { OpenFlowError } from "../../../src/errors/types.js";
 import { ErrorCode } from "../../../src/errors/codes.js";
 
 describe("Exit Codes Mapping", () => {
-  it("maps CLI_USAGE_ERROR to CliUsage (2)", () => {
+  it("maps CLI_USAGE_ERROR to CLI_USAGE_ERROR (2)", () => {
     const err = new OpenFlowError(ErrorCode.CLI_USAGE_ERROR, "usage error");
-    expect(exitCodeForError(err)).toBe(ExitCode.CliUsage);
+    expect(exitCodeForError(err)).toBe(ExitCode.CLI_USAGE_ERROR);
   });
 
-  it("maps CONFIG_VALIDATION_ERROR to CliUsage (2)", () => {
+  it("maps CONFIG_VALIDATION_ERROR to CLI_USAGE_ERROR (2)", () => {
     const err = new OpenFlowError(ErrorCode.CONFIG_VALIDATION_ERROR, "invalid config");
-    expect(exitCodeForError(err)).toBe(ExitCode.CliUsage);
+    expect(exitCodeForError(err)).toBe(ExitCode.CLI_USAGE_ERROR);
   });
 
   it("maps WORKFLOW_PARSE_ERROR to WorkflowInvalid (3)", () => {
@@ -40,9 +40,9 @@ describe("Exit Codes Mapping", () => {
     }
   });
 
-  it("maps WORKFLOW_RESULT_SERIALIZATION_FAILED to WorkflowFailed (1)", () => {
+  it("maps WORKFLOW_RESULT_SERIALIZATION_FAILED to ExecutionFailed (5)", () => {
     const err = new OpenFlowError(ErrorCode.WORKFLOW_RESULT_SERIALIZATION_FAILED, "serialization failed");
-    expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);
+    expect(exitCodeForError(err)).toBe(ExitCode.ExecutionFailed);
   });
 
   it("maps WORKFLOW_TIMEOUT to Timeout (7)", () => {
@@ -50,19 +50,19 @@ describe("Exit Codes Mapping", () => {
     expect(exitCodeForError(err)).toBe(ExitCode.Timeout);
   });
 
-  it("maps PROVIDER_UNAVAILABLE to ProviderUnavailable (4)", () => {
+  it("maps PROVIDER_UNAVAILABLE to ResourceNotFound (4)", () => {
     const err = new OpenFlowError(ErrorCode.PROVIDER_UNAVAILABLE, "provider missing");
-    expect(exitCodeForError(err)).toBe(ExitCode.ProviderUnavailable);
+    expect(exitCodeForError(err)).toBe(ExitCode.ResourceNotFound);
   });
 
-  it("maps SECURITY_POLICY_VIOLATION to SecurityPolicyViolation (5)", () => {
+  it("maps SECURITY_POLICY_VIOLATION to SecurityViolation (9)", () => {
     const err = new OpenFlowError(ErrorCode.SECURITY_POLICY_VIOLATION, "unauthorized access");
-    expect(exitCodeForError(err)).toBe(ExitCode.SecurityPolicyViolation);
+    expect(exitCodeForError(err)).toBe(ExitCode.SecurityViolation);
   });
 
-  it("maps USER_CANCELLED to UserCancelled (6)", () => {
+  it("maps USER_CANCELLED to Cancelled (6)", () => {
     const err = new OpenFlowError(ErrorCode.USER_CANCELLED, "user cancelled");
-    expect(exitCodeForError(err)).toBe(ExitCode.UserCancelled);
+    expect(exitCodeForError(err)).toBe(ExitCode.Cancelled);
   });
 
   it("maps PROCESS_TIMEOUT to Timeout (7)", () => {
@@ -70,19 +70,19 @@ describe("Exit Codes Mapping", () => {
     expect(exitCodeForError(err)).toBe(ExitCode.Timeout);
   });
 
-  it("maps PROVIDER_PROCESS_FAILED to WorkflowFailed (1)", () => {
+  it("maps PROVIDER_PROCESS_FAILED to GeneralError (1)", () => {
     const err = new OpenFlowError(ErrorCode.PROVIDER_PROCESS_FAILED, "provider process failed");
-    expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);
+    expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);
   });
 
-  it("maps SCHEMA_VALIDATION_FAILED to WorkflowFailed (1)", () => {
+  it("maps SCHEMA_VALIDATION_FAILED to GeneralError (1)", () => {
     const err = new OpenFlowError(ErrorCode.SCHEMA_VALIDATION_FAILED, "json schema failed");
-    expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);
+    expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);
   });
 
-  it("maps TOOL_INVALID_OUTPUT to WorkflowFailed (1)", () => {
+  it("maps TOOL_INVALID_OUTPUT to GeneralError (1)", () => {
     const err = new OpenFlowError(ErrorCode.TOOL_INVALID_OUTPUT, "tool output validation failed");
-    expect(exitCodeForError(err)).toBe(ExitCode.WorkflowFailed);
+    expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);
   });
 
   it("maps unknown or standard error to InternalError (8)", () => {

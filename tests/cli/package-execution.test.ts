@@ -38,6 +38,13 @@ describe("CLI package execution and installation", () => {
     expect(stdout).toContain("Orchestrate coding-agent CLI workflows");
   });
 
+  it("can execute npx . list --help and see examples", () => {
+    const stdout = execSync("npx . list --help", { cwd: WORKSPACE_DIR, encoding: "utf8" });
+    expect(stdout).toContain("Examples:");
+    expect(stdout).toContain("openflow list agents --verbose");
+    expect(stdout).toContain("openflow list workflows --dir examples/workflows");
+  });
+
   it("can execute npx . doctor", () => {
     const stdout = execSync("npx . doctor", { cwd: WORKSPACE_DIR, encoding: "utf8" });
     expect(stdout).toContain("Node.js >= 20");

@@ -29,6 +29,14 @@ const baseConfig: OpenFlowConfig = {
     maxDefinitions: 100,
     strictPromptTemplateVariables: true
   },
+  tools: {
+    dir: ".openflow/tools",
+    concurrency: 4,
+    maxDefinitions: 100
+  },
+  workflows: {
+    dir: "workflows"
+  },
   workflow: {
     discovery: {
       include: ["workflows/**/*.ts"]

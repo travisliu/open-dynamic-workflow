@@ -1,7 +1,8 @@
 import { ErrorCode } from "../errors/codes.js";
 import { OpenFlowError } from "../errors/types.js";
+import type { ListCliResourceType } from "../discovery/types.js";
 
-export type CommandName = "run" | "validate" | "doctor";
+export type CommandName = "run" | "validate" | "doctor" | "list";
 export type ReportMode = "pretty" | "json" | "jsonl";
 
 export interface RunCliOptions {
@@ -76,4 +77,15 @@ export function parseReportMode(value: string): ReportMode {
     );
   }
   return value;
+}
+
+export function parseListResourceType(value?: string): ListCliResourceType {
+  if (value === undefined) return "all";
+  if (value === "workflows") return "workflow";
+  if (value === "agents") return "agent";
+  if (value === "tools") return "tool";
+  throw new OpenFlowError(
+    ErrorCode.CLI_USAGE_ERROR,
+    `Invalid list resource type: '${value}'. Must be one of: workflows, agents, tools.`
+  );
 }
