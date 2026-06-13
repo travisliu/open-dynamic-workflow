@@ -79,7 +79,7 @@ type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
 type DirectAgentCallInput = {
   id?: string;
   label?: string;
-  provider?: "codex" | "gemini" | "mock" | string;
+  provider?: "codex" | "gemini" | "mock" | "opencode" | "antigravity" | "pi" | string;
   prompt: string;
   model?: string;
   schema?: JsonSchema;
@@ -96,7 +96,7 @@ type DefinitionAgentCallInput = {
   id?: string;
   definition: string;
   label?: string;
-  provider?: "codex" | "gemini" | "mock" | string;
+  provider?: "codex" | "gemini" | "mock" | "opencode" | "antigravity" | "pi" | string;
   prompt?: string;
   model?: string;
   schema?: JsonSchema;
@@ -197,6 +197,9 @@ Per-provider effect:
 | -------- | ----------------------------------- |
 | `codex`  | Appends `--dangerously-bypass-approvals-and-sandbox` to the provider command. |
 | `gemini` | Replaces `--approval-mode <value>` with `--approval-mode yolo` in the provider command. |
+| `opencode`| Appends `--dangerously-skip-permissions` and skips read-only config injection. |
+| `antigravity`| Appends `--dangerously-skip-permissions`. |
+| `pi`      | Switches from `safeTools` to `fullAccessTools`. |
 | `mock`   | Field is accepted and recorded but has no effect on mock execution. |
 
 > **Security note:** `dangerously-full-access` allows the agent to read, write, and execute without confirmation prompts. Only use it when the task explicitly requires autonomous multi-step execution and the risk is understood and documented.
@@ -622,6 +625,9 @@ Built-in providers:
 | `mock`   | Tests, examples, smoke workflows, deterministic CI.                |
 | `codex`  | Code review, correctness, security, implementation reasoning.      |
 | `gemini` | Test strategy, operational review, broad synthesis, summarization. |
+| `opencode` | General purpose coding agent with read-only config injection. |
+| `antigravity` | High-fidelity terminal-first agent with sandbox support. |
+| `pi` | Tool-use coding agent with explicit safe/full toolsets. |
 
 Provider behavior should not leak into workflow semantics. Workflows should call `agent()` and let the runtime, scheduler, and adapter handle provider execution.
 

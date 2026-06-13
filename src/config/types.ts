@@ -1,4 +1,4 @@
-export type ProviderName = "codex" | "gemini" | "mock" | string;
+export type ProviderName = "codex" | "gemini" | "mock" | "opencode" | "antigravity" | "pi" | string;
 export type ReporterMode = "pretty" | "json" | "jsonl";
 
 export interface ProviderModelArgConfig {
@@ -7,13 +7,43 @@ export interface ProviderModelArgConfig {
 
 export interface ProviderConfig {
   command: string;
-  args: string[];
+  args?: string[];
   defaultModel: string | null;
   modelArg?: ProviderModelArgConfig | false;
   timeoutMs?: number;
   env?: Record<string, string>;
   responses?: Record<string, unknown>; // Used by mock provider.
   promptMode?: "stdin" | "arg";
+  promptFlag?: string;
+  modelFlag?: string;
+  sandboxFlag?: string;
+  dangerouslySkipPermissionsFlag?: string;
+  useSandboxByDefault?: boolean;
+  permissionPolicy?: string;
+  printTimeoutFlag?: string;
+  agentFlag?: string;
+  dirFlag?: string | false;
+  formatFlag?: string;
+  format?: string;
+  variantFlag?: string;
+  defaultAgent?: string;
+  defaultVariant?: string;
+  piProvider?: string;
+  providerFlag?: string;
+  executionMode?: string;
+  approvalMode?: string;
+  safeTools?: string[];
+  fullAccessTools?: string[];
+  thinking?: string;
+  systemPrompt?: string;
+  appendSystemPrompt?: string;
+  deterministicEnv?: boolean;
+  noSession?: boolean;
+  noContextFiles?: boolean;
+  noExtensions?: boolean;
+  noSkills?: boolean;
+  noPromptTemplates?: boolean;
+  noThemes?: boolean;
 }
 
 export interface SecurityConfig {

@@ -44,6 +44,9 @@ OpenFlow supports:
   - `mock`
   - `codex`
   - `gemini`
+  - `opencode`
+  - `antigravity`
+  - `pi`
 - Global concurrency limits
 - Timeout handling
 - Fail-fast mode
@@ -69,6 +72,9 @@ Recommended baseline:
 - Optional provider CLIs:
   - Codex CLI for the `codex` provider
   - Gemini CLI for the `gemini` provider
+  - OpenCode CLI for the `opencode` provider
+  - Antigravity CLI for the `antigravity` provider
+  - Pi Coding Agent for the `pi` provider
 
 The `mock` provider is intended for tests, examples, and CI workflows that should not require real provider credentials.
 
@@ -677,6 +683,18 @@ providers:
       - json
     defaultModel: gemini-3-flash-preview
 
+  opencode:
+    command: opencode
+    args: ["run", "--format", "json"]
+
+  antigravity:
+    command: agy
+    useSandboxByDefault: true
+
+  pi:
+    command: pi
+    args: ["--mode", "json"]
+
   mock:
     command: mock
     responses:
@@ -870,6 +888,9 @@ agent({
 - **Provider Support Behavior:**
   - `codex`: Maps `dangerously-full-access` to the Codex write-capable flag (`--dangerously-bypass-approvals-and-sandbox`).
   - `gemini`: Supports `dangerously-full-access`. By default, Gemini runs in read-only `--approval-mode plan`. Specifying `dangerously-full-access` switches Gemini to `--approval-mode yolo`, enabling write-capable execution. This is the explicit opt-in; Gemini's own trust and sandbox rules still apply.
+  - `opencode`: Maps `dangerously-full-access` to `--dangerously-skip-permissions` and skips read-only environment injection.
+  - `antigravity`: Maps `dangerously-full-access` to `--dangerously-skip-permissions`.
+  - `pi`: Switches from read-only tools to configured `fullAccessTools`. It does not imply automatic approval.
   - `mock`: Accepts `dangerously-full-access` without changing its deterministic mock behavior (useful for dry runs and testing).
   - Workflows that omit the `permissions` field default to `{ mode: "default" }` (which does not pass any write-enabling flags to the provider).
 

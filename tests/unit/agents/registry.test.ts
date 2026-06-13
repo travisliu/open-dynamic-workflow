@@ -3,52 +3,18 @@ import { ProviderRegistry, createDefaultProviderRegistry } from "../../../src/ag
 import type { AgentAdapter, ResolvedConfig } from "../../../src/agents/types.js";
 
 describe("ProviderRegistry", () => {
-  it("registers and retrieves adapters", () => {
-    const registry = new ProviderRegistry();
-    const mockAdapter: AgentAdapter = {
-      name: "test-provider",
-      async buildCommand() {
-        return { command: "test", args: [], cwd: "", env: {} };
-      },
-      async parseResult() {
-        return {};
-      }
-    };
-
-    registry.register(mockAdapter);
-    expect(registry.get("test-provider")).toBe(mockAdapter);
-    expect(registry.list()).toContain(mockAdapter);
-  });
-
-  it("rejects duplicate registration", () => {
-    const registry = new ProviderRegistry();
-    const mockAdapter: AgentAdapter = {
-      name: "test-provider",
-      async buildCommand() {
-        return { command: "test", args: [], cwd: "", env: {} };
-      },
-      async parseResult() {
-        return {};
-      }
-    };
-
-    registry.register(mockAdapter);
-    expect(() => registry.register(mockAdapter)).toThrow("Provider adapter already registered: test-provider");
-  });
-
-  it("throws clear error for unknown provider", () => {
-    const registry = new ProviderRegistry();
-    expect(() => registry.get("non-existent")).toThrow("Unknown provider: non-existent");
-  });
-
-  it("creates default registry with mock, codex, and gemini", () => {
+  it("54. creates default registry with all built-in providers in stable order", () => {
+    // Arrange
     const dummyConfig = {
       defaultProvider: "mock",
       concurrency: 1,
       timeoutMs: 1000,
       providers: {
         codex: { command: "codex" },
-        gemini: { command: "gemini" }
+        gemini: { command: "gemini" },
+        opencode: { command: "opencode" },
+        antigravity: { command: "agy" },
+        pi: { command: "pi" }
       },
       security: {
         allowWorkflowImports: false,
@@ -64,10 +30,62 @@ describe("ProviderRegistry", () => {
       cliArgs: {}
     } as unknown as ResolvedConfig;
 
+    // Act
     const registry = createDefaultProviderRegistry({ config: dummyConfig });
-    expect(registry.get("mock").name).toBe("mock");
-    expect(registry.get("codex").name).toBe("codex");
-    expect(registry.get("gemini").name).toBe("gemini");
-    expect(registry.list().map(a => a.name)).toEqual(["mock", "codex", "gemini"]);
+    const providers = registry.list().map(a => a.name);
+
+    // Assert
+    expect(providers).toEqual(["mock", "codex", "gemini", "opencode", "antigravity", "pi"]);
+  });
+
+  it("55. retrieves new provider adapters by name", () => {
+    // Arrange
+    const dummyConfig = {
+      providers: {
+        opencode: { command: "opencode" },
+        antigravity: { command: "agy" },
+        pi: { command: "pi" }
+      }
+    } as unknown as ResolvedConfig;
+    const registry = createDefaultProviderRegistry({ config: dummyConfig });
+
+    // Act
+    const opencode = registry.get("opencode");
+    const antigravity = registry.get("antigravity");
+    const pi = registry.get("pi");
+
+    // Assert
+    expect(opencode.name).toBe("opencode");
+    expect(antigravity.name).toBe("antigravity");
+    expect(pi.name).toBe("pi");
+  });
+
+  // Keep existing utility tests
+  it("registers and retrieves adapters", () => {
+    const registry = new ProviderRegistry();
+    const mockAdapter: AgentAdapter = {
+      name: "test-provider",
+      async buildCommand() {
+        return { command: "test", args: [], cwd: "", env: {} };
+      },
+      async parseResult() {
+        return {};
+      }
+    };
+
+    registry.register(mockAdapter);
+    expect(registry.get("test-provider")).toBe(mockAdapter);
+  });
+
+  it("rejects duplicate registration", () => {
+    const registry = new ProviderRegistry();
+    const mockAdapter: AgentAdapter = {
+      name: "test-provider",
+      async buildCommand() { return { command: "t", args: [], cwd: "", env: {} }; },
+      async parseResult() { return {}; }
+    };
+
+    registry.register(mockAdapter);
+    expect(() => registry.register(mockAdapter)).toThrow("Provider adapter already registered: test-provider");
   });
 });

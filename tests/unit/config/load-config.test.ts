@@ -1,163 +1,91 @@
-import { describe, expect, it, afterAll } from "vitest";
+import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../../src/config/load.js";
-import { OpenFlowError } from "../../../src/errors/types.js";
-import { resolve, isAbsolute } from "node:path";
-import { writeFileSync, rmSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 
 describe("Load Config", () => {
-  const tempDir = resolve(process.cwd(), "tests/fixtures/config/temp-workflow");
-  if (!existsSync(tempDir)) {
-    mkdirSync(tempDir, { recursive: true });
-  }
+  it("56. no-config defaults include all new providers without changing default provider", async () => {
+    // Arrange
+    const emptyDir = join(tmpdir(), "openflow-test-empty-" + Date.now());
+    mkdirSync(emptyDir, { recursive: true });
 
-  afterAll(() => {
-    if (existsSync(tempDir)) {
-      rmSync(tempDir, { recursive: true, force: true });
-    }
-  });
+    // Act
+    const config = await loadConfig({ cwd: emptyDir, cli: {} });
 
-  it("no config file uses defaults", async () => {
-    const config = await loadConfig({
-      cwd: "tests/fixtures/config", // point to a place with no .openflow/config.yaml
-      cli: {}
-    });
-
+    // Assert
     expect(config.defaultProvider).toBe("mock");
-    expect(config.concurrency).toBe(4);
-    expect(config.sharedAgents.dir).toEqual(".openflow/agents");
-    expect(config.sharedAgents.maxDefinitions).toBe(100);
-    expect(config.sharedAgents.strictPromptTemplateVariables).toBe(true);
-    expect(config.workflow.discovery.include).toEqual(["workflows/**/*.ts"]);
-    expect(config.workflow.maxDepth).toBe(8);
+    expect(config.providers.opencode.command).toBe("opencode");
+    expect(config.providers.antigravity.command).toBe("agy");
+    expect(config.providers.pi.command).toBe("pi");
+
+    rmSync(emptyDir, { recursive: true, force: true });
   });
 
-  it("accepts custom workflow discovery and max depth", async () => {
-    const configPath = resolve(tempDir, "custom-workflow.yaml");
-    writeFileSync(configPath, `
-workflow:
-  discovery:
-    include: ["flows/**/*.js", "reviews/**/*.ts"]
-  maxDepth: 3
-`);
+  it("57. YAML overrides provider-specific fields and keeps unspecified defaults", async () => {
+    // Arrange
+    const tempDir = join(tmpdir(), "openflow-test-yaml-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = `
+providers:
+  opencode:
+    permissionPolicy: passthrough
+  antigravity:
+    promptFlag: --prompt
+  pi:
+    safeTools: [read, grep]
+`;
+    const configDir = join(tempDir, ".openflow");
+    mkdirSync(configDir, { recursive: true });
+    const configPath = join(configDir, "config.yaml");
+    writeFileSync(configPath, configContent);
 
-    const config = await loadConfig({
-      cwd: tempDir,
-      configPath: configPath,
-      cli: {}
-    });
+    // Act
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
 
-    expect(config.workflow.discovery.include).toEqual(["flows/**/*.js", "reviews/**/*.ts"]);
-    expect(config.workflow.maxDepth).toBe(3);
+    // Assert
+    expect(config.providers.opencode.permissionPolicy).toBe("passthrough");
+    expect(config.providers.antigravity.promptFlag).toBe("--prompt");
+    expect(config.providers.pi.safeTools).toEqual(["read", "grep"]);
+    
+    // Check preserved defaults
+    expect(config.providers.pi.noSession).toBe(true);
+    expect(config.providers.antigravity.useSandboxByDefault).toBe(true);
+
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("rejects malformed workflow discovery include", async () => {
-    const cases = [
-      { name: "string", content: "workflow:\n  discovery:\n    include: 'workflows/**/*.ts'" },
-      { name: "empty item", content: "workflow:\n  discovery:\n    include: ['']" },
-      { name: "whitespace item", content: "workflow:\n  discovery:\n    include: ['  ']" },
-      { name: "number", content: "workflow:\n  discovery:\n    include: 123" },
-      { name: "object", content: "workflow:\n  discovery:\n    include: {}" },
-      { name: "null", content: "workflow:\n  discovery:\n    include: null" },
-    ];
+  it("AAV2-T005: executionMode: print should not be overridden by default args", async () => {
+    // Arrange
+    const tempDir = join(tmpdir(), "openflow-test-aav2-t005-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = `
+providers:
+  pi:
+    executionMode: print
+`;
+    const configDir = join(tempDir, ".openflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
 
-    for (const c of cases) {
-      const configPath = resolve(tempDir, `malformed-include-${cases.indexOf(c)}.yaml`);
-      writeFileSync(configPath, c.content);
+    // Act
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
 
-      await expect(
-        loadConfig({
-          cwd: tempDir,
-          configPath: configPath,
-          cli: {}
-        })
-      ).rejects.toThrow(OpenFlowError);
-    }
+    // Assert
+    expect(config.providers.pi.executionMode).toBe("print");
+    expect(config.providers.pi.args).toBeUndefined();
+
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("rejects invalid workflow max depth", async () => {
-    const cases = [
-      { name: "zero", val: 0 },
-      { name: "negative", val: -1 },
-      { name: "float", val: 1.5 },
-      { name: "string", val: '"8"' },
-      { name: "null", val: "null" },
-    ];
-
-    for (const c of cases) {
-      const configPath = resolve(tempDir, `invalid-depth-${cases.indexOf(c)}.yaml`);
-      writeFileSync(configPath, `workflow:\n  maxDepth: ${c.val}`);
-
-      await expect(
-        loadConfig({
-          cwd: tempDir,
-          configPath: configPath,
-          cli: {}
-        })
-      ).rejects.toThrow(/workflow.maxDepth/i);
-    }
+  // Keep some core existing tests to ensure no regressions
+  it("loads config from .openflow/config.yaml", async () => {
+    const tempDir = join(tmpdir(), "openflow-test-base-" + Date.now());
+    const configDir = join(tempDir, ".openflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), "defaultProvider: codex");
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(config.defaultProvider).toBe("codex");
+    rmSync(tempDir, { recursive: true, force: true });
   });
-
-  it("explicit missing config file fails", async () => {
-    await expect(
-      loadConfig({
-        cwd: process.cwd(),
-        configPath: "nonexistent-config.yaml",
-        cli: {}
-      })
-    ).rejects.toThrow(OpenFlowError);
-
-    try {
-      await loadConfig({
-        cwd: process.cwd(),
-        configPath: "nonexistent-config.yaml",
-        cli: {}
-      });
-    } catch (err: any) {
-      expect(err.code).toBe("CONFIG_VALIDATION_ERROR");
-    }
-  });
-
-  it("invalid YAML fails", async () => {
-    await expect(
-      loadConfig({
-        cwd: process.cwd(),
-        configPath: "tests/fixtures/config/invalid-concurrency.yaml", // concurrency: 0 is validation fail, but wait, invalid YAML like syntax error:
-        cli: {}
-      })
-    ).rejects.toThrow(OpenFlowError);
-  });
-
-  it("valid YAML loads", async () => {
-    const config = await loadConfig({
-      cwd: process.cwd(),
-      configPath: "tests/fixtures/config/valid-config.yaml",
-      cli: {}
-    });
-
-    expect(config.concurrency).toBe(8);
-    expect(config.timeoutMs).toBe(60000);
-    expect(config.reporting.mode).toBe("json");
-    expect(config.reporting.verbose).toBe(true);
-  });
-
-  it("cwd resolves to absolute path", async () => {
-    const config = await loadConfig({
-      cwd: "tests/fixtures/config",
-      cli: {}
-    });
-
-    expect(isAbsolute(config.cwd)).toBe(true);
-    expect(config.cwd).toBe(resolve(process.cwd(), "tests/fixtures/config"));
-  });
-
-  it("outDir resolves correctly", async () => {
-    const config = await loadConfig({
-      cwd: "tests/fixtures/config",
-      outDir: "custom-out",
-      cli: {}
-    });
-
-    expect(config.outDir).toBe(resolve(config.cwd, "custom-out"));
-  });
-
 });

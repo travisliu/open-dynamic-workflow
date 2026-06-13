@@ -12,6 +12,37 @@ export interface ProviderConfig {
   timeoutMs?: number;
   env?: Record<string, string>;
   mock?: MockProviderConfig;
+  promptMode?: "stdin" | "arg";
+  promptFlag?: string;
+  modelFlag?: string;
+  sandboxFlag?: string;
+  dangerouslySkipPermissionsFlag?: string;
+  useSandboxByDefault?: boolean;
+  permissionPolicy?: string;
+  printTimeoutFlag?: string;
+  agentFlag?: string;
+  dirFlag?: string | false;
+  formatFlag?: string;
+  format?: string;
+  variantFlag?: string;
+  defaultAgent?: string;
+  defaultVariant?: string;
+  piProvider?: string;
+  providerFlag?: string;
+  executionMode?: string;
+  approvalMode?: string;
+  safeTools?: string[];
+  fullAccessTools?: string[];
+  thinking?: string;
+  systemPrompt?: string;
+  appendSystemPrompt?: string;
+  deterministicEnv?: boolean;
+  noSession?: boolean;
+  noContextFiles?: boolean;
+  noExtensions?: boolean;
+  noSkills?: boolean;
+  noPromptTemplates?: boolean;
+  noThemes?: boolean;
 }
 
 export interface MockProviderConfig {

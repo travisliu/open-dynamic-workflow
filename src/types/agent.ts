@@ -148,11 +148,11 @@ export interface ProviderParseInput {
 }
 
 export interface ProviderParsedResult {
-  text?: string;
-  json?: unknown;
-  structuredJson?: unknown;
-  raw?: unknown;
-  parseWarnings?: string[];
+  text?: string | undefined;
+  json?: unknown | undefined;
+  structuredJson?: unknown | undefined;
+  raw?: unknown | undefined;
+  parseWarnings?: string[] | undefined;
 }
 
 export interface AgentAdapter {

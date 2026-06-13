@@ -100,6 +100,132 @@ export function validateConfig(config: OpenFlowConfig): void {
         `Provider '${name}' promptMode must be 'stdin' or 'arg'.`
       );
     }
+
+    const stringFields = [
+      "promptFlag",
+      "modelFlag",
+      "sandboxFlag",
+      "dangerouslySkipPermissionsFlag",
+      "printTimeoutFlag",
+      "agentFlag",
+      "formatFlag",
+      "format",
+      "variantFlag",
+      "defaultAgent",
+      "defaultVariant",
+      "piProvider",
+      "providerFlag",
+      "thinking",
+      "systemPrompt",
+      "appendSystemPrompt",
+    ];
+
+    for (const field of stringFields) {
+      const value = (provider as any)[field];
+      if (value !== undefined && (typeof value !== "string" || value.trim() === "")) {
+        throw new OpenFlowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Provider '${name}' ${field} must be a non-empty string.`
+        );
+      }
+    }
+
+    const booleanFields = [
+      "useSandboxByDefault",
+      "deterministicEnv",
+      "noSession",
+      "noContextFiles",
+      "noExtensions",
+      "noSkills",
+      "noPromptTemplates",
+      "noThemes",
+    ];
+
+    for (const field of booleanFields) {
+      const value = (provider as any)[field];
+      if (value !== undefined && typeof value !== "boolean") {
+        throw new OpenFlowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Provider '${name}' ${field} must be a boolean.`
+        );
+      }
+    }
+
+    if (
+      provider.dirFlag !== undefined &&
+      provider.dirFlag !== false &&
+      (typeof provider.dirFlag !== "string" || provider.dirFlag.trim() === "")
+    ) {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Provider '${name}' dirFlag must be a non-empty string or false.`
+      );
+    }
+
+    const toolArrays = ["safeTools", "fullAccessTools"];
+    for (const field of toolArrays) {
+      const value = (provider as any)[field];
+      if (value !== undefined) {
+        if (!Array.isArray(value)) {
+          throw new OpenFlowError(
+            ErrorCode.CONFIG_VALIDATION_ERROR,
+            `Provider '${name}' ${field} must be an array of strings.`
+          );
+        }
+        for (const item of value) {
+          if (typeof item !== "string" || item.trim() === "") {
+            throw new OpenFlowError(
+              ErrorCode.CONFIG_VALIDATION_ERROR,
+              `Provider '${name}' ${field} must contain only non-empty strings.`
+            );
+          }
+        }
+      }
+    }
+
+    if (
+      provider.executionMode !== undefined &&
+      provider.executionMode !== "json" &&
+      provider.executionMode !== "print"
+    ) {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Provider '${name}' executionMode must be 'json' or 'print'.`
+      );
+    }
+
+    if (
+      provider.approvalMode !== undefined &&
+      !["approve", "no-approve", "omit"].includes(provider.approvalMode)
+    ) {
+      throw new OpenFlowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Provider '${name}' approvalMode must be 'approve', 'no-approve', or 'omit'.`
+      );
+    }
+
+    if (provider.permissionPolicy !== undefined) {
+      if (name === "opencode") {
+        if (!["read-only", "passthrough"].includes(provider.permissionPolicy)) {
+          throw new OpenFlowError(
+            ErrorCode.CONFIG_VALIDATION_ERROR,
+            `Provider 'opencode' permissionPolicy must be 'read-only' or 'passthrough'.`
+          );
+        }
+      } else if (name === "antigravity") {
+        if (!["sandbox", "native"].includes(provider.permissionPolicy)) {
+          throw new OpenFlowError(
+            ErrorCode.CONFIG_VALIDATION_ERROR,
+            `Provider 'antigravity' permissionPolicy must be 'sandbox' or 'native'.`
+          );
+        }
+      } else if (!["read-only", "passthrough", "sandbox", "native"].includes(provider.permissionPolicy)) {
+        throw new OpenFlowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Provider '${name}' permissionPolicy must be 'read-only', 'passthrough', 'sandbox', or 'native'.`
+        );
+      }
+    }
   }
 
   // defaultProvider validation
