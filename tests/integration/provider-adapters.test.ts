@@ -44,6 +44,11 @@ async function runCli(args: string[]) {
   };
 }
 
+async function listRunDirs(): Promise<string[]> {
+  const entries = await fs.readdir(TEMP_DIR, { withFileTypes: true });
+  return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+}
+
 describe("Provider adapter execution", () => {
   beforeEach(async () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
@@ -118,6 +123,155 @@ describe("Provider adapter execution", () => {
     expect(agentResult.exitCode).toBe(0);
     expect(typeof agentResult.durationMs).toBe("number");
     expect(agentResult.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("Mock provider-reported failure fails clearly even with zero exit code", async () => {
+    const workflowPath = path.join(TEMP_DIR, "mock-provider-failure.workflow.js");
+    const configPath = path.join(TEMP_DIR, "mock-provider-failure.config.yaml");
+    await fs.writeFile(workflowPath, `
+export const meta = { name: "mock-provider-failure", description: "provider failure metadata" };
+const result = await agent({ id: "reported-failure", provider: "mock", prompt: "fail from provider" });
+export default { result };
+`, "utf8");
+    await fs.writeFile(configPath, `
+defaultProvider: mock
+concurrency: 1
+timeoutMs: 30000
+providers:
+  mock:
+    command: mock
+    responses:
+      reported-failure:
+        text: partial output
+        exitCode: 0
+        usage:
+          inputTokens: 7
+          outputTokens: 2
+          totalTokens: 9
+        providerThreadId: mock-thread-integration
+        providerMetadata:
+          source: integration-test
+        failure:
+          name: MockTerminalFailure
+          message: provider reported failure
+          code: PROVIDER_REPORTED_FAILURE
+  codex:
+    command: codex
+  gemini:
+    command: gemini
+security:
+  allowShell: false
+  allowWorkflowImports: false
+  passEnv: []
+  redactEnv: []
+reporting:
+  mode: json
+  verbose: false
+`, "utf8");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json"
+    ]);
+
+    expect(result.error).toBeNull();
+    const [runId] = await listRunDirs();
+    const report = JSON.parse(await fs.readFile(path.join(TEMP_DIR, runId!, "report.json"), "utf8"));
+    const agentResult = report.agents.find((a: any) => a.id === "reported-failure");
+    expect(agentResult.ok).toBe(false);
+    expect(agentResult.error).toEqual({
+      name: "MockTerminalFailure",
+      message: "provider reported failure",
+      code: "PROVIDER_REPORTED_FAILURE"
+    });
+    expect(agentResult.exitCode).toBe(0);
+    expect(agentResult.usage).toEqual({ inputTokens: 7, outputTokens: 2, totalTokens: 9 });
+    expect(agentResult.threadId).toBe("mock-thread-integration");
+    expect(agentResult.providerMetadata).toEqual({ source: "integration-test" });
+  });
+
+  it("Fake Codex JSONL workflow persists usage and thread metadata", async () => {
+    const fakeCodexPath = path.join(TEMP_DIR, "fake-codex-jsonl.mjs");
+    const workflowPath = path.join(TEMP_DIR, "fake-codex-jsonl.workflow.js");
+    const configPath = path.join(TEMP_DIR, "fake-codex-jsonl.config.yaml");
+    await fs.writeFile(fakeCodexPath, `
+process.stdout.write(JSON.stringify({ type: "thread.started", thread_id: "codex-thread-integration" }) + "\\n");
+process.stdout.write(JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "codex jsonl ok" } }) + "\\n");
+process.stdout.write(JSON.stringify({ type: "turn.completed", usage: { input_tokens: 11, cached_input_tokens: 5, output_tokens: 4, reasoning_output_tokens: 2 } }) + "\\n");
+`, "utf8");
+    await fs.writeFile(workflowPath, `
+export const meta = { name: "fake-codex-jsonl", description: "fake Codex JSONL metadata" };
+const result = await agent({ id: "codex-jsonl", provider: "codex", prompt: "emit metadata" });
+export default { result };
+`, "utf8");
+    await fs.writeFile(configPath, `
+defaultProvider: codex
+concurrency: 1
+timeoutMs: 30000
+providers:
+  mock:
+    command: mock
+  codex:
+    command: node
+    args:
+      - ${JSON.stringify(fakeCodexPath)}
+    modelArg: false
+  gemini:
+    command: gemini
+security:
+  allowShell: false
+  allowWorkflowImports: false
+  passEnv: []
+  redactEnv: []
+reporting:
+  mode: json
+  verbose: false
+`, "utf8");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json"
+    ]);
+
+    expect(result.error).toBeNull();
+    const [runId] = await listRunDirs();
+    const runDir = path.join(TEMP_DIR, runId!);
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    const agentResult = report.agents.find((a: any) => a.id === "codex-jsonl");
+    expect(agentResult.ok).toBe(true);
+    expect(agentResult.text).toBe("codex jsonl ok");
+    expect(agentResult.threadId).toBe("codex-thread-integration");
+    expect(agentResult.usage).toEqual({
+      inputTokens: 11,
+      cachedInputTokens: 5,
+      outputTokens: 4,
+      reasoningOutputTokens: 2,
+      totalTokens: 15
+    });
+    expect(agentResult.providerMetadata).toEqual({
+      usage: {
+        input_tokens: 11,
+        cached_input_tokens: 5,
+        output_tokens: 4,
+        reasoning_output_tokens: 2
+      }
+    });
+
+    const rawResult = JSON.parse(await fs.readFile(path.join(runDir, "agents/codex-jsonl/raw-result.json"), "utf8"));
+    expect(rawResult.format).toBe("codex-jsonl");
+    expect(rawResult.events).toHaveLength(3);
   });
 
   it("Unknown provider returns clear error", async () => {

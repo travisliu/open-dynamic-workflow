@@ -1,4 +1,5 @@
 import type { JsonObject, ProviderName, ReporterMode } from "./common.js";
+import type { AgentUsage, ProviderFailure } from "./agent.js";
 
 export interface ProviderModelArgConfig {
   flag: string;
@@ -28,6 +29,11 @@ export interface MockProviderResponse {
   delayMs?: number;
   fail?: boolean;
   timeout?: boolean;
+  usage?: AgentUsage;
+  providerSessionId?: string;
+  providerThreadId?: string;
+  providerMetadata?: Record<string, unknown>;
+  failure?: ProviderFailure;
 }
 
 export interface SecurityConfig {

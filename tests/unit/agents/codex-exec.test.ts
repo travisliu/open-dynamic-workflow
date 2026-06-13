@@ -6,6 +6,18 @@ import { CodexExecAdapter } from "../../../src/agents/codex-exec.js";
 import type { AgentRunInput, ProviderParseInput } from "../../../src/agents/types.js";
 
 describe("CodexExecAdapter", () => {
+  it("declares provider-neutral capabilities", () => {
+    const adapter = new CodexExecAdapter();
+    expect(adapter.capabilities()).toEqual({
+      prompt: { transports: ["stdin", "argv"] },
+      output: { formats: ["text", "json", "jsonl"] },
+      structuredOutput: { modes: ["prompt", "validate-only"] },
+      usage: { source: "final-event" },
+      sessions: { modes: ["ephemeral"] },
+      permissions: { modes: ["none"] }
+    });
+  });
+
   it("builds default command", async () => {
     const adapter = new CodexExecAdapter();
     const input: AgentRunInput = {
@@ -265,6 +277,65 @@ describe("CodexExecAdapter", () => {
       selectedEventIndex: 2,
       selectedMessageText: "Final plain text answer"
     });
+  });
+
+  it("extracts Codex thread id and usage from JSONL without double-counting cached input", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started", "thread_id": "thread-123"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "Final answer"}}',
+        '{"type": "turn.completed", "usage": {"input_tokens": 100, "cached_input_tokens": 80, "output_tokens": 25, "reasoning_output_tokens": 10}}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe("Final answer");
+    expect(parsed.providerThreadId).toBe("thread-123");
+    expect(parsed.usage).toEqual({
+      inputTokens: 100,
+      cachedInputTokens: 80,
+      outputTokens: 25,
+      reasoningOutputTokens: 10,
+      totalTokens: 125
+    });
+    expect(parsed.providerMetadata).toEqual({
+      usage: {
+        input_tokens: 100,
+        cached_input_tokens: 80,
+        output_tokens: 25,
+        reasoning_output_tokens: 10
+      }
+    });
+  });
+
+  it("reports Codex terminal failure events even when exit code is zero", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {} },
+      stdout: [
+        '{"type": "thread.started", "thread_id": "thread-err"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "partial answer"}}',
+        '{"type": "turn.failed", "error": {"message": "tool call failed"}}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.failure).toEqual({
+      name: "ProviderReportedFailure",
+      message: "tool call failed",
+      code: "PROVIDER_REPORTED_FAILURE",
+      raw: {
+        type: "turn.failed",
+        error: { message: "tool call failed" }
+      }
+    });
+    expect(parsed.providerThreadId).toBe("thread-err");
   });
 
   it("parses a JSONL event stream and returns the last JSON-shaped agent_message.text as both text and json", async () => {

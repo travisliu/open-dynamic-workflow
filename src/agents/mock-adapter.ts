@@ -28,6 +28,29 @@ export class MockAdapter implements AgentAdapter {
     };
   }
 
+  capabilities() {
+    return {
+      prompt: {
+        transports: ["stdin" as const]
+      },
+      output: {
+        formats: ["text" as const, "json" as const]
+      },
+      structuredOutput: {
+        modes: ["prompt" as const, "validate-only" as const]
+      },
+      usage: {
+        source: "none" as const
+      },
+      sessions: {
+        modes: ["none" as const]
+      },
+      permissions: {
+        modes: ["none" as const]
+      }
+    };
+  }
+
   async buildCommand(input: AgentRunInput): Promise<ProviderCommand> {
     const structuredPrompt = resolveStructuredOutputPrompt({
       prompt: input.prompt,
@@ -59,6 +82,21 @@ export class MockAdapter implements AgentAdapter {
     }
     if (input.input.model !== undefined) {
       result.model = input.input.model;
+    }
+    if (response.usage !== undefined) {
+      result.usage = response.usage;
+    }
+    if (response.providerSessionId !== undefined) {
+      result.providerSessionId = response.providerSessionId;
+    }
+    if (response.providerThreadId !== undefined) {
+      result.providerThreadId = response.providerThreadId;
+    }
+    if (response.providerMetadata !== undefined) {
+      result.providerMetadata = response.providerMetadata;
+    }
+    if (response.failure !== undefined) {
+      result.failure = response.failure;
     }
     return result;
   }
