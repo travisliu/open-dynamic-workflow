@@ -126,13 +126,14 @@ export function validateWorkflow(
     }
   }
 
-  function report(node: ts.Node, message: string) {
+  function report(node: ts.Node, message: string, severity?: "error" | "warning") {
     const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
     issues.push({
       code: "WORKFLOW_VALIDATION_ERROR",
       message,
       line: line + 1,
-      column: character + 1
+      column: character + 1,
+      severity
     });
   }
 
@@ -859,7 +860,7 @@ export function validateWorkflow(
     if (ts.isNewExpression(node)) {
       const expression = node.expression;
       if (ts.isIdentifier(expression) && expression.text === "Date" && (!node.arguments || node.arguments.length === 0)) {
-        report(node, "new Date() without arguments is not allowed because it would break resume/cache determinism.");
+        report(node, "Using new Date() prevents resume and cache support.", "warning");
       }
     }
 
@@ -873,9 +874,9 @@ export function validateWorkflow(
         report(node, "Access to '__proto__' is not allowed.");
       } else if (ts.isIdentifier(expr)) {
         if (expr.text === "Date" && name.text === "now") {
-          report(node, "Date.now() is not allowed.");
+          report(node, "Using Date.now() prevents resume and cache support.", "warning");
         } else if (expr.text === "Math" && name.text === "random") {
-          report(node, "Math.random() is not allowed.");
+          report(node, "Using Math.random() prevents resume and cache support.", "warning");
         }
       }
     }
@@ -923,8 +924,17 @@ export function assertWorkflowValid(
   options: ValidateWorkflowOptions
 ): void {
   const issues = validateWorkflow(workflow, options);
-  if (issues.length > 0) {
-    const summary = issues.map((issue) => `${issue.message}`).join("\n");
+  const errors = issues.filter((issue) => issue.severity !== "warning");
+  const warnings = issues.filter((issue) => issue.severity === "warning");
+
+  if (warnings.length > 0) {
+    for (const warning of warnings) {
+      console.warn(`Warning: ${warning.message} (at line ${warning.line}, col ${warning.column})`);
+    }
+  }
+
+  if (errors.length > 0) {
+    const summary = errors.map((issue) => `${issue.message}`).join("\n");
     throw new OpenFlowError(
       ErrorCode.WORKFLOW_VALIDATION_ERROR,
       `Workflow validation failed:\n${summary}`
@@ -1076,7 +1086,7 @@ export function validateRegistryDependencies(
       toolRegistry: options.toolRegistry
     });
 
-    const localErrors = issues.map(issue => issue.message);
+    const localErrors = issues.filter(issue => issue.severity !== "warning").map(issue => issue.message);
 
     // 3. Recurse to check dependencies
     const deps = dependencyMap.get(currentName) || [];

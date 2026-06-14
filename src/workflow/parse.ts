@@ -43,7 +43,8 @@ export function parseWorkflow(loaded: LoadedWorkflow): ParsedWorkflow {
     loaded.sourcePath,
     loaded.sourceText,
     ts.ScriptTarget.Latest,
-    true
+    true,
+    ts.ScriptKind.TS
   );
 
   if (sourceFile.statements.length === 0) {
@@ -56,7 +57,8 @@ export function parseWorkflow(loaded: LoadedWorkflow): ParsedWorkflow {
   const statement = sourceFile.statements[0];
 
   const isVariable = statement && ts.isVariableStatement(statement);
-  const hasExport = isVariable && (statement as ts.VariableStatement).modifiers?.some(
+  const modifiers = isVariable ? ts.getModifiers(statement as ts.VariableStatement) : undefined;
+  const hasExport = isVariable && modifiers?.some(
     (m) => m.kind === ts.SyntaxKind.ExportKeyword
   );
   const declarations = isVariable ? (statement as ts.VariableStatement).declarationList.declarations : [];

@@ -37,13 +37,21 @@ export async function resumeCommand(input: ResumeCommandInput): Promise<void> {
   }
 
   const storedOptions = runInput.rawOptions && typeof runInput.rawOptions === "object" ? runInput.rawOptions : {};
+  
+  // Resolve noCache: command line overrides stored options
+  let noCache = storedOptions.noCache;
+  if (rawOptions.cache === false || rawOptions.noCache === true) {
+    noCache = true;
+  } else if (rawOptions.cache === true) {
+    noCache = false;
+  }
+
   const resumeOptions = {
     ...storedOptions,
     resume: previousRunRoot,
     cwd: runInput.cwd ?? storedOptions.cwd ?? cwd,
     out: rawOptions.out ? resolveUserPath(rawOptions.out, cwd) : storedOptions.out,
-    cache: rawOptions.cache,
-    noCache: rawOptions.cache === false || rawOptions.noCache === true,
+    noCache,
     report: rawOptions.report !== undefined ? parseReportMode(rawOptions.report) : storedOptions.report
   };
 

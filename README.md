@@ -29,6 +29,7 @@ OpenFlow does **not** implement its own coding agent. It coordinates external pr
 OpenFlow supports:
 
 - `openflow run <workflow-file>`
+- `openflow resume <runId-or-path>`
 - `openflow validate <workflow-file>`
 - `openflow doctor`
 - Constrained workflow metadata parsing
@@ -262,11 +263,42 @@ Runs a new workflow attempt from a previous run's recorded invocation and reuses
 openflow resume <runId-or-path> [--out <runs-dir>] [--report <pretty|json|jsonl>] [--no-cache]
 ```
 
-Resume/cache is intentionally conservative. OpenFlow replays the workflow script and compares each `agent()` call in order. A cached result is reused only while the prefix is unchanged: the call sequence must match, `id` or `label` must match when present, and the call fingerprint must match. The fingerprint includes the prompt, schema, structured-output mode, provider, resolved model, timeout, cwd, metadata, and provider config. After the first miss, later agents run live even if their individual fingerprint matches an older entry.
+### Resume & Cache Model
 
-Use stable `id` values for loops, such as `id: \`round-${i}\``. `Date.now()`, `Math.random()`, and argument-free `new Date()` are rejected because they break deterministic replay.
+OpenFlow supports two ways to resume a previous run:
+1. `openflow run <workflow> --resume <runId-or-path>`: Re-runs the specified workflow file while attempting to reuse results from the previous run.
+2. `openflow resume <runId-or-path>`: Re-runs the exact same workflow invocation recorded in the previous run's `run-input.json`.
 
-`--no-cache` disables cache reads and cache-index updates, but still writes `calls.jsonl` for audit/debugging.
+#### How it Works: Longest Unchanged Prefix
+
+Resume/cache is intentionally conservative. OpenFlow replays the workflow script and compares each `agent()` call in order. A cached result is reused only while the **prefix is unchanged**:
+- The call sequence must match.
+- The `id` or `label` must match when present.
+- The call fingerprint must match (prompt, schema, provider, model, timeout, etc.).
+
+After the first mismatch (e.g., you changed a prompt in the middle of a workflow), all subsequent agents run live, even if their individual fingerprints match an older entry. This ensures that downstream agents always see the updated context from upstream changes.
+
+#### Resume Requires Deterministic Replay
+
+For resume to work correctly, your workflow **must remain deterministic** outside of `agent()` calls. Using non-deterministic APIs outside of `agent()` calls will make resume unsupported.
+
+Do not use APIs that break replay stability, including:
+
+- `Date.now()` and `new Date()` without arguments
+- `Math.random()`
+
+Loops should also **use stable `id` values**, such as: `id: \`round-${i}\``.
+
+#### Artifacts
+
+Each resumable run utilizes these key artifacts in the `.openflow/runs/<runId>` directory:
+- `run-input.json`: Records the original workflow path, working directory, output directory, configuration path, and selected CLI options.
+- `calls.jsonl`: Audit log of all agent calls and their results.
+- `cache-index.json`: A searchable index of call fingerprints used for fast cache lookups.
+
+#### `--no-cache`
+
+The `--no-cache` flag disables cache lookups and does not update the `cache-index.json`. It forces all agents to run live while still producing new `calls.jsonl` and `run-input.json` artifacts for future resumes.
 
 ### `openflow validate`
 

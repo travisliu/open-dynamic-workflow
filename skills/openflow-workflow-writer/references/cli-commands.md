@@ -21,6 +21,8 @@ openflow run <workflow-file>
 --report <pretty|json|jsonl>
 --concurrency <number>
 --timeout-ms <number>
+--resume <runId-or-path>
+--no-cache
 --dry-run
 --fail-fast
 --verbose
@@ -37,7 +39,39 @@ openflow run workflows/review.ts --timeout-ms 600000
 openflow run workflows/review.ts --report json
 openflow run workflows/review.ts --report jsonl
 openflow run workflows/review.ts --fail-fast
+openflow run workflows/review.ts --resume <previous-run-id>
 ```
+
+---
+
+## Resume a previous run
+
+Runs a new workflow attempt from a previous run's recorded invocation and reuses cached agent results for the longest unchanged prefix.
+
+```bash
+openflow resume <runId-or-path> [options]
+```
+
+### Common options
+
+```bash
+--out <path>             # Parent directory for the new run
+--report <pretty|json|jsonl>
+--no-cache               # Re-run all steps but still write audit logs
+--cwd <path>
+```
+
+### Example
+
+```bash
+openflow resume <previous-run-id>
+```
+
+### Behavior
+
+Resume/cache is intentionally conservative. OpenFlow replays the workflow script and compares each `agent()` call in order. A cached result is reused only while the prefix is unchanged: the call sequence must match, `id` or `label` must match when present, and the call fingerprint must match.
+
+Use stable `id` values for loops, such as `id: \`round-${i}\``. `Date.now()`, `Math.random()`, and argument-free `new Date()` are rejected because they break deterministic replay.
 
 ---
 

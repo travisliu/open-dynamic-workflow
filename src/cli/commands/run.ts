@@ -189,6 +189,8 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
       report: rawOptions.report,
       concurrency: rawOptions.concurrency,
       timeoutMs: rawOptions.timeoutMs,
+      resume: rawOptions.resume,
+      noCache: noCache,
       failFast: !!rawOptions.failFast,
       verbose: !!rawOptions.verbose
     }

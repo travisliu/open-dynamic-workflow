@@ -44,7 +44,7 @@
     "typecheck": "npm run check",
     "check": "tsc --noEmit",
     "lint": "npm run check",
-    "test": "vitest run --reporter=dot",
+    "test": "vitest run --reporter=dot --no-color",
     "prepack": "npm run clean && npm run build",
     "pack:local": "npm pack",
     "publish:dry-run": "npm publish --dry-run",

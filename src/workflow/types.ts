@@ -26,6 +26,7 @@ export interface WorkflowValidationIssue {
   message: string;
   line?: number;
   column?: number;
+  severity?: "error" | "warning" | undefined;
 }
 
 
