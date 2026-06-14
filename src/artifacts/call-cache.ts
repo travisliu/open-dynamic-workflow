@@ -195,6 +195,7 @@ export async function materializeCachedAgentResult(input: {
     stderr: "",
     exitCode: 0,
     durationMs: 0,
+    permissions: { mode: "default" },
     artifacts: {
       dir: agentDir,
       promptPath: `${agentDir}/prompt.txt`,

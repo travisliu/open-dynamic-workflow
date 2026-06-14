@@ -175,7 +175,7 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   await artifactStore.writeJson("run-input.json", {
     schemaVersion: "openflow.run-input.v1",
     runId: runIdGenerated,
-    workflowFile: loaded.sourcePath,
+    workflowFile: rootDefinition.sourcePath,
     cwd: config.cwd,
     outDir: config.outDir,
     configPath: config.configPath,

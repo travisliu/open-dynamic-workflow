@@ -96,8 +96,8 @@ export interface AgentFailureResult {
   artifacts: AgentArtifacts;
   error: SerializedError;
   permissions: AgentPermissions;
-<<<<<<< HEAD
   cache?: AgentResultCacheInfo | undefined;
+  metadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentResultCacheInfo {
@@ -105,9 +105,6 @@ export interface AgentResultCacheInfo {
   callId?: string | undefined;
   previousRunId?: string | undefined;
   previousAgentId?: string | undefined;
-=======
-  metadata?: Record<string, unknown> | undefined;
->>>>>>> 860aa8a (Add shared agent definitions to workflow runtime)
 }
 
 export interface AgentRunInput {
@@ -162,8 +159,5 @@ export interface AgentAdapter {
   name: ProviderName;
   checkHealth?(): Promise<ProviderHealth>;
   buildCommand(input: AgentRunInput): Promise<ProviderCommand>;
-  parseResult(input: ProviderParseInput): Promise<ProviderParsedResult>;
-}
-e<ProviderCommand>;
   parseResult(input: ProviderParseInput): Promise<ProviderParsedResult>;
 }
