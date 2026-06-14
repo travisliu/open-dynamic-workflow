@@ -1,7 +1,7 @@
 import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentCallInput, AgentResult, AgentSuccessResult } from "../types/agent.js";
+import type { AgentCallInput, AgentPermissions, AgentResult, AgentSuccessResult } from "../types/agent.js";
 import type { ArtifactStore } from "../types/artifacts.js";
 import { OpenFlowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
@@ -129,6 +129,7 @@ export async function materializeCachedAgentResult(input: {
   label?: string | undefined;
   provider: string;
   model?: string | undefined;
+  permissions: AgentPermissions;
 }): Promise<AgentSuccessResult> {
   let cachedResult: AgentResult | undefined;
   if (input.entry.agentResultPath) {
@@ -175,7 +176,8 @@ export async function materializeCachedAgentResult(input: {
         callId: input.entry.callId,
         previousRunId: input.previousRunId,
         previousAgentId: input.entry.agentId
-      }
+      },
+      permissions: input.permissions
     };
     await input.store.writeJson(`${agentDir}/raw-result.json`, success);
     await input.store.writeJson(`${agentDir}/agent-result.json`, success);
@@ -208,7 +210,8 @@ export async function materializeCachedAgentResult(input: {
       callId: input.entry.callId,
       previousRunId: input.previousRunId,
       previousAgentId: input.entry.agentId
-    }
+    },
+    permissions: input.permissions
   };
   await input.store.writeJson(`${agentDir}/raw-result.json`, success);
   await input.store.writeJson(`${agentDir}/agent-result.json`, success);

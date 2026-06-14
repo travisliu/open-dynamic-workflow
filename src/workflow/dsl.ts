@@ -161,7 +161,8 @@ export function createDsl(runtime: RuntimeState) {
           currentAgentId: normalizedId,
           label: input.label,
           provider: normalizedProvider,
-          model: resolved.model
+          model: resolved.model,
+          permissions: resolvedPermissions
         });
         runtime.agentResults.push(cachedResult);
         runtime.eventSink?.emit("agent.cache_hit", {

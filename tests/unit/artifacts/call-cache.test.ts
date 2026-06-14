@@ -112,7 +112,8 @@ describe("call cache", () => {
         agentId: "evil"
       },
       currentAgentId: "evil",
-      provider: "codex"
+      provider: "codex",
+      permissions: { mode: "default" }
     })).rejects.toMatchObject({ code: "CLI_USAGE_ERROR" });
   });
 });
