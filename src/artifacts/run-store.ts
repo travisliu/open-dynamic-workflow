@@ -72,6 +72,7 @@ export class FileSystemArtifactStore implements ArtifactStore {
     await fs.writeFile(resolvedConfigPath, JSON.stringify(input.resolvedConfig, null, 2), "utf8");
 
     // Resume/cache artifacts
+    await fs.writeFile(path.join(runRootDir, "run-input.json"), "{}", "utf8");
     await fs.writeFile(path.join(runRootDir, "calls.jsonl"), "", "utf8");
     await fs.writeFile(
       path.join(runRootDir, "cache-index.json"),

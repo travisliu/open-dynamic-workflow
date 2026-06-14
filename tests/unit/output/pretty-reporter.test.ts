@@ -74,6 +74,18 @@ describe("PrettyReporter", () => {
     expect(getStdout()).toBe("✓ agent-1 succeeded [mock] 1.5s\n");
   });
 
+  it("agent.cache_hit prints cache hit mark", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.handle({
+      type: "agent.cache_hit",
+      payload: { agentId: "agent-1", label: "my-label", provider: "mock" }
+    } as any);
+
+    expect(getStdout()).toBe("↻ my-label cache hit [mock]\n");
+  });
+
   it("agent.failed prints failure mark and message", () => {
     const { streams, getStdout } = createMockStreams();
     const reporter = new PrettyReporter(streams);

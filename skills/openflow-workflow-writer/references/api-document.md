@@ -714,6 +714,9 @@ Every run creates a local artifact directory.
   manifest.json
   workflow.input.ts
   config.resolved.json
+  run-input.json
+  calls.jsonl
+  cache-index.json
   events.jsonl
   report.json
   agents/
@@ -804,7 +807,6 @@ JSONL consumers should treat unknown event types as forward-compatible and ignor
 Do not assume these are available unless explicitly implemented or enabled:
 
 * distributed execution
-* resumable runs
 * approval gates
 * DAG or branching pipelines
 * stage-level pipeline caching
@@ -819,7 +821,35 @@ Do not assume these are available unless explicitly implemented or enabled:
 
 ---
 
-## 17. Common Validation Mistakes
+## 17. Resumable Runs & Determinism
+
+OpenFlow supports resuming a previous run to reuse cached results for unchanged agent-call prefixes.
+
+### Entry Points
+
+1.  **`openflow run <workflow> --resume <runId-or-path>`**: Re-runs a workflow file while attempting to reuse results from the previous run.
+2.  **`openflow resume <runId-or-path>`**: Re-runs the exact same workflow invocation recorded in the previous run's `run-input.json`.
+
+### Deterministic Replay Model
+
+To ensure a safe and predictable resume, OpenFlow uses a **deterministic replay** model:
+1. The workflow script is executed from the beginning.
+2. Each `agent()` call is compared against the recorded call at the same position (sequence) in the previous run.
+3. If the call's "fingerprint" matches (same ID, prompt, schema, provider, model, etc.), the cached result is reused.
+4. After the first mismatch, all subsequent agents in that run are executed live.
+
+### Requirements for Workflow Authors
+
+* **Stable IDs**: Always use stable `id` values, especially in loops. For example: `id: \`review-${file}\`` or `id: \`step-${i}\``.
+* **Avoid Nondeterminism**: Do not use APIs that produce different values on each run. The following are flagged as **warnings** (non-blocking) during validation:
+    * `Date.now()`
+    * `new Date()` (without arguments)
+    * `Math.random()`
+* **No Side Effects during Replay**: Workflow code outside of DSL calls (like `agent()`) should be pure and not depend on external state that changes between runs (like current time or environment variables not pass-through).
+
+---
+
+## 18. Common Validation Mistakes
 
 Bad: metadata is not first.
 

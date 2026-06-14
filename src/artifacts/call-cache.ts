@@ -152,6 +152,29 @@ export async function materializeCachedAgentResult(input: {
   });
 
   if (cachedResult?.ok) {
+    const agentArtifacts: Record<string, string | undefined> & {
+      dir: string;
+      promptPath: string;
+      stdoutPath: string;
+      stderrPath: string;
+    } = {
+      dir: agentDir,
+      promptPath: `${agentDir}/prompt.txt`,
+      stdoutPath: `${agentDir}/stdout.log`,
+      stderrPath: `${agentDir}/stderr.log`,
+      rawResultPath: `${agentDir}/raw-result.json`,
+      normalizedResultPath: `${agentDir}/normalized-result.json`
+    };
+
+    if (cachedResult.permissions) {
+      agentArtifacts.permissionsPath = `${agentDir}/permissions.json`;
+      await input.store.writeJson(`${agentDir}/permissions.json`, cachedResult.permissions);
+    }
+    if (cachedResult.metadata) {
+      agentArtifacts.metadataPath = `${agentDir}/metadata.json`;
+      await input.store.writeJson(`${agentDir}/metadata.json`, cachedResult.metadata);
+    }
+
     const success: AgentSuccessResult = {
       ...cachedResult,
       id: input.currentAgentId,
@@ -161,15 +184,7 @@ export async function materializeCachedAgentResult(input: {
       stdout: "",
       stderr: "",
       durationMs: 0,
-      artifacts: {
-        ...cachedResult.artifacts,
-        dir: agentDir,
-        promptPath: `${agentDir}/prompt.txt`,
-        stdoutPath: `${agentDir}/stdout.log`,
-        stderrPath: `${agentDir}/stderr.log`,
-        rawResultPath: `${agentDir}/raw-result.json`,
-        normalizedResultPath: `${agentDir}/normalized-result.json`
-      },
+      artifacts: agentArtifacts,
       cache: {
         hit: true,
         callId: input.entry.callId,
@@ -234,30 +249,50 @@ export async function recordCall(input: {
     return;
   }
 
+  const rootDir = input.store.getRunArtifacts().rootDir;
+  const normalizePath = (p: string | undefined) => {
+    if (!p) return undefined;
+    if (path.isAbsolute(p)) {
+      return path.relative(rootDir, p);
+    }
+    return p;
+  };
+
+  const artifacts = input.result.artifacts;
+  const resultPath = (artifacts?.normalizedResultPath ? normalizePath(artifacts.normalizedResultPath) : undefined) ??
+                     (artifacts?.rawResultPath ? normalizePath(artifacts.rawResultPath) : undefined) ??
+                     `agents/${input.result.id}/raw-result.json`;
+
   const entry: CallCacheEntry = {
     sequence: input.sequence,
     ...(input.callId !== undefined ? { callId: input.callId } : {}),
     fingerprint: input.fingerprint,
     status: input.result.status,
-    resultPath: input.result.artifacts.normalizedResultPath ?? input.result.artifacts.rawResultPath ?? `agents/${input.result.id}/raw-result.json`,
+    resultPath: resultPath as string,
     agentId: input.result.id
   };
 
   if (input.result.ok && typeof input.store.writeJson === "function") {
-    entry.agentResultPath = `agents/${input.result.id}/agent-result.json`;
-    await input.store.writeJson(entry.agentResultPath, input.result);
+    const agentResultRelPath = `agents/${input.result.id}/agent-result.json`;
+    entry.agentResultPath = agentResultRelPath;
+    await input.store.writeJson(agentResultRelPath, input.result);
   }
 
   await input.store.appendJsonl("calls.jsonl", entry);
 
-  if (input.cache?.writeIndex && input.result.ok) {
-    input.cache.currentEntries.push(entry);
-    await input.store.writeJson("cache-index.json", {
-      schemaVersion: "openflow.cache-index.v1",
-      previousRunId: input.cache.previousRunId,
-      workflowHash: input.cache.previousWorkflowHash,
-      entries: input.cache.currentEntries
-    } satisfies CallCacheIndex);
+  if (input.cache) {
+    if (input.result.ok && input.cache.writeIndex) {
+      input.cache.currentEntries.push(entry);
+      await input.store.writeJson("cache-index.json", {
+        schemaVersion: "openflow.cache-index.v1",
+        previousRunId: input.cache.previousRunId,
+        workflowHash: input.cache.previousWorkflowHash,
+        entries: input.cache.currentEntries
+      } satisfies CallCacheIndex);
+    } else {
+      // Any non-success (or miss) disables further index growth for this run
+      input.cache.writeIndex = false;
+    }
   }
 }
 

@@ -153,4 +153,81 @@ describe("DSL shared-agent calls", () => {
     expect(result.ok).toBe(true);
     expect(runtime.scheduler.schedule).toHaveBeenCalled();
   });
+
+  describe("cache interaction", () => {
+    it("inner direct agent calls can hit cache", async () => {
+      const registry = new SharedAgentRegistry();
+      registry.register({
+        id: "cached-wrapper",
+        sourcePath: "cached-wrapper.js",
+        definition: {
+          id: "cached-wrapper",
+          run: async (context, runtime) => {
+            return await runtime.agent({ prompt: "constant prompt", provider: "mock" });
+          }
+        },
+        validatedAt: new Date().toISOString()
+      });
+
+      const runtime = createMockRuntime(registry);
+      runtime.callSequence = 0;
+
+      const enrichedInput = {
+        prompt: "constant prompt",
+        provider: "mock",
+        label: "cached-wrapper",
+        metadata: {
+          sharedAgentId: "cached-wrapper",
+          sharedAgentSource: "registry"
+        }
+      };
+
+      const fingerprint = (await import("../../../src/artifacts/call-cache.js")).computeAgentFingerprint({
+        call: enrichedInput,
+        provider: "mock",
+        timeoutMs: 30000,
+        cwd: "/repo",
+        providerConfig: undefined
+      });
+
+      runtime.callCache = {
+        readEnabled: true,
+        previousRunRoot: "/tmp/prev",
+        previousEntries: new Map([[1, {
+          sequence: 1,
+          callId: "cached-wrapper",
+          fingerprint,
+          status: "succeeded",
+          resultPath: "agents/old/res.json",
+          agentId: "old"
+        }]]),
+        prefixCacheUsable: true,
+        currentEntries: []
+      } as any;
+
+      runtime.artifactStore = {
+        getRunArtifacts: () => ({ rootDir: "/tmp/new" }),
+        isRunCreated: () => true,
+        writeText: vi.fn(),
+        writeJson: vi.fn(),
+        appendJsonl: vi.fn()
+      } as any;
+
+      // Mock fs read for materializeCachedAgentResult
+      vi.mock("node:fs/promises", async (importActual) => {
+        const actual = await importActual<any>();
+        return {
+          ...actual,
+          readFile: vi.fn().mockResolvedValue(JSON.stringify({ text: "cached answer" }))
+        };
+      });
+
+      const dsl = createDsl(runtime);
+      const result = await dsl.agent({ definition: "cached-wrapper" });
+
+      expect(result.ok).toBe(true);
+      expect(result.cache?.hit).toBe(true);
+      expect(runtime.scheduler.schedule).not.toHaveBeenCalled();
+    });
+  });
 });
