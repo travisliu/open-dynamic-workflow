@@ -53,7 +53,7 @@ describe("DSL shared-agent calls", () => {
       definition: {
         id: "test-agent",
         description: "Test",
-        inputSchema: { properties: { name: { type: "string" } } },
+        inputSchema: { type: "object", properties: { name: { type: "string" } } },
         run: async (context, runtime) => {
           return await runtime.agent({ prompt: `Hello ${context.name}`, provider: "mock" });
         }
