@@ -1,8 +1,9 @@
 import { ErrorCode } from "../errors/codes.js";
 import { OpenFlowError } from "../errors/types.js";
 import type { ListCliResourceType } from "../discovery/types.js";
+import type { InitCliOptions, InitReportMode } from "./init/types.js";
 
-export type CommandName = "run" | "validate" | "doctor" | "list";
+export type CommandName = "run" | "validate" | "doctor" | "list" | "init";
 export type ReportMode = "pretty" | "json" | "jsonl";
 
 export interface RunCliOptions {
@@ -79,6 +80,16 @@ export function parseReportMode(value: string): ReportMode {
   return value;
 }
 
+export function parseInitReportMode(value: string): InitReportMode {
+  if (value !== "pretty" && value !== "json") {
+    throw new OpenFlowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      `Invalid report mode for init: '${value}'. Must be one of: pretty, json.`
+    );
+  }
+  return value;
+}
+
 export function parseListResourceType(value?: string): ListCliResourceType {
   if (value === undefined) return "all";
   if (value === "workflows") return "workflow";
@@ -88,4 +99,24 @@ export function parseListResourceType(value?: string): ListCliResourceType {
     ErrorCode.CLI_USAGE_ERROR,
     `Invalid list resource type: '${value}'. Must be one of: workflows, agents, tools.`
   );
+}
+
+export function parseInitOptions(raw: any): InitCliOptions {
+  const options: InitCliOptions = {
+    cwd: raw.cwd,
+    yes: !!raw.yes,
+    provider: raw.provider,
+    force: !!raw.force,
+    strict: !!raw.strict,
+    runSmokeTest: !!raw.runSmokeTest,
+    workflowsDir: raw.workflowsDir,
+    agentsDir: raw.agentsDir,
+    toolsDir: raw.toolsDir,
+  };
+
+  if (raw.report) {
+    options.report = parseInitReportMode(raw.report);
+  }
+
+  return options;
 }

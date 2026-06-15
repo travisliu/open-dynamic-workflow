@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { initCommand } from "./commands/init.js";
 import { runCommand } from "./commands/run.js";
 import { resumeCommand } from "./commands/resume.js";
 import { validateCommand } from "./commands/validate.js";
@@ -28,6 +29,34 @@ export async function main(argv: string[]): Promise<void> {
       }
       // Throw CLI usage error on command parsing errors
       throw new OpenFlowError(ErrorCode.CLI_USAGE_ERROR, err.message, { cause: err });
+    });
+
+  program
+    .command("init")
+    .description("Initialize a project for OpenFlow")
+    .option("--yes", "Run non-interactively with defaults")
+    .option("--provider <name>", "Default provider for generated config")
+    .option("--force", "Overwrite generated files if they already exist")
+    .option("--strict", "Fail before writing if any target path already exists")
+    .option("--run-smoke-test", "Validate and run the generated example workflow with mock")
+    .option("-r, --report <mode>", "Smoke-test report mode (pretty, json)")
+    .option("--cwd <path>", "Project working directory")
+    .option("--workflows-dir <path>", "Generated workflows directory")
+    .option("--agents-dir <path>", "Shared agents directory")
+    .option("--tools-dir <path>", "Tools directory")
+    .addHelpText(
+      "after",
+      `
+Examples:
+  openflow init
+  openflow init --yes
+  openflow init --yes --run-smoke-test
+  openflow init --strict
+  openflow init --force --provider codex
+`
+    )
+    .action(async (options) => {
+      await initCommand({ rawOptions: options });
     });
 
   program

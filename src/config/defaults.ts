@@ -112,3 +112,7 @@ export const DEFAULT_CONFIG: OpenFlowConfig = {
     verbose: false
   }
 };
+
+export function getBuiltInProviderDefaults() {
+  return DEFAULT_CONFIG.providers;
+}

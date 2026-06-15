@@ -19,6 +19,8 @@ import { resolveUserPath } from "../paths.js";
 
 export interface RunCommandDeps {
   runtimeRunner: RuntimeRunner;
+  stdout?: NodeJS.WritableStream;
+  stderr?: NodeJS.WritableStream;
 }
 
 export interface RunCommandInput {
@@ -27,26 +29,15 @@ export interface RunCommandInput {
   deps?: Partial<RunCommandDeps>;
 }
 
-const defaultRuntimeRunner: RuntimeRunner = {
-  async run(input): Promise<WorkflowRunResult> {
-    const timeStr = new Date().toISOString();
-    return {
-      schemaVersion: "openflow.report.v1",
-      runId: "stub-run-id",
-      status: "succeeded",
-      durationMs: 0,
-      artifactsDir: input.config.outDir,
-      meta: input.parsedWorkflow.meta,
-      agents: [],
-      startedAt: timeStr,
-      finishedAt: timeStr,
-      reportPath: path.join(input.config.outDir, "report.json"),
-      eventsPath: path.join(input.config.outDir, "events.jsonl")
-    };
-  }
-};
+export interface RunWorkflowServiceInput {
+  workflowFile: string;
+  rawOptions?: any;
+  deps?: Partial<RunCommandDeps>;
+}
 
-export async function runCommand(input: RunCommandInput): Promise<void> {
+export async function runWorkflowService(
+  input: RunWorkflowServiceInput
+): Promise<void> {
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
 
@@ -238,7 +229,11 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
 
   const reporter = createReporter({
     mode: config.reporting.mode,
-    verbose: config.reporting.verbose
+    verbose: config.reporting.verbose,
+    streams: {
+      stdout: input.deps?.stdout ?? process.stdout,
+      stderr: input.deps?.stderr ?? process.stderr
+    }
   });
 
   const eventBus = new EventBus({
@@ -372,4 +367,8 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
   } finally {
     process.off("SIGINT", sigIntHandler);
   }
+}
+
+export async function runCommand(input: RunCommandInput): Promise<void> {
+  await runWorkflowService(input);
 }

@@ -13,7 +13,19 @@ export interface ValidateCommandInput {
   rawOptions: any;
 }
 
-export async function validateCommand(input: ValidateCommandInput): Promise<void> {
+export interface ValidateWorkflowServiceInput {
+  workflowFile: string;
+  rawOptions?: any;
+}
+
+export interface ValidateWorkflowServiceResult {
+  workflowName: string;
+  workflowFileRelative: string;
+}
+
+export async function validateWorkflowService(
+  input: ValidateWorkflowServiceInput
+): Promise<ValidateWorkflowServiceResult> {
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
 
@@ -71,5 +83,13 @@ export async function validateCommand(input: ValidateCommandInput): Promise<void
     );
   }
 
-  printValidationSuccess(rootDefinition.name, resolved.workflowFileRelative);
+  return {
+    workflowName: rootDefinition.name,
+    workflowFileRelative: resolved.workflowFileRelative
+  };
+}
+
+export async function validateCommand(input: ValidateCommandInput): Promise<void> {
+  const result = await validateWorkflowService(input);
+  printValidationSuccess(result.workflowName, result.workflowFileRelative);
 }

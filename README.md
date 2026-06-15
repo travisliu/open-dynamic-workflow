@@ -28,10 +28,12 @@ OpenFlow does **not** implement its own coding agent. It coordinates external pr
 
 OpenFlow supports:
 
+- `openflow init`
 - `openflow run <workflow-name-or-file>`
 - `openflow resume <runId-or-path>`
 - `openflow validate <workflow-name-or-file>`
 - `openflow doctor`
+- `openflow list [resourceType]`
 - Constrained workflow metadata parsing
 - Workflow DSL functions:
   - `agent()`
@@ -126,6 +128,34 @@ npx ./prmflow-openflow-0.2.0.tgz doctor
 
 ## Quick Start
 
+Initialize your project:
+
+```bash
+openflow init
+```
+
+This creates a `.openflow/config.yaml` and a starter `workflows/example.ts`.
+
+Run the example workflow with the mock provider:
+
+```bash
+openflow run workflows/example.ts --provider mock
+```
+
+Validate it without invoking providers:
+
+```bash
+openflow validate workflows/example.ts
+```
+
+Check your environment:
+
+```bash
+openflow doctor
+```
+
+### Creating a custom workflow
+
 Create a workflow file:
 
 ```ts
@@ -216,6 +246,50 @@ openflow run workflows/mock-review.ts --provider mock
 ---
 
 ## CLI Commands
+
+### `openflow init`
+
+Initializes a project for OpenFlow by creating a recommended starter layout and configuration.
+
+```bash
+openflow init [options]
+```
+
+This command creates:
+- `.openflow/config.yaml`: Core project configuration.
+- `.openflow/agents/`: Directory for shared agent definitions.
+- `.openflow/tools/`: Directory for registered tools.
+- `workflows/example.ts`: A starter workflow.
+
+Common options:
+
+```bash
+--yes                      # Run non-interactively with defaults
+--provider <name>          # Default provider for generated config
+--force                    # Overwrite generated files if they already exist
+--strict                   # Fail before writing if any target path already exists
+--run-smoke-test           # Validate and run the generated example with mock
+--report <pretty|json>     # Smoke-test report mode
+--cwd <path>               # Project working directory
+--workflows-dir <path>     # Generated workflows directory
+--agents-dir <path>        # Shared agents directory
+--tools-dir <path>         # Tools directory
+```
+
+Examples:
+
+```bash
+openflow init
+openflow init --yes
+openflow init --yes --run-smoke-test
+openflow init --strict
+openflow init --force --provider codex
+```
+
+Notes:
+- `openflow init` never modifies `package.json`.
+- It detects supported provider CLIs in your `PATH` but does not authenticate them.
+- If a requested provider is unavailable, it offers a fallback to `mock` in interactive mode.
 
 ### `openflow run`
 

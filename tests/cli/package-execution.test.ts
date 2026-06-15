@@ -45,6 +45,11 @@ describe("CLI package execution and installation", () => {
     expect(stdout).toContain("openflow list workflows --dir examples/workflows");
   });
 
+  it("can execute npx . init --help", () => {
+    const stdout = execSync("npx . init --help", { cwd: WORKSPACE_DIR, encoding: "utf8" });
+    expect(stdout).toContain("Initialize a project for OpenFlow");
+  });
+
   it("can execute npx . doctor", () => {
     const stdout = execSync("npx . doctor", { cwd: WORKSPACE_DIR, encoding: "utf8" });
     expect(stdout).toContain("Node.js >= 20");
@@ -110,5 +115,29 @@ describe("CLI package execution and installation", () => {
     const persistedReportContent = await fs.readFile(persistedReportPath, "utf8");
     const parsedPersistedReport = JSON.parse(persistedReportContent);
     expect(parsedPersistedReport.runId).toBe(actualRunDir);
+
+    // Basic init --yes coverage
+    const initProjectDir = path.join(TEMP_NPM_DIR, "init-project");
+    await fs.mkdir(initProjectDir, { recursive: true });
+    execSync(`"${globalBinPath}" init --yes --cwd "${initProjectDir}"`, { encoding: "utf8" });
+
+    expect(existsSync(path.join(initProjectDir, ".openflow/config.yaml"))).toBe(true);
+    expect(existsSync(path.join(initProjectDir, "workflows/example.ts"))).toBe(true);
+
+    // Init with smoke test
+    const smokeTestDir = path.join(TEMP_NPM_DIR, "smoke-test-project");
+    await fs.mkdir(smokeTestDir, { recursive: true });
+    const smokeStdout = execSync(`"${globalBinPath}" init --yes --cwd "${smokeTestDir}" --run-smoke-test`, { encoding: "utf8" });
+    expect(smokeStdout).toContain("Smoke test result");
+    expect(smokeStdout).toContain("Validation: succeeded");
+    expect(smokeStdout).toContain("Mock run: succeeded");
+
+    // Init with JSON smoke test
+    const jsonSmokeDir = path.join(TEMP_NPM_DIR, "json-smoke-project");
+    await fs.mkdir(jsonSmokeDir, { recursive: true });
+    const jsonStdout = execSync(`"${globalBinPath}" init --yes --cwd "${jsonSmokeDir}" --run-smoke-test --report json`, { encoding: "utf8" });
+    const report = JSON.parse(jsonStdout.trim());
+    expect(report.schemaVersion).toBe("openflow.report.v1");
+    expect(report.status).toBe("succeeded");
   });
 });

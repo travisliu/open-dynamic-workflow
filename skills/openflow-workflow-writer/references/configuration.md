@@ -22,6 +22,22 @@ graph TD
 3.  **Merge CLI Options**: Overrides are applied from the command line (e.g. `--concurrency`, `--timeout-ms`, `--report`).
 4.  **Schema Validation**: The merged configuration object is validated. Any discrepancy raises an exit code 3 (`Workflow parse or validation error`).
 
+### Generating Configuration with `openflow init`
+
+The `openflow init` command generates a starter `.openflow/config.yaml` with safe defaults and detected providers.
+
+The generated config typically includes:
+- `defaultProvider`: Set to the provider selected during initialization (e.g., `mock` or `codex`).
+- `concurrency`, `timeoutMs`, `failFast`: Standard performance and error-handling defaults.
+- `providers`:
+  - `mock`: Always included as a safe, built-in fallback.
+  - Selected External Provider: Included if an external provider (like `codex` or `gemini`) was chosen during `init`.
+- `security`: Explicitly disables dangerous imports and sets up environment variable redaction.
+- `sharedAgents.dir` and `tools.dir`: Configured to match the directories created by `init`.
+- `workflow.discovery.include`: Automatically set to scan the workflows directory for runnable files.
+
+Generated configuration is guaranteed to pass schema validation.
+
 ---
 
 ## 2. Configuration Options & Schema Validation

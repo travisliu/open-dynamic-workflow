@@ -4,6 +4,62 @@ This document summarizes the command-line interface (CLI) commands and options f
 
 ---
 
+## Initialize a project
+
+Initializes a project for OpenFlow by creating a recommended starter layout and configuration.
+
+```bash
+openflow init [options]
+```
+
+### Generated Structure
+
+By default, `openflow init` creates:
+
+```text
+.openflow/
+  config.yaml       # Core project configuration
+  agents/           # Shared agents directory (empty)
+  tools/            # Tools directory (empty)
+workflows/
+  example.ts        # Starter workflow template
+```
+
+### Common options
+
+```bash
+--yes                      # Run non-interactively with defaults
+--provider <name>          # Default provider for generated config
+--force                    # Overwrite generated files if they already exist
+--strict                   # Fail before writing if any target path already exists
+--run-smoke-test           # Validate and run the generated example with mock
+--report <pretty|json>     # Smoke-test report mode
+--cwd <path>               # Project working directory
+--workflows-dir <path>     # Generated workflows directory
+--agents-dir <path>        # Shared agents directory
+--tools-dir <path>         # Tools directory
+```
+
+### Examples
+
+```bash
+openflow init
+openflow init --yes
+openflow init --yes --run-smoke-test
+openflow init --strict
+openflow init --force --provider codex
+```
+
+### Behavior
+
+* **Interactive mode**: Default when stdin is a TTY. Prompts for provider selection and confirmation.
+* **Non-interactive mode**: Triggered by `--yes` or non-TTY stdin. Uses defaults or requested options.
+* **Mock fallback**: If a requested provider is not found in `PATH`, `init` offers a fallback to the `mock` provider.
+* **Safety**: Does **not** modify `package.json`. Existing files are skipped unless `--force` is used.
+* **Smoke test**: If `--run-smoke-test` is used, OpenFlow performs a `validate` and `run --provider mock` on the generated example workflow.
+
+---
+
 ## Run a workflow
 
 Runs a workflow by name or file path.
