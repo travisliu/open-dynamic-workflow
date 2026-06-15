@@ -798,4 +798,36 @@ export default async (ctx) => {
     expect(report.tools[0].cache.hit).toBe(true);
     expect(report.tools[0].cache.previousRunId).toBe(firstRunId);
   });
+
+  it("resumes cache hits for unlabeled agents without returning undefined optional fields", async () => {
+    const workflowPath = path.join(TEMP_DIR, "workflows/resumable-cache-hit.ts");
+    const configPath = path.join(TEMP_DIR, "config.yaml");
+    const runsDir = path.join(TEMP_DIR, "runs");
+    await writeConfig(configPath);
+    
+    await fs.writeFile(workflowPath, `export const meta = { name: "resumable-cache-hit", description: "test" };
+export default async (ctx) => {
+  const result = await ctx.agent({ id: "unlabeled-agent", provider: "mock", prompt: "hello" });
+  return result; // return full agent result
+};`);
+
+    // Act
+    const { error: run1Error, stdout: run1Stdout } = await runCli(["run", workflowPath, "--config", configPath, "--out", runsDir]);
+    console.error("RUN 1 STDOUT:", run1Stdout);
+    expect(run1Error).toBeNull();
+    const [firstRunId] = await listRunDirs(runsDir);
+
+    const { error: run2Error } = await runCli(["resume", firstRunId!, "--out", runsDir]);
+    expect(run2Error).toBeNull();
+
+    // Assert
+    const runDirs = await listRunDirs(runsDir);
+    const secondRunId = runDirs.find(id => id !== firstRunId)!;
+
+    const report = JSON.parse(await fs.readFile(path.join(runsDir, secondRunId, "report.json"), "utf8"));
+    expect(report.status).toBe("succeeded");
+    expect(report.result).toBeDefined();
+    expect(report.agents[0].cache.hit).toBe(true);
+    expect(report.result.id).toBe("unlabeled-agent");
+  });
 });

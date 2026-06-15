@@ -255,7 +255,7 @@ export async function materializeCachedAgentResult(input: {
     };
     await input.store.writeJson(`${agentDir}/raw-result.json`, success);
     await input.store.writeJson(`${agentDir}/agent-result.json`, success);
-    return success;
+    return removeUndefinedProperties(success);
   }
 
   const success: AgentSuccessResult = {
@@ -289,7 +289,7 @@ export async function materializeCachedAgentResult(input: {
   };
   await input.store.writeJson(`${agentDir}/raw-result.json`, success);
   await input.store.writeJson(`${agentDir}/agent-result.json`, success);
-  return success;
+  return removeUndefinedProperties(success);
 }
 
 export async function materializeCachedToolResult(input: {
@@ -337,7 +337,7 @@ export async function materializeCachedToolResult(input: {
   };
 
   await input.store.writeJson(`${toolDir}/tool-result.json`, success);
-  return success;
+  return removeUndefinedProperties(success);
 }
 
 export async function recordAgentCall(input: {
@@ -606,4 +606,24 @@ function sortValue(value: unknown): unknown {
     return sorted;
   }
   return value;
+}
+
+function removeUndefinedProperties<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+  if (obj instanceof Date || obj instanceof RegExp || obj instanceof Promise) {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(removeUndefinedProperties) as any;
+  }
+  const result: any = {};
+  for (const key of Object.keys(obj)) {
+    const val = (obj as any)[key];
+    if (val !== undefined) {
+      result[key] = removeUndefinedProperties(val);
+    }
+  }
+  return result;
 }
