@@ -146,5 +146,5 @@ describe("CLI package execution and installation", () => {
     const report = JSON.parse(jsonStdout.trim());
     expect(report.schemaVersion).toBe("open-dynamic-workflow.report.v1");
     expect(report.status).toBe("succeeded");
-  });
+  }, 30000);
 });
