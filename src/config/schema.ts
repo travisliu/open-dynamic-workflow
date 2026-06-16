@@ -26,6 +26,31 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
     );
   }
 
+  if (config.budgets !== undefined) {
+    if (typeof config.budgets !== "object" || config.budgets === null || Array.isArray(config.budgets)) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'budgets' must be an object."
+      );
+    }
+    const validBudgetKeys = ["maxAgentCalls", "maxObservedTokens", "maxRunMs"];
+    for (const key of Object.keys(config.budgets)) {
+      if (!validBudgetKeys.includes(key)) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Config value 'budgets.${key}' is not a supported key.`
+        );
+      }
+      const value = (config.budgets as any)[key];
+      if (value !== undefined && (!Number.isInteger(value) || value < 1)) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Config value 'budgets.${key}' must be a positive integer.`
+        );
+      }
+    }
+  }
+
   // defaultModel validation
   if (config.defaultModel !== undefined && config.defaultModel !== null && typeof config.defaultModel !== "string") {
     throw new OpenDynamicWorkflowError(

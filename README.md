@@ -80,12 +80,12 @@ npx @travisliu/open-dynamic-workflow run parallel-pr-review --report pretty
 
 ## Basic Usage
 
-The fastest way to create an Open Dynamic Workflow workflow is to ask the `openflow-workflow-writer` skill to generate one from a task description.
+The fastest way to create an Open Dynamic Workflow workflow is to ask the `open-dynamic-workflow` skill to generate one from a task description.
 
 Use this prompt shape:
 
 ```text
-/openflow-workflow-writer Create an Open Dynamic Workflow workflow that <does the task>. Use <providers>. Include commands to validate and run it.
+/open-dynamic-workflow Create an Open Dynamic Workflow workflow that <does the task>. Use <providers>. Include commands to validate and run it.
 ```
 
 The skill will choose the right workflow pattern, generate a valid workflow file, and include run instructions.
@@ -102,7 +102,7 @@ The skill will choose the right workflow pattern, generate a valid workflow file
 Use this when one agent can complete the task.
 
 ```text
-/openflow-workflow-writer Create a workflow named single-review that uses Codex to review the current project for correctness, security, and maintainability issues. Include structured output for findings and commands to validate and run it.
+/open-dynamic-workflow Create a workflow named single-review that uses Codex to review the current project for correctness, security, and maintainability issues. Include structured output for findings and commands to validate and run it.
 ```
 
 Expected result:
@@ -110,14 +110,14 @@ Expected result:
 * A workflow that calls `agent()` once.
 * A clear `review` phase.
 * A structured findings schema.
-* Commands such as `openflow validate workflows/single-review.ts` and `openflow run workflows/single-review.ts`.
+* Commands such as `open-dynamic-workflow validate workflows/single-review.ts` and `open-dynamic-workflow run workflows/single-review.ts`.
 
 ### Demo 2: Parallel Review Workflow
 
 Use this when several independent perspectives should run at the same time.
 
 ```text
-/openflow-workflow-writer Create a workflow that runs three independent reviews in parallel: Codex reviews correctness, Codex reviews security, and Gemini reviews tests. Then return all review results. Include commands to validate, run locally, and run with the mock provider for CI.
+/open-dynamic-workflow Create a workflow that runs three independent reviews in parallel: Codex reviews correctness, Codex reviews security, and Gemini reviews tests. Then return all review results. Include commands to validate, run locally, and run with the mock provider for CI.
 ```
 
 Expected result:
@@ -132,7 +132,7 @@ Expected result:
 Use this when multiple items need the same ordered stages.
 
 ```text
-/openflow-workflow-writer Create a pipeline workflow that reviews these files: src/auth.ts, src/billing.ts, and src/api.ts. Each file should go through analyze, plan, and review-plan stages. Use Codex for code analysis and plan review, Gemini for remediation planning, item-streaming strategy, concurrency 3, and failFast false. Include validation and run commands.
+/open-dynamic-workflow Create a pipeline workflow that reviews these files: src/auth.ts, src/billing.ts, and src/api.ts. Each file should go through analyze, plan, and review-plan stages. Use Codex for code analysis and plan review, Gemini for remediation planning, item-streaming strategy, concurrency 3, and failFast false. Include validation and run commands.
 ```
 
 Expected result:
@@ -147,7 +147,7 @@ Expected result:
 Use this when multiple branches should run first, then a final agent should summarize the results.
 
 ```text
-/openflow-workflow-writer Create a workflow that uses Codex to review correctness and security, uses Gemini to review tests and operations, then uses Gemini to summarize the results, deduplicate findings, and recommend next steps. Include commands to validate and run it.
+/open-dynamic-workflow Create a workflow that uses Codex to review correctness and security, uses Gemini to review tests and operations, then uses Gemini to summarize the results, deduplicate findings, and recommend next steps. Include commands to validate and run it.
 ```
 
 Expected result:
@@ -162,7 +162,7 @@ Expected result:
 Use this when the workflow should load or compute local data through a registered tool before asking an agent to analyze it.
 
 ```text
-/openflow-workflow-writer Create a workflow that uses a registered read-json tool to load input.json, then uses Codex to analyze the loaded data for anomalies and correctness issues. Keep tool usage at the workflow top level. Include validation and run commands.
+/open-dynamic-workflow Create a workflow that uses a registered read-json tool to load input.json, then uses Codex to analyze the loaded data for anomalies and correctness issues. Keep tool usage at the workflow top level. Include validation and run commands.
 ```
 
 Expected result:
@@ -176,7 +176,7 @@ Expected result:
 Use this when a larger workflow should reuse smaller workflow files.
 
 ```text
-/openflow-workflow-writer Create a parent workflow that invokes a child workflow named security-review for src/auth.ts and src/billing.ts, collects child results with failureMode settled, then uses Gemini to summarize the results. Include the child workflow, the parent workflow, and commands to validate and run both.
+/open-dynamic-workflow Create a parent workflow that invokes a child workflow named security-review for src/auth.ts and src/billing.ts, collects child results with failureMode settled, then uses Gemini to summarize the results. Include the child workflow, the parent workflow, and commands to validate and run both.
 ```
 
 Expected result:
@@ -195,16 +195,16 @@ Expected result:
 * Ask for validation and run commands.
 * Ask for structured output when downstream steps need machine-readable results.
 
-## openflow-workflow-writer Skills
+## open-dynamic-workflow Skill
 
-For AI/coding agents developing workflows in this repository, a pre-configured skill is located at [skills/openflow-workflow-writer/](skills/openflow-workflow-writer/).
+For AI/coding agents developing workflows in this repository, a pre-configured skill is located at [skills/open-dynamic-workflow/](skills/open-dynamic-workflow/).
 
 This directory contains:
-- [SKILL.md](skills/openflow-workflow-writer/SKILL.md): Instructions and guidelines for AI agents to write, validate, and troubleshoot Open Dynamic Workflow workflows.
-- Reference documentation under [references/](skills/openflow-workflow-writer/references/):
-  - [api-document.md](skills/openflow-workflow-writer/references/api-document.md): Complete guide on workflow syntax, DSL primitives (`agent`, `parallel`, `pipeline`), structured outputs, and exit codes.
-  - [cli-commands.md](skills/openflow-workflow-writer/references/cli-commands.md): Detailed usage details for the `run`, `validate`, and `doctor` commands.
-  - [configuration.md](skills/openflow-workflow-writer/references/configuration.md): Schema structure, precedence rules, and model customization guidelines for `.openflow/config.yaml`.
+- [SKILL.md](skills/open-dynamic-workflow/SKILL.md): Instructions and guidelines for AI agents to write, validate, and troubleshoot Open Dynamic Workflow workflows.
+- Reference documentation under [references/](skills/open-dynamic-workflow/references/):
+  - [api-document.md](skills/open-dynamic-workflow/references/api-document.md): Complete guide on workflow syntax, DSL primitives (`agent`, `parallel`, `pipeline`), structured outputs, and exit codes.
+  - [cli-commands.md](skills/open-dynamic-workflow/references/cli-commands.md): Detailed usage details for the `run`, `validate`, and `doctor` commands.
+  - [configuration.md](skills/open-dynamic-workflow/references/configuration.md): Schema structure, precedence rules, and model customization guidelines for `.open-dynamic-workflow/config.yaml`.
 - Reusable templates under `assets/` for building new workflows.
 
 ## Artifacts
@@ -212,7 +212,7 @@ This directory contains:
 Every run creates a local artifact directory.
 
 ```text
-.openflow/runs/<runId>/
+.open-dynamic-workflow/runs/<runId>/
   manifest.json
   workflow.input.ts
   config.resolved.json
@@ -242,13 +242,37 @@ Every run creates a local artifact directory.
 
 Artifacts are always enabled so failed or partial runs remain debuggable.
 
+## Usage Metadata and Budgets
+
+Provider adapters may attach usage and session metadata when the underlying CLI reports it. Open Dynamic Workflow persists those provider-reported facts on `AgentResult.usage`, `AgentResult.threadId`, `AgentResult.providerMetadata`, and `WorkflowRunResult.usageSummary`.
+
+Observed budget limits can be set with CLI flags:
+
+```bash
+open-dynamic-workflow run workflows/review.ts --max-agent-calls 12
+open-dynamic-workflow run workflows/review.ts --max-observed-tokens 100000
+open-dynamic-workflow run workflows/review.ts --max-run-ms 1800000
+```
+
+The same limits can be configured in `.open-dynamic-workflow/config.yaml`:
+
+```yaml
+budgets:
+  maxAgentCalls: 12
+  maxObservedTokens: 100000
+  maxRunMs: 1800000
+```
+
+`maxAgentCalls` is checked before scheduling a live provider agent. Cache hits from resume do not count as new live calls. `maxObservedTokens` is checked after each live agent returns usage, using provider `totalTokens` when available or `inputTokens + outputTokens` otherwise. `cachedInputTokens` is tracked but not double-counted. `maxRunMs` limits workflow run duration separately from per-agent `timeoutMs`.
+
+Budget state is recorded in `WorkflowRunResult.budgetSummary` and terminal events.
 
 ## Configuration
 
 By default, Open Dynamic Workflow loads:
 
 ```text
-.openflow/config.yaml
+.open-dynamic-workflow/config.yaml
 ```
 
 Example:
@@ -307,7 +331,7 @@ Configuration precedence:
   - `mock`: Accepts `dangerously-full-access` without changing its deterministic mock behavior (useful for dry runs and testing).
   - Workflows that omit the `permissions` field default to `{ mode: "default" }` (which does not pass any write-enabling flags to the provider).
 
-Be careful before sharing `.openflow/runs/<runId>` artifacts, because they may contain prompts, source snippets, stdout, stderr, and model outputs.
+Be careful before sharing `.open-dynamic-workflow/runs/<runId>` artifacts, because they may contain prompts, source snippets, stdout, stderr, and model outputs.
 
 ## License
 

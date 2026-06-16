@@ -9,6 +9,7 @@ export type OpenDynamicWorkflowErrorCode =
   | "SCHEMA_VALIDATION_FAILED"
   | "SECURITY_POLICY_VIOLATION"
   | "USER_CANCELLED"
+  | "BUDGET_EXCEEDED"
   | "ARTIFACT_WRITE_FAILED"
   | "TOOL_DEFINITION_NOT_FOUND"
   | "TOOL_DUPLICATE_DEFINITION"
@@ -62,6 +63,7 @@ export function exitCodeForErrorCode(code: OpenDynamicWorkflowErrorCode): ExitCo
     case "PROCESS_TIMEOUT":
       return EXIT_CODES.TIMEOUT;
     case "PROVIDER_PROCESS_FAILED":
+    case "BUDGET_EXCEEDED":
     case "SCHEMA_VALIDATION_FAILED":
     case "TOOL_EXECUTION_FAILED":
     case "TOOL_INVALID_INPUT":

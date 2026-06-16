@@ -1,6 +1,7 @@
 import type { AgentArtifacts } from "../types/artifacts.js";
 import type { SerializedError } from "../types/errors.js";
-import type { AgentPermissions } from "../types/agent.js";
+import type { AgentPermissions, AgentUsage } from "../types/agent.js";
+import type { WorkflowBudgetSummary } from "../types/workflow.js";
 
 export type EventType =
   | "workflow.started"
@@ -75,18 +76,24 @@ export interface WorkflowResolvedPayload {
 export interface WorkflowCompletedPayload {
   status: "succeeded";
   durationMs: number;
+  usageSummary?: (AgentUsage & { agentCount: number }) | undefined;
+  budgetSummary?: WorkflowBudgetSummary | undefined;
 }
 
 export interface WorkflowFailedPayload {
   status: "failed";
   durationMs: number;
   error: SerializedError;
+  usageSummary?: (AgentUsage & { agentCount: number }) | undefined;
+  budgetSummary?: WorkflowBudgetSummary | undefined;
 }
 
 export interface WorkflowCancelledPayload {
   status: "cancelled";
   durationMs: number;
   reason?: string;
+  usageSummary?: (AgentUsage & { agentCount: number }) | undefined;
+  budgetSummary?: WorkflowBudgetSummary | undefined;
 }
 
 export interface PhaseStartedPayload {
@@ -140,6 +147,9 @@ export interface AgentCompletedPayload {
   artifacts: AgentArtifacts;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown>;
+  usage?: AgentUsage;
+  threadId?: string;
+  providerMetadata?: Record<string, unknown>;
 }
 
 export interface AgentCacheHitPayload {
@@ -166,6 +176,9 @@ export interface AgentFailedPayload {
   artifacts: AgentArtifacts;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown>;
+  usage?: AgentUsage;
+  threadId?: string;
+  providerMetadata?: Record<string, unknown>;
 }
 
 export interface AgentTimedOutPayload {

@@ -57,6 +57,21 @@ export class MockAdapter implements AgentAdapter {
     } else {
       result.text = response.text ?? "mock response";
     }
+    if (response.usage !== undefined) {
+      result.usage = response.usage;
+    }
+    if (response.providerSessionId !== undefined) {
+      result.providerSessionId = response.providerSessionId;
+    }
+    if (response.providerThreadId !== undefined) {
+      result.providerThreadId = response.providerThreadId;
+    }
+    if (response.providerMetadata !== undefined) {
+      result.providerMetadata = response.providerMetadata;
+    }
+    if (response.failure !== undefined) {
+      result.failure = response.failure;
+    }
     if (input.input.model !== undefined) {
       result.model = input.input.model;
     }

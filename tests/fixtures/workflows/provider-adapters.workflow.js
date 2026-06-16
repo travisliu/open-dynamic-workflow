@@ -106,6 +106,18 @@ if (args.subcase === "03.01") {
     prompt: "Return schema-invalid JSON",
     schema: { type: "object", properties: { ok: { const: true } }, required: ["ok"] }
   });
+} else if (args.subcase === "03.16") {
+  const first = await agent({
+    id: "review-1",
+    provider: "mock",
+    prompt: "Review first file"
+  });
+  const second = await agent({
+    id: "review-2",
+    provider: "mock",
+    prompt: "Review second file"
+  });
+  result = [first, second];
 }
 
 export default { result };

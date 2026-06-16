@@ -56,6 +56,11 @@ export interface MockProviderResponse {
   stdout?: string;
   stderr?: string;
   exitCode?: number;
+  usage?: import("./agent.js").AgentUsage;
+  providerSessionId?: string;
+  providerThreadId?: string;
+  providerMetadata?: Record<string, unknown>;
+  failure?: import("./agent.js").ProviderFailure;
   delayMs?: number;
   fail?: boolean;
   timeout?: boolean;
@@ -92,6 +97,12 @@ export interface OrchestrationConfig {
   concurrency?: number;
 }
 
+export interface BudgetConfig {
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
+}
+
 export interface OpenDynamicWorkflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
@@ -104,6 +115,7 @@ export interface OpenDynamicWorkflowConfig {
   sharedAgents: SharedAgentsConfig;
   workflow: WorkflowConfig;
   orchestration?: OrchestrationConfig;
+  budgets?: BudgetConfig | undefined;
 }
 
 export interface ResolvedConfig extends OpenDynamicWorkflowConfig {
@@ -124,6 +136,7 @@ export interface CliRunOptions {
   report?: ReporterMode;
   concurrency?: number;
   timeoutMs?: number;
+  budgets?: BudgetConfig | undefined;
   resume?: string;
   noCache?: boolean;
   dryRun: boolean;

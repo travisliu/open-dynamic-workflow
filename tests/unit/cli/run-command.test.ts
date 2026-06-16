@@ -116,4 +116,56 @@ describe("Run Command", () => {
       expect.anything()
     );
   });
+
+  it("CLI budget options are parsed into runtime config and cli input", async () => {
+    const runSpy = vi.fn().mockResolvedValue({
+      schemaVersion: "openflow.report.v1",
+      runId: "test-run",
+      status: "succeeded",
+      durationMs: 10,
+      artifactsDir: "runs",
+      agents: []
+    } as WorkflowRunResult);
+    const mockRunner: RuntimeRunner = { run: runSpy };
+
+    await runCommand({
+      workflowFile: validFixturePath,
+      rawOptions: {
+        maxAgentCalls: "2",
+        maxObservedTokens: "100",
+        maxRunMs: "1000"
+      },
+      deps: { runtimeRunner: mockRunner }
+    });
+
+    expect(runSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          budgets: {
+            maxAgentCalls: 2,
+            maxObservedTokens: 100,
+            maxRunMs: 1000
+          }
+        }),
+        cli: expect.objectContaining({
+          budgets: {
+            maxAgentCalls: 2,
+            maxObservedTokens: 100,
+            maxRunMs: 1000
+          }
+        })
+      }),
+      expect.anything()
+    );
+  });
+
+  it("invalid CLI budget options fail as usage errors", async () => {
+    const mockRunner: RuntimeRunner = { run: vi.fn() };
+
+    await expect(runCommand({
+      workflowFile: validFixturePath,
+      rawOptions: { maxObservedTokens: "0" },
+      deps: { runtimeRunner: mockRunner }
+    })).rejects.toThrow(OpenDynamicWorkflowError);
+  });
 });

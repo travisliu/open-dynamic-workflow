@@ -277,6 +277,50 @@ describe("CodexExecAdapter", () => {
     });
   });
 
+  it("extracts Codex JSONL thread id and usage metadata", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
+      stdout: [
+        '{"type": "thread.started", "thread_id": "thread-123"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "Final answer"}}',
+        '{"type": "turn.completed", "usage": {"input_tokens": 10, "cached_input_tokens": 4, "output_tokens": 7, "reasoning_output_tokens": 2}}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.text).toBe("Final answer");
+    expect(parsed.providerThreadId).toBe("thread-123");
+    expect(parsed.usage).toEqual({
+      inputTokens: 10,
+      cachedInputTokens: 4,
+      outputTokens: 7,
+      reasoningOutputTokens: 2,
+      totalTokens: 17
+    });
+  });
+
+  it("extracts Codex JSONL terminal failure events", async () => {
+    const adapter = new CodexExecAdapter();
+    const parseInput: ProviderParseInput = {
+      input: { id: "1", provider: "codex", prompt: "test", cwd: "", timeoutMs: 1, env: {}, permissions: { mode: "default" } },
+      stdout: [
+        '{"type": "thread.started", "thread_id": "thread-err"}',
+        '{"type": "item.completed", "item": {"type": "agent_message", "text": "partial answer"}}',
+        '{"type": "turn.failed", "error": {"message": "model unavailable", "code": "PROVIDER_PROCESS_FAILED"}}'
+      ].join("\n"),
+      stderr: "",
+      exitCode: 0
+    };
+
+    const parsed = await adapter.parseResult(parseInput);
+    expect(parsed.providerThreadId).toBe("thread-err");
+    expect(parsed.failure?.message).toBe("model unavailable");
+    expect(parsed.failure?.code).toBe("PROVIDER_PROCESS_FAILED");
+  });
+
   it("parses a JSONL event stream and returns the last JSON-shaped agent_message.text as both text and json", async () => {
     const adapter = new CodexExecAdapter();
     const parseInput: ProviderParseInput = {

@@ -13,6 +13,7 @@ import type { WorkflowInvocationManager, WorkflowInvocationContext } from "./inv
 import type { JsonObject } from "../types/common.js";
 import type { ToolRegistry, ToolExecutionResult } from "../types/tool.js";
 import type { ToolExecutor } from "../tools/executor-types.js";
+import type { BudgetTracker } from "./budget.js";
 
 export type { ParsedWorkflow, WorkflowMeta };
 
@@ -64,6 +65,8 @@ export interface RuntimeState {
   toolExecutor?: ToolExecutor | undefined;
   toolCallIds?: Set<string> | undefined;
   toolCounter?: number | undefined;
+  budgetTracker?: BudgetTracker | undefined;
+  now?: (() => Date) | undefined;
 }
 
 export interface IdGenerator {

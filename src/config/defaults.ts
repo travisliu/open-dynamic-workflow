@@ -107,6 +107,7 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
     },
     maxDepth: 8
   },
+  budgets: {},
   reporting: {
     mode: "pretty",
     verbose: false

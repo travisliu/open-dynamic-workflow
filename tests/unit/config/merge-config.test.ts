@@ -19,6 +19,19 @@ describe("Merge Config", () => {
     expect(merged.timeoutMs).toBe(5000);
   });
 
+  it("CLI budget options override config budgets", () => {
+    const merged = mergeConfig(
+      DEFAULT_CONFIG,
+      { budgets: { maxAgentCalls: 3, maxObservedTokens: 50, maxRunMs: 1000 } },
+      { maxAgentCalls: 5, maxObservedTokens: 75 }
+    );
+    expect(merged.budgets).toEqual({
+      maxAgentCalls: 5,
+      maxObservedTokens: 75,
+      maxRunMs: 1000
+    });
+  });
+
   it("CLI report overrides config", () => {
     const merged = mergeConfig(DEFAULT_CONFIG, { reporting: { mode: "json", verbose: false } }, { report: "jsonl" });
     expect(merged.reporting.mode).toBe("jsonl");

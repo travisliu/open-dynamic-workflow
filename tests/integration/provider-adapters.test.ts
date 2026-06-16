@@ -89,6 +89,116 @@ describe("Provider adapter execution", () => {
     }
   });
 
+  it("67b. provider-reported usage and metadata are persisted in reports", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json",
+      "--arg",
+      "subcase=03.01"
+    ]);
+
+    expect(result.error).toBeNull();
+
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    const agent = report.agents.find((a: any) => a.id === "review-1");
+
+    expect(agent.usage).toEqual({
+      inputTokens: 6,
+      cachedInputTokens: 2,
+      outputTokens: 4
+    });
+    expect(agent.threadId).toBe("mock-thread-review-1");
+    expect(agent.providerMetadata).toEqual({ backend: "mock" });
+    expect(report.usageSummary).toEqual({
+      agentCount: 1,
+      inputTokens: 6,
+      cachedInputTokens: 2,
+      outputTokens: 4,
+      totalTokens: 10
+    });
+  });
+
+  it("67c. observed-token budget fails after provider-reported usage is observed", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "pretty",
+      "--max-observed-tokens",
+      "1",
+      "--arg",
+      "subcase=03.01"
+    ]);
+
+    expect(result.error?.code).toBe("BUDGET_EXCEEDED");
+    expect(result.stdout).toContain("usage:     10 observed tokens across 1 agent(s)");
+    expect(result.stdout).toContain("budget:    observed tokens 10/1 exceeded (maxObservedTokens)");
+
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    expect(report.status).toBe("failed");
+    expect(report.error.code).toBe("BUDGET_EXCEEDED");
+    expect(report.budgetSummary).toMatchObject({
+      limits: { maxObservedTokens: 1 },
+      agentCalls: 1,
+      observedTokens: 10,
+      exceeded: true,
+      exceededBy: "maxObservedTokens"
+    });
+  });
+
+  it("67d. max-agent-calls prevents later live provider agent calls", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json",
+      "--max-agent-calls",
+      "1",
+      "--arg",
+      "subcase=03.16"
+    ]);
+
+    expect(result.error?.code).toBe("BUDGET_EXCEEDED");
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    expect(report.status).toBe("failed");
+    expect(report.agents.map((agent: any) => agent.id)).toEqual(["review-1"]);
+    expect(report.budgetSummary).toMatchObject({
+      limits: { maxAgentCalls: 1 },
+      agentCalls: 1,
+      exceeded: true,
+      exceededBy: "maxAgentCalls"
+    });
+  });
+
   it("68. new providers remain behind scheduler/process-runner boundaries", async () => {
     // Arrange
     const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
