@@ -17,6 +17,9 @@ export interface RunCliOptions {
   report: ReportMode;
   concurrency?: number;
   timeoutMs?: number;
+  maxAgentCalls?: number;
+  maxObservedTokens?: number;
+  maxRunMs?: number;
   dryRun: boolean;
   failFast: boolean;
   verbose: boolean;
@@ -59,9 +62,9 @@ export function parseKeyValueArgs(values: string[]): Record<string, string> {
   return result;
 }
 
-export function parsePositiveInteger(value: string, optionName: string): number {
+export function parsePositiveInteger(value: string | number, optionName: string): number {
   const num = Number(value);
-  if (!Number.isInteger(num) || num <= 0 || String(num) !== value) {
+  if (!Number.isInteger(num) || num <= 0 || String(num) !== String(value)) {
     throw new OpenDynamicWorkflowError(
       ErrorCode.CLI_USAGE_ERROR,
       `Invalid option value for '${optionName}': '${value}'. Must be a positive integer.`

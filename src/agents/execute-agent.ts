@@ -1,5 +1,5 @@
 import type { AgentExecutor, AgentExecutionInput } from "./execution-types.js";
-import type { AgentResult, AgentSuccessResult, AgentFailureResult, AgentRunInput, AgentPermissions, ProviderCommand } from "../types/agent.js";
+import type { AgentResult, AgentSuccessResult, AgentFailureResult, AgentRunInput, AgentPermissions, ProviderCommand, ProviderParsedResult } from "../types/agent.js";
 import type { ResolvedConfig } from "../types/config.js";
 import type { ArtifactStore, AgentArtifacts } from "../types/artifacts.js";
 import type {
@@ -23,6 +23,7 @@ import {
 } from "../security/env.js";
 import { sanitizeMetadata } from "../security/metadata.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
+import { normalizeProviderFailure, threadIdFromProviderResult } from "./result-metadata.js";
 
 const MAX_IN_MEMORY_LOG_SIZE = 1024 * 1024; // 1MB limit for in-memory results
 
@@ -368,6 +369,116 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
+    let parseResult: ProviderParsedResult | undefined;
+    try {
+      parseResult = await adapter.parseResult({
+        input: runInput,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode
+      });
+    } catch (err: any) {
+      if (exitCode === null || exitCode === 0) {
+        const errPayload = {
+          name: "ParseError",
+          message: `Parser crashed: ${err.message}`,
+          code: "INTERNAL_ERROR" as const
+        };
+        if (err.stack) {
+          (errPayload as any).stack = err.stack;
+        }
+
+        await this.emitVerboseResult({
+          agentId: input.id,
+          label: input.label,
+          provider: input.provider,
+          model: input.model,
+          status: "failed",
+          stdout: stdoutInMemory,
+          stderr: stderrInMemory,
+          exitCode,
+          durationMs,
+          error: redactSerializedError(errPayload, secretValues),
+          artifacts: agentArtifacts,
+          permissions: resolvedPerms,
+          metadata: sanitizedMetadata
+        });
+
+        const failureResult: AgentFailureResult = {
+          ok: false,
+          status: "failed",
+          id: input.id,
+          label: input.label,
+          provider: input.provider,
+          model: input.model,
+          stdout: stdoutInMemory,
+          stderr: stderrInMemory,
+          exitCode,
+          durationMs,
+          artifacts: agentArtifacts,
+          error: errPayload,
+          permissions: resolvedPerms,
+          metadata: sanitizedMetadata
+        };
+        await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+        return failureResult;
+      }
+    }
+
+    const providerUsage = parseResult?.usage;
+    const providerThreadId = parseResult ? threadIdFromProviderResult(parseResult) : undefined;
+    const providerMetadata = parseResult?.providerMetadata;
+
+    if (parseResult?.failure) {
+      const errPayload = normalizeProviderFailure(parseResult.failure);
+
+      await this.emitVerboseResult({
+        agentId: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        status: "failed",
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode,
+        durationMs,
+        error: redactSerializedError(errPayload, secretValues),
+        artifacts: agentArtifacts,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata,
+        parseWarnings: redactJsonValue(parseResult.parseWarnings, secretValues) as string[]
+      });
+
+      const rawResult = parseResult.raw ?? parseResult;
+      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, decorateRawResult({
+        rawResult,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata,
+        parseResult
+      }));
+
+      const failureResult: AgentFailureResult = {
+        ok: false,
+        status: "failed",
+        id: input.id,
+        label: input.label,
+        provider: input.provider,
+        model: input.model,
+        stdout: stdoutInMemory,
+        stderr: stderrInMemory,
+        exitCode,
+        durationMs,
+        artifacts: agentArtifacts,
+        error: errPayload,
+        permissions: resolvedPerms,
+        metadata: sanitizedMetadata,
+        usage: providerUsage,
+        threadId: providerThreadId,
+        providerMetadata
+      };
+      return failureResult;
+    }
+
     if (exitCode !== null && exitCode !== 0) {
       const errPayload = {
         name: "ProviderProcessFailed",
@@ -405,82 +516,26 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        usage: providerUsage,
+        threadId: providerThreadId,
+        providerMetadata
       };
       await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
       return failureResult;
     }
 
-    let parseResult;
-    try {
-      parseResult = await adapter.parseResult({
-        input: runInput,
-        stdout: stdoutInMemory,
-        stderr: stderrInMemory,
-        exitCode
-      });
-    } catch (err: any) {
-      const errPayload = {
-        name: "ParseError",
-        message: `Parser crashed: ${err.message}`,
-        code: "INTERNAL_ERROR" as const
-      };
-      if (err.stack) {
-        (errPayload as any).stack = err.stack;
-      }
-
-      await this.emitVerboseResult({
-        agentId: input.id,
-        label: input.label,
-        provider: input.provider,
-        model: input.model,
-        status: "failed",
-        stdout: stdoutInMemory,
-        stderr: stderrInMemory,
-        exitCode,
-        durationMs,
-        error: redactSerializedError(errPayload, secretValues),
-        artifacts: agentArtifacts,
-        permissions: resolvedPerms,
-        metadata: sanitizedMetadata
-      });
-
-      const failureResult: AgentFailureResult = {
-        ok: false,
-        status: "failed",
-        id: input.id,
-        label: input.label,
-        provider: input.provider,
-        model: input.model,
-        stdout: stdoutInMemory,
-        stderr: stderrInMemory,
-        exitCode,
-        durationMs,
-        artifacts: agentArtifacts,
-        error: errPayload,
-        permissions: resolvedPerms,
-        metadata: sanitizedMetadata
-      };
-      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
-      return failureResult;
+    if (!parseResult) {
+      throw new Error("Provider parser did not return a result.");
     }
 
     const rawResult = parseResult.raw ?? parseResult;
-    let savedRawResult: any;
-    if (rawResult && typeof rawResult === "object" && !Array.isArray(rawResult)) {
-      savedRawResult = {
-        ...rawResult,
-        permissions: resolvedPerms,
-        metadata: sanitizedMetadata
-      };
-    } else {
-      savedRawResult = {
-        raw: rawResult,
-        permissions: resolvedPerms,
-        metadata: sanitizedMetadata
-      };
-    }
-    await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, savedRawResult);
+    await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, decorateRawResult({
+      rawResult,
+      permissions: resolvedPerms,
+      metadata: sanitizedMetadata,
+      parseResult
+    }));
 
     const normalized = await normalizeAgentOutput({
       schema: input.schema,
@@ -532,7 +587,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        usage: providerUsage,
+        threadId: providerThreadId,
+        providerMetadata
       };
       return failureResult;
     }
@@ -571,7 +629,10 @@ export class DefaultAgentExecutor implements AgentExecutor {
       durationMs,
       artifacts: agentArtifacts,
       permissions: resolvedPerms,
-      metadata: sanitizedMetadata
+      metadata: sanitizedMetadata,
+      usage: providerUsage,
+      threadId: providerThreadId,
+      providerMetadata
     };
 
     return successResult;
@@ -686,4 +747,33 @@ function removeUndefinedProperties<T>(obj: T): T {
 
 function cloneArtifacts(artifacts: AgentArtifacts): AgentArtifacts {
   return { ...artifacts };
+}
+
+function decorateRawResult(input: {
+  rawResult: unknown;
+  permissions: AgentPermissions;
+  metadata?: Record<string, unknown> | undefined;
+  parseResult: ProviderParsedResult;
+}): any {
+  const providerFields = {
+    usage: input.parseResult.usage,
+    providerSessionId: input.parseResult.providerSessionId,
+    providerThreadId: input.parseResult.providerThreadId,
+    providerMetadata: input.parseResult.providerMetadata,
+    failure: input.parseResult.failure,
+    permissions: input.permissions,
+    metadata: input.metadata
+  };
+
+  if (input.rawResult && typeof input.rawResult === "object" && !Array.isArray(input.rawResult)) {
+    return {
+      ...(input.rawResult as Record<string, unknown>),
+      ...providerFields
+    };
+  }
+
+  return {
+    raw: input.rawResult,
+    ...providerFields
+  };
 }

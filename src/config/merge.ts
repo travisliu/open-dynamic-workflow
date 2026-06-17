@@ -5,6 +5,9 @@ export interface ConfigCliOverrides {
   model?: string | undefined;
   concurrency?: number | undefined;
   timeoutMs?: number | undefined;
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
   report?: "pretty" | "json" | "jsonl" | undefined;
   verbose?: boolean | undefined;
 }
@@ -55,6 +58,10 @@ export function mergeConfig(
         ...defaults.workflow.discovery,
         ...(fileConfig.workflow?.discovery ?? {})
       }
+    },
+    budgets: {
+      ...(defaults.budgets ?? {}),
+      ...(fileConfig.budgets ?? {})
     }
   };
 
@@ -62,6 +69,9 @@ export function mergeConfig(
   if (cli.model !== undefined) merged.defaultModel = cli.model;
   if (cli.concurrency !== undefined) merged.concurrency = cli.concurrency;
   if (cli.timeoutMs !== undefined) merged.timeoutMs = cli.timeoutMs;
+  if (cli.maxAgentCalls !== undefined) merged.budgets = { ...(merged.budgets ?? {}), maxAgentCalls: cli.maxAgentCalls };
+  if (cli.maxObservedTokens !== undefined) merged.budgets = { ...(merged.budgets ?? {}), maxObservedTokens: cli.maxObservedTokens };
+  if (cli.maxRunMs !== undefined) merged.budgets = { ...(merged.budgets ?? {}), maxRunMs: cli.maxRunMs };
   if (cli.report) merged.reporting.mode = cli.report;
   if (cli.verbose !== undefined) merged.reporting.verbose = cli.verbose;
 

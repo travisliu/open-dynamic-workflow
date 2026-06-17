@@ -8,6 +8,10 @@ import { resolveFailedSubpaths } from "./failed-artifacts.js";
 import type { PrettyExecutionNode } from "./pretty-view.js";
 import { formatDuration, getStatusMarker, formatPermission, formatStatusCounts } from "./pretty-format.js";
 
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
 function renderNodeLine(node: PrettyExecutionNode, depth: number): string {
   const indent = "  ".repeat(depth + 1);
   const marker = getStatusMarker(node.status);
@@ -140,7 +144,32 @@ export class PrettyReporter implements Reporter {
       this.stdout.write(`  status:    ${statusLabel}\n`);
       this.stdout.write(`  workflows: ${formatStatusCounts(view.summary.workflowCounts)}\n`);
       this.stdout.write(`  agents:    ${formatStatusCounts(view.summary.agentCounts)}\n`);
-      this.stdout.write(`  duration:  ${totalDuration}\n\n`);
+      this.stdout.write(`  duration:  ${totalDuration}\n`);
+
+      if (result.usageSummary) {
+        const total = result.usageSummary.totalTokens;
+        const tokens = typeof total === "number" ? formatNumber(total) : "unknown";
+        this.stdout.write(`  usage:     ${tokens} observed tokens across ${result.usageSummary.agentCount} agent(s)\n`);
+      }
+
+      if (result.budgetSummary) {
+        const parts: string[] = [];
+        if (result.budgetSummary.limits.maxAgentCalls !== undefined) {
+          parts.push(`agent calls ${formatNumber(result.budgetSummary.agentCalls)}/${formatNumber(result.budgetSummary.limits.maxAgentCalls)}`);
+        }
+        if (result.budgetSummary.limits.maxObservedTokens !== undefined) {
+          parts.push(`observed tokens ${formatNumber(result.budgetSummary.observedTokens)}/${formatNumber(result.budgetSummary.limits.maxObservedTokens)}`);
+        }
+        if (result.budgetSummary.limits.maxRunMs !== undefined) {
+          parts.push(`max run ${formatDuration(result.budgetSummary.limits.maxRunMs)}`);
+        }
+        if (parts.length > 0) {
+          const suffix = result.budgetSummary.exceeded ? ` exceeded (${result.budgetSummary.exceededBy})` : "";
+          this.stdout.write(`  budget:    ${parts.join(", ")}${suffix}\n`);
+        }
+      }
+
+      this.stdout.write("\n");
 
       this.stdout.write("Artifacts\n");
       if (view.summary.status === "succeeded" && view.artifacts.failedSubpaths.length === 0) {

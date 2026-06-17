@@ -220,7 +220,10 @@ export class DefaultScheduler implements Scheduler {
                 exitCode: agentResult?.exitCode ?? 0,
                 artifacts: agentResult?.artifacts ?? { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
                 permissions: internalTask.task.permissions || { mode: "default" },
-                metadata: sanitizeMetadata(internalTask.task.metadata)
+                metadata: sanitizeMetadata(internalTask.task.metadata),
+                usage: agentResult?.usage,
+                threadId: agentResult?.threadId,
+                providerMetadata: agentResult?.providerMetadata
               });
             }
             internalTask.resolve(result);
@@ -243,7 +246,10 @@ export class DefaultScheduler implements Scheduler {
                 artifacts,
                 error,
                 permissions: internalTask.task.permissions || { mode: "default" },
-                metadata: sanitizeMetadata(internalTask.task.metadata)
+                metadata: sanitizeMetadata(internalTask.task.metadata),
+                usage: agentResult?.usage,
+                threadId: agentResult?.threadId,
+                providerMetadata: agentResult?.providerMetadata
               });
             }
 

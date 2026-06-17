@@ -13,6 +13,7 @@ import { appendModelArg } from "./model-args.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import type { AgentUsage, ProviderFailure } from "../types/agent.js";
 
 export interface CodexProviderConfig extends ProviderConfig {
   promptMode?: "stdin" | "arg";
@@ -171,6 +172,7 @@ export class CodexExecAdapter implements AgentAdapter {
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
           }
+          attachCodexJsonlMetadata(result, events);
           return result;
         }
 
@@ -189,6 +191,7 @@ export class CodexExecAdapter implements AgentAdapter {
           if (warnings.length > 0) {
             result.parseWarnings = warnings;
           }
+          attachCodexJsonlMetadata(result, events);
           return result;
         }
 
@@ -202,6 +205,7 @@ export class CodexExecAdapter implements AgentAdapter {
           },
           parseWarnings: finalWarnings
         };
+        attachCodexJsonlMetadata(result, events);
         return result;
       }
 
@@ -243,6 +247,110 @@ function tryParseJsonLines(stdout: string): { events: unknown[]; warnings: strin
     return { events, warnings };
   }
   return null;
+}
+
+function attachCodexJsonlMetadata(result: ProviderParsedResult, events: unknown[]): void {
+  const threadId = extractCodexThreadId(events);
+  const usage = extractCodexUsage(events);
+  const failure = extractCodexFailure(events);
+
+  if (threadId !== undefined) {
+    result.providerThreadId = threadId;
+  }
+  if (usage !== undefined) {
+    result.usage = usage;
+  }
+  if (failure !== undefined) {
+    result.failure = failure;
+  }
+}
+
+function extractCodexThreadId(events: unknown[]): string | undefined {
+  for (const event of events) {
+    if (!isRecord(event)) continue;
+    if (
+      event.type === "thread.started" &&
+      typeof event.thread_id === "string"
+    ) {
+      return event.thread_id;
+    }
+  }
+  return undefined;
+}
+
+function extractCodexUsage(events: unknown[]): AgentUsage | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (!isRecord(event)) continue;
+    if (event.type !== "turn.completed") continue;
+
+    const usage = isRecord(event.usage) ? event.usage : undefined;
+    if (!usage) continue;
+
+    const normalized: AgentUsage = {};
+    setNumber(normalized, "inputTokens", readNumber(usage, "input_tokens", "inputTokens"));
+    setNumber(normalized, "cachedInputTokens", readNumber(usage, "cached_input_tokens", "cachedInputTokens"));
+    setNumber(normalized, "outputTokens", readNumber(usage, "output_tokens", "outputTokens"));
+    setNumber(normalized, "reasoningOutputTokens", readNumber(usage, "reasoning_output_tokens", "reasoningOutputTokens"));
+    setNumber(normalized, "totalTokens", readNumber(usage, "total_tokens", "totalTokens"));
+
+    if (normalized.totalTokens === undefined) {
+      const inputTokens = normalized.inputTokens ?? 0;
+      const outputTokens = normalized.outputTokens ?? 0;
+      if (normalized.inputTokens !== undefined || normalized.outputTokens !== undefined) {
+        normalized.totalTokens = inputTokens + outputTokens;
+      }
+    }
+
+    return Object.keys(normalized).length > 0 ? normalized : undefined;
+  }
+  return undefined;
+}
+
+function extractCodexFailure(events: unknown[]): ProviderFailure | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (!isRecord(event)) continue;
+    const type = typeof event.type === "string" ? event.type : "";
+    if (type !== "turn.failed" && type !== "turn.error" && type !== "error") {
+      continue;
+    }
+
+    const embeddedError = isRecord(event.error) ? event.error : undefined;
+    const message =
+      stringField(embeddedError, "message") ??
+      stringField(event, "message") ??
+      stringField(event, "error") ??
+      "Codex reported a terminal failure.";
+
+    return {
+      name: stringField(embeddedError, "name") ?? "CodexProviderFailure",
+      message,
+      code: stringField(embeddedError, "code") ?? stringField(event, "code") ?? "PROVIDER_PROCESS_FAILED",
+      details: event
+    };
+  }
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringField(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function readNumber(record: Record<string, unknown>, snakeKey: string, camelKey: string): number | undefined {
+  const value = record[snakeKey] ?? record[camelKey];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function setNumber(target: AgentUsage, key: keyof AgentUsage, value: number | undefined): void {
+  if (value !== undefined) {
+    target[key] = value;
+  }
 }
 
 function extractAgentMessageTexts(events: unknown[]): Array<{ index: number; text: string }> {

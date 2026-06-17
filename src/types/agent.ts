@@ -63,6 +63,18 @@ export type AgentResultStatus = "succeeded" | "failed" | "timed_out" | "cancelle
 
 export type AgentResult = AgentSuccessResult | AgentFailureResult;
 
+export interface AgentUsage {
+  inputTokens?: number | undefined;
+  cachedInputTokens?: number | undefined;
+  outputTokens?: number | undefined;
+  reasoningOutputTokens?: number | undefined;
+  totalTokens?: number | undefined;
+}
+
+export interface ProviderFailure extends SerializedError {
+  details?: unknown;
+}
+
 export interface AgentSuccessResult {
   ok: true;
   status: "succeeded";
@@ -80,6 +92,9 @@ export interface AgentSuccessResult {
   cache?: AgentResultCacheInfo | undefined;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown> | undefined;
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentFailureResult {
@@ -98,6 +113,9 @@ export interface AgentFailureResult {
   cache?: AgentResultCacheInfo | undefined;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown> | undefined;
+  usage?: AgentUsage | undefined;
+  threadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
 }
 
 export interface AgentResultCacheInfo {
@@ -153,6 +171,11 @@ export interface ProviderParsedResult {
   structuredJson?: unknown | undefined;
   raw?: unknown | undefined;
   parseWarnings?: string[] | undefined;
+  usage?: AgentUsage | undefined;
+  providerSessionId?: string | undefined;
+  providerThreadId?: string | undefined;
+  providerMetadata?: Record<string, unknown> | undefined;
+  failure?: ProviderFailure | undefined;
 }
 
 export interface AgentAdapter {

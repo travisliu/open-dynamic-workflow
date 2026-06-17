@@ -1,4 +1,5 @@
-import type { AgentCallInput, AgentResult } from "./agent.js";
+import type { AgentCallInput, AgentResult, AgentUsage } from "./agent.js";
+import type { BudgetConfig } from "./config.js";
 import type { JsonObject, JsonValue, WorkflowStatus } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
@@ -88,6 +89,15 @@ export interface WorkflowInvocationSummary {
   error?: SerializedError | undefined;
 }
 
+export interface WorkflowBudgetSummary {
+  limits: BudgetConfig;
+  agentCalls: number;
+  observedTokens: number;
+  exceeded: boolean;
+  exceededBy?: "maxAgentCalls" | "maxObservedTokens" | "maxRunMs" | undefined;
+  message?: string | undefined;
+}
+
 export interface WorkflowRuntimeContext {
   args: JsonObject;
   cwd: string;
@@ -145,6 +155,7 @@ export interface WorkflowRunResult {
   artifactsDir: string;
   reportPath: string;
   eventsPath: string;
+  usageSummary?: (AgentUsage & { agentCount: number }) | undefined;
+  budgetSummary?: WorkflowBudgetSummary | undefined;
   error?: SerializedError | undefined;
 }
-

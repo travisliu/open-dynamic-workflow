@@ -79,3 +79,30 @@ describe("Tools Config", () => {
     expect(() => validateConfig(config as any)).toThrow(/Config value 'tools.unexpected' is not a supported key/);
   });
 });
+
+describe("Budget Config", () => {
+  it("should allow omitted budget configuration", () => {
+    const config: any = { ...DEFAULT_CONFIG };
+    delete config.budgets;
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("should validate positive integer budget limits", () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      budgets: { maxAgentCalls: 1, maxObservedTokens: 100, maxRunMs: 1000 }
+    })).not.toThrow();
+
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      budgets: { maxObservedTokens: 0 }
+    } as any)).toThrow(/budgets.maxObservedTokens/);
+  });
+
+  it("should reject unsupported budget keys", () => {
+    expect(() => validateConfig({
+      ...DEFAULT_CONFIG,
+      budgets: { maxCostUsd: 10 }
+    } as any)).toThrow(/budgets.maxCostUsd/);
+  });
+});

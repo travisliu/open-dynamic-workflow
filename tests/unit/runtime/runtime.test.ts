@@ -11,11 +11,13 @@ class FakeAgentExecutor implements AgentExecutor {
   active = 0;
   maxActive = 0;
   observedConcurrency?: number;
+  calls: string[] = [];
 
   async execute(input: AgentExecutionInput): Promise<AgentResult> {
     this.observedConcurrency = getActiveWorkflowInvocation()?.effectiveConcurrency;
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
+    this.calls.push(input.id);
 
     try {
       if (input.prompt.includes("fail")) {
@@ -33,7 +35,7 @@ class FakeAgentExecutor implements AgentExecutor {
           permissions: input.permissions
         };
       }
-      return {
+      const result: AgentResult = {
         ok: true,
         status: "succeeded",
         id: input.id,
@@ -45,6 +47,10 @@ class FakeAgentExecutor implements AgentExecutor {
         artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
         permissions: input.permissions
       };
+      if (input.prompt.includes("usage")) {
+        result.usage = { inputTokens: 6, cachedInputTokens: 100, outputTokens: 6 };
+      }
+      return result;
     } finally {
       this.active -= 1;
     }
@@ -62,7 +68,7 @@ const mockClock = {
   now() {
     return new Date("2026-06-02T00:00:00.000Z");
   }
-};
+  };
 
 const mockIdGenerator = {
   nextId(prefix: string) {
@@ -255,6 +261,85 @@ describe("DefaultRuntimeRunner", () => {
     expect(result.status).toBe("cancelled");
     expect(result.error).toBeDefined();
     expect(result.error!.message).toContain("User cancelled execution");
+  });
+
+  it("fails before starting a second live agent when maxAgentCalls is reached", async () => {
+    const runner = new DefaultRuntimeRunner();
+    const parsedWorkflow: ParsedWorkflow = {
+      meta: { name: "agent-call-budget", description: "agent call budget" },
+      body: `
+        await agent({ id: "a", prompt: "first" });
+        await agent({ id: "b", prompt: "second" });
+        export default "done";
+      `,
+      sourcePath: "workflow.js",
+      sourceText: "",
+      sourceHash: "123"
+    };
+    const executor = new FakeAgentExecutor();
+    const eventSink = new FakeEventSink();
+
+    const result = await runner.run(
+      {
+        parsedWorkflow,
+        config: { ...defaultResolvedConfig, budgets: { maxAgentCalls: 1 } },
+        cli: { ...defaultCliOptions, budgets: { maxAgentCalls: 1 } }
+      },
+      { agentExecutor: executor, eventSink, clock: mockClock, idGenerator: mockIdGenerator }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("BUDGET_EXCEEDED");
+    expect(result.agents.map(a => a.id)).toEqual(["a"]);
+    expect(executor.calls).toEqual(["a"]);
+    expect(result.budgetSummary).toMatchObject({
+      limits: { maxAgentCalls: 1 },
+      agentCalls: 1,
+      observedTokens: 0,
+      exceeded: true,
+      exceededBy: "maxAgentCalls"
+    });
+  });
+
+  it("fails after a live agent result exceeds maxObservedTokens", async () => {
+    const runner = new DefaultRuntimeRunner();
+    const parsedWorkflow: ParsedWorkflow = {
+      meta: { name: "token-budget", description: "token budget" },
+      body: `
+        await agent({ id: "a", prompt: "usage a" });
+        await agent({ id: "b", prompt: "usage b" });
+        export default "done";
+      `,
+      sourcePath: "workflow.js",
+      sourceText: "",
+      sourceHash: "123"
+    };
+    const executor = new FakeAgentExecutor();
+    const eventSink = new FakeEventSink();
+
+    const result = await runner.run(
+      {
+        parsedWorkflow,
+        config: { ...defaultResolvedConfig, budgets: { maxObservedTokens: 1 } },
+        cli: { ...defaultCliOptions, budgets: { maxObservedTokens: 1 } }
+      },
+      { agentExecutor: executor, eventSink, clock: mockClock, idGenerator: mockIdGenerator }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("BUDGET_EXCEEDED");
+    expect(result.agents.map(a => a.id)).toEqual(["a"]);
+    expect(executor.calls).toEqual(["a"]);
+    expect(result.usageSummary?.totalTokens).toBe(12);
+    expect(result.budgetSummary).toMatchObject({
+      limits: { maxObservedTokens: 1 },
+      agentCalls: 1,
+      observedTokens: 12,
+      exceeded: true,
+      exceededBy: "maxObservedTokens"
+    });
+    const failedEvent = eventSink.events.find(e => e.type === "workflow.failed");
+    expect(failedEvent?.payload.budgetSummary?.exceededBy).toBe("maxObservedTokens");
   });
 
   it("does NOT report SECURITY_POLICY_VIOLATION for regular ReferenceError", async () => {

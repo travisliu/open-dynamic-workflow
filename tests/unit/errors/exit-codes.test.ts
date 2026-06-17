@@ -91,6 +91,11 @@ describe("Exit Codes Mapping", () => {
     expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);
   });
 
+  it("maps BUDGET_EXCEEDED to GeneralError (1)", () => {
+    const err = new OpenDynamicWorkflowError(ErrorCode.BUDGET_EXCEEDED, "budget exceeded");
+    expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);
+  });
+
   it("maps SCHEMA_VALIDATION_FAILED to GeneralError (1)", () => {
     const err = new OpenDynamicWorkflowError(ErrorCode.SCHEMA_VALIDATION_FAILED, "json schema failed");
     expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);

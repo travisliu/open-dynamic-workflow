@@ -117,6 +117,48 @@ describe("MockAdapter", () => {
     expect(parsed.text).toBe(JSON.stringify({ success: true }));
   });
 
+  it("can simulate provider metadata, usage, thread id, and failure", async () => {
+    const adapter = new MockAdapter({
+      responses: {
+        "run-metadata": {
+          text: "partial",
+          usage: { inputTokens: 3, outputTokens: 5, totalTokens: 8 },
+          providerThreadId: "thread-1",
+          providerSessionId: "session-1",
+          providerMetadata: { region: "test" },
+          failure: {
+            name: "MockProviderFailure",
+            message: "provider said no",
+            code: "PROVIDER_PROCESS_FAILED"
+          }
+        }
+      }
+    });
+
+    const input: AgentRunInput = {
+      id: "run-metadata",
+      provider: "mock",
+      prompt: "hello",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: {},
+      permissions: { mode: "default" }
+    };
+
+    const parsed = await adapter.parseResult({
+      input,
+      stdout: "",
+      stderr: "",
+      exitCode: 0
+    });
+
+    expect(parsed.usage).toEqual({ inputTokens: 3, outputTokens: 5, totalTokens: 8 });
+    expect(parsed.providerThreadId).toBe("thread-1");
+    expect(parsed.providerSessionId).toBe("session-1");
+    expect(parsed.providerMetadata).toEqual({ region: "test" });
+    expect(parsed.failure?.message).toBe("provider said no");
+  });
+
   it("mock response by label", async () => {
     const adapter = new MockAdapter({
       responses: {

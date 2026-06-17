@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { ErrorCode } from "../../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../../errors/types.js";
 import { defaultRunsDir } from "../../artifacts/run-store.js";
-import { parseReportMode } from "../args.js";
+import { parsePositiveInteger, parseReportMode } from "../args.js";
 import { resolveUserPath } from "../paths.js";
 import { runCommand } from "./run.js";
 import { loadWorkflow } from "../../workflow/load.js";
@@ -76,6 +76,9 @@ export async function resumeCommand(input: ResumeCommandInput): Promise<void> {
     out: rawOptions.out ? resolveUserPath(rawOptions.out, cwd) : storedOptions.out,
     noCache,
     report: rawOptions.report !== undefined ? parseReportMode(rawOptions.report) : storedOptions.report,
+    maxAgentCalls: rawOptions.maxAgentCalls !== undefined ? parsePositiveInteger(rawOptions.maxAgentCalls, "--max-agent-calls") : storedOptions.maxAgentCalls,
+    maxObservedTokens: rawOptions.maxObservedTokens !== undefined ? parsePositiveInteger(rawOptions.maxObservedTokens, "--max-observed-tokens") : storedOptions.maxObservedTokens,
+    maxRunMs: rawOptions.maxRunMs !== undefined ? parsePositiveInteger(rawOptions.maxRunMs, "--max-run-ms") : storedOptions.maxRunMs,
     // Preserve target metadata for runCommand to use in artifacts
     originalRequestedTarget: runInput.requestedTarget,
     originalTargetKind: runInput.targetKind,

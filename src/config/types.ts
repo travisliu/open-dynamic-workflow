@@ -78,6 +78,12 @@ export interface OrchestrationConfig {
   concurrency?: number;
 }
 
+export interface BudgetConfig {
+  maxAgentCalls?: number | undefined;
+  maxObservedTokens?: number | undefined;
+  maxRunMs?: number | undefined;
+}
+
 export interface OpenDynamicWorkflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
@@ -89,6 +95,7 @@ export interface OpenDynamicWorkflowConfig {
   tools: ToolsConfig;
   workflow: WorkflowConfig;
   orchestration?: OrchestrationConfig;
+  budgets?: BudgetConfig | undefined;
   reporting: {
     mode: ReporterMode;
     verbose: boolean;

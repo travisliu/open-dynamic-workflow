@@ -367,6 +367,7 @@ export function createDsl(runtime: RuntimeState) {
     }
     
     try {
+      runtime.budgetTracker?.beforeAgentSchedule(normalizedId, (runtime.now?.() ?? new Date()).getTime());
       const result = await runtime.scheduler.schedule(task, scheduleOptions);
       runtime.agentResults.push(result);
       await recordAgentCall({
@@ -377,6 +378,17 @@ export function createDsl(runtime: RuntimeState) {
         fingerprint,
         result
       });
+      try {
+        runtime.budgetTracker?.afterAgentResult(result, (runtime.now?.() ?? new Date()).getTime());
+      } catch (err: any) {
+        runtime.scheduler.abort({
+          type: "budget",
+          message: err.message || "Workflow budget exceeded.",
+          source: normalizedId,
+          cause: "budget"
+        });
+        throw err;
+      }
 
       if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
         throw new OpenDynamicWorkflowError(ErrorCode.PROVIDER_UNAVAILABLE, result.error.message);

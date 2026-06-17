@@ -2,10 +2,10 @@ import type { MaybePromise, ProviderName } from "./common.js";
 import type { AgentPermissions } from "./agent.js";
 
 export interface AbortReason {
-  type: "fail-fast" | "user" | "timeout" | "other";
+  type: "fail-fast" | "user" | "timeout" | "budget" | "other";
   message: string;
   source?: string;
-  cause?: "failure" | "timeout" | "error";
+  cause?: "failure" | "timeout" | "error" | "budget";
 }
 
 export interface ScheduledTask<T> {

@@ -11,6 +11,15 @@ providers:
         json: { "status": "ok", "score": 10 }
         stdout: "Mock stdout for review-1"
         stderr: "Mock stderr for review-1"
+        usage: { "inputTokens": 6, "cachedInputTokens": 2, "outputTokens": 4 }
+        providerThreadId: "mock-thread-review-1"
+        providerMetadata: { "backend": "mock" }
+        exitCode: 0
+      review-2:
+        text: "Deterministic response for review-2"
+        stdout: "Mock stdout for review-2"
+        stderr: "Mock stderr for review-2"
+        usage: { "totalTokens": 5 }
         exitCode: 0
   gemini:
     command: node

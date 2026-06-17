@@ -64,6 +64,7 @@ export function exitCodeForError(error: unknown): ExitCode {
         return ExitCode.InternalError;
 
       case ErrorCode.PROVIDER_PROCESS_FAILED:
+      case ErrorCode.BUDGET_EXCEEDED:
       case ErrorCode.SCHEMA_VALIDATION_FAILED:
       case ErrorCode.TOOL_EXECUTION_FAILED:
       case ErrorCode.TOOL_INVALID_INPUT:

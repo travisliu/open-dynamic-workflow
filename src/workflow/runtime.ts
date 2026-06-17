@@ -27,6 +27,8 @@ import { cloneJsonValue, cloneJsonObject } from "./json.js";
 import { withDslExecutionScope, withToolTopLevelWindow } from "./scope.js";
 import type { ToolRegistry } from "../types/tool.js";
 import type { ToolExecutor } from "../tools/executor-types.js";
+import { summarizeAgentUsage } from "../agents/result-metadata.js";
+import { BudgetTracker } from "./budget.js";
 
 export interface Clock {
   now(): Date;
@@ -68,6 +70,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
   ): Promise<WorkflowRunResult> {
     const startTime = deps.clock ? deps.clock.now() : new Date();
     const runId = deps.idGenerator ? deps.idGenerator.nextId("run") : crypto.randomUUID();
+    const now = () => deps.clock ? deps.clock.now() : new Date();
 
     const cwd = input.cli.cwd || input.config.cwd || process.cwd();
     const artifactsDir = input.cli.outDir || input.config.outDir || path.resolve(cwd, ".open-dynamic-workflow/runs", runId);
@@ -90,6 +93,11 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     });
 
     const registry = input.workflowRegistry || createRootWorkflowRegistry(input.parsedWorkflow);
+
+    const budgetTracker = new BudgetTracker({
+      limits: input.cli.budgets ?? input.config.budgets,
+      startedAtMs: startTime.getTime()
+    });
 
     const runtime: RuntimeState = {
       artifactStore: deps.artifactStore,
@@ -121,8 +129,25 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       toolRegistry: input.toolRegistry,
       toolExecutor: deps.toolExecutor,
       toolCallIds: new Set(),
-      toolCounter: 0
+      toolCounter: 0,
+      budgetTracker,
+      now
     };
+
+    let budgetTimer: NodeJS.Timeout | undefined;
+    const maxRunMs = (input.cli.budgets ?? input.config.budgets)?.maxRunMs;
+    if (maxRunMs !== undefined && maxRunMs > 0 && Number.isInteger(maxRunMs)) {
+      budgetTimer = setTimeout(() => {
+        const err = budgetTracker.markRunTimeExceeded();
+        scheduler.abort({
+          type: "budget",
+          message: err.message,
+          cause: "budget"
+        });
+        runtimeAbortController.abort(err);
+      }, maxRunMs);
+      budgetTimer.unref?.();
+    }
 
     const invocationManager = new DefaultWorkflowInvocationManager({
       runtime,
@@ -203,9 +228,37 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       if (schedulerSnapshot.aborted) {
         const abortReason = schedulerSnapshot.abortReason;
         const isFailFast = abortReason?.type === "fail-fast";
+        const isBudget = abortReason?.type === "budget";
         const reasonMsg = typeof abortReason === "string" ? abortReason : abortReason?.message;
 
-        if (isFailFast) {
+        if (isBudget) {
+          if (runtime.toolExecutor) {
+            runtime.toolExecutor.cancel({ name: "BudgetExceededError", message: reasonMsg || "Workflow budget exceeded", code: ErrorCode.BUDGET_EXCEEDED });
+            await runtime.toolExecutor.close().catch(() => {});
+          }
+          const finishTime = deps.clock ? deps.clock.now() : new Date();
+          const durationMs = finishTime.getTime() - startTime.getTime();
+          const result = buildFailedRunResult(
+            runtime,
+            new OpenDynamicWorkflowError(ErrorCode.BUDGET_EXCEEDED, reasonMsg || "Workflow budget exceeded."),
+            durationMs,
+            finishTime.toISOString(),
+            deps.artifactStore
+          );
+          if (deps.eventSink) {
+            deps.eventSink.emit("workflow.failed", {
+              status: "failed",
+              durationMs,
+              error: result.error!,
+              usageSummary: result.usageSummary,
+              budgetSummary: result.budgetSummary
+            });
+          }
+          if (deps.artifactStore) {
+            await deps.artifactStore.updateManifest("failed", result.error);
+          }
+          return result;
+        } else if (isFailFast) {
           if (runtime.toolExecutor) {
             runtime.toolExecutor.cancel({ name: "FailFastError", message: reasonMsg || "Fail-fast triggered", code: "FAIL_FAST" });
             await runtime.toolExecutor.close().catch(() => {});
@@ -218,7 +271,9 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
             deps.eventSink.emit("workflow.failed", {
               status: "failed",
               durationMs,
-              error: result.error!
+              error: result.error!,
+              usageSummary: result.usageSummary,
+              budgetSummary: result.budgetSummary
             });
           }
           if (deps.artifactStore) {
@@ -238,7 +293,9 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
             deps.eventSink.emit("workflow.cancelled", {
               status: "cancelled",
               durationMs,
-              reason: reasonMsg || "Workflow cancelled"
+              reason: reasonMsg || "Workflow cancelled",
+              usageSummary: result.usageSummary,
+              budgetSummary: result.budgetSummary
             });
           }
           if (deps.artifactStore) {
@@ -261,7 +318,9 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         deps.eventSink.emit("workflow.completed", {
           status: "succeeded",
           durationMs,
-          result: workflowResult
+          result: workflowResult,
+          usageSummary: result.usageSummary,
+          budgetSummary: result.budgetSummary
         });
       }
       if (deps.artifactStore) {
@@ -284,7 +343,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       }
 
       scheduler.abort({
-        type: abortType,
+        type: err?.code === ErrorCode.BUDGET_EXCEEDED ? "budget" : abortType,
         message: err.message || "Workflow error"
       });
       await scheduler.drain().catch(() => {});
@@ -308,7 +367,9 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           deps.eventSink.emit("workflow.cancelled", {
             status: "cancelled",
             durationMs,
-            reason: err.message || "Workflow cancelled"
+            reason: err.message || "Workflow cancelled",
+            usageSummary: result.usageSummary,
+            budgetSummary: result.budgetSummary
           });
         }
         if (deps.artifactStore) {
@@ -323,13 +384,17 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         deps.eventSink.emit("workflow.failed", {
           status: "failed",
           durationMs,
-          error: result.error!
+          error: result.error!,
+          usageSummary: result.usageSummary,
+          budgetSummary: result.budgetSummary
         });
       }
       if (deps.artifactStore) {
         await deps.artifactStore.updateManifest("failed", result.error);
       }
       return result;
+    } finally {
+      if (budgetTimer) clearTimeout(budgetTimer);
     }
   }
 }
@@ -439,7 +504,9 @@ export function buildSucceededRunResult(
     durationMs,
     artifactsDir: runtime.artifactsDir,
     reportPath,
-    eventsPath
+    eventsPath,
+    usageSummary: summarizeAgentUsage(runtime.agentResults),
+    budgetSummary: runtime.budgetTracker?.summary()
   };
 
   if (workflowResult !== undefined) {
@@ -477,6 +544,8 @@ export function buildFailedRunResult(
     artifactsDir: runtime.artifactsDir,
     reportPath,
     eventsPath,
+    usageSummary: summarizeAgentUsage(runtime.agentResults),
+    budgetSummary: runtime.budgetTracker?.summary(),
     error: serialized
   };
 
@@ -515,6 +584,8 @@ export function buildCancelledRunResult(
     artifactsDir: runtime.artifactsDir,
     reportPath,
     eventsPath,
+    usageSummary: summarizeAgentUsage(runtime.agentResults),
+    budgetSummary: runtime.budgetTracker?.summary(),
     error: errorPayload
   };
 

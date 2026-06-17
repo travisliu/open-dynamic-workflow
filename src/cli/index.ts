@@ -106,6 +106,9 @@ Examples:
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
     .option("--concurrency <number>", "Maximum parallel concurrency")
     .option("--timeout-ms <ms>", "Workflow run timeout in ms")
+    .option("--max-agent-calls <number>", "Maximum live provider agent calls for this run")
+    .option("--max-observed-tokens <number>", "Maximum provider-reported observed tokens for this run")
+    .option("--max-run-ms <ms>", "Maximum workflow run duration in ms")
     .option("--resume <run-id-or-path>", "Resume from a previous run cache")
     .option("--no-cache", "Disable resume/cache lookup and cache index updates")
     .option("--dry-run", "Validate and print summary without invoking providers")
@@ -132,6 +135,9 @@ Examples:
     .option("--cwd <path>", "Custom working directory")
     .option("-o, --out <path>", "Runs artifact directory")
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
+    .option("--max-agent-calls <number>", "Maximum live provider agent calls for the continuation run")
+    .option("--max-observed-tokens <number>", "Maximum provider-reported observed tokens for the continuation run")
+    .option("--max-run-ms <ms>", "Maximum workflow run duration in ms for the continuation run")
     .option("--no-cache", "Disable resume/cache lookup and cache index updates")
     .addHelpText(
       "after",
@@ -258,6 +264,5 @@ export async function runCli(args: string[]): Promise<void> {
     process.exitCode = exitCodeForError(error);
   }
 }
-
 
 
