@@ -1,6 +1,6 @@
 {
   "name": "@prmflow/openflow",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Deprecated compatibility wrapper for @travisliu/open-dynamic-workflow.",
   "type": "module",
   "bin": {
@@ -22,7 +22,7 @@
     "package.json"
   ],
   "dependencies": {
-    "@travisliu/open-dynamic-workflow": "file:../travisliu-open-dynamic-workflow-0.3.0.tgz"
+    "@travisliu/open-dynamic-workflow": "0.3.1"
   },
   "engines": {
     "node": ">=20"
