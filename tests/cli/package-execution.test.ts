@@ -35,7 +35,7 @@ describe("CLI package execution and installation", () => {
 
   it("can execute the openflow wrapper package bin", () => {
     // Install the packed tarball into openflow/ first to ensure it has the latest local version
-    execSync(`npm install "${packedTarballPath}"`, {
+    execSync(`npm install --no-save --no-package-lock "${packedTarballPath}"`, {
       cwd: path.join(WORKSPACE_DIR, "openflow"),
       stdio: "ignore"
     });
