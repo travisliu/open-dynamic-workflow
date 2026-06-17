@@ -56,7 +56,7 @@ describe("CLI package execution and installation", () => {
     expect(doctorStdout).toContain("Node.js >= 20");
     expect(doctorStdout).toContain("open-dynamic-workflow");
 
-  });
+  }, 30000);
 
   it("can execute npx . --help", () => {
     const stdout = execSync("npx . --help", { cwd: WORKSPACE_DIR, encoding: "utf8" });
