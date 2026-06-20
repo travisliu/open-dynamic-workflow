@@ -2,7 +2,7 @@
 
 Rename Notice: Renamed from `@prmflow/openflow` (binary: `openflow`) to `@travisliu/open-dynamic-workflow`
 
-Open Dynamic Workflow is a local-first workflow runner for orchestrating external coding-agent CLIs such as Codex, Gemini, Copilot, OpenCode, Antigravity, Pi, and a deterministic mock provider.
+Open Dynamic Workflow is a local-first workflow runner for orchestrating external coding-agent CLIs such as Codex, Gemini, Copilot, OpenCode, Antigravity, Pi, Cursor, and a deterministic mock provider.
 
 Natural-language prompts are flexible, but they are not always reliable for repeated engineering work. Open Dynamic Workflow turns repeatable agent tasks into workflow scripts, so execution is explicit, version-controlled, validated, and easier to reproduce.
 
@@ -30,6 +30,7 @@ Open Dynamic Workflow orchestrates external coding-agent CLIs through provider a
 | `opencode`    | OpenCode CLI           |
 | `antigravity` | Antigravity CLI        |
 | `pi`          | Pi Coding Agent        |
+| `cursor`      | Cursor Agent CLI       |
 
 The default provider can be configured during initialization or later in `.open-dynamic-workflow/config.yaml`. Individual workflow steps can still choose a specific provider:
 
@@ -328,6 +329,7 @@ Configuration precedence:
   - `opencode`: Maps `dangerously-full-access` to `--dangerously-skip-permissions` and skips read-only environment injection.
   - `antigravity`: Maps `dangerously-full-access` to `--dangerously-skip-permissions`.
   - `pi`: Switches from read-only tools to configured `fullAccessTools`. It does not imply automatic approval.
+  - `cursor`: Runs with `--mode ask` by default. Specifying `dangerously-full-access` maps to the configured dangerous flag, default `--force`.
   - `mock`: Accepts `dangerously-full-access` without changing its deterministic mock behavior (useful for dry runs and testing).
   - Workflows that omit the `permissions` field default to `{ mode: "default" }` (which does not pass any write-enabling flags to the provider).
 

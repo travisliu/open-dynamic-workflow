@@ -1,6 +1,6 @@
 ---
 name: open-dynamic-workflow
-description: Create, review, validate, and improve Open Dynamic Workflow workflow scripts that orchestrate Codex, Gemini, and mock provider agents through agent(), parallel(), pipeline(), loop(), phase(), log(), workflow(), and tool().
+description: Create, review, validate, and improve Open Dynamic Workflow workflow scripts that orchestrate Codex, Gemini, Cursor, and mock provider agents through agent(), parallel(), pipeline(), loop(), phase(), log(), workflow(), and tool().
 ---
 
 # Purpose
@@ -66,6 +66,7 @@ When using this skill:
 5. Select providers intentionally.
    - Use `codex` for correctness, security, code reasoning, implementation review, and safety checks.
    - Use `gemini` for test strategy, operations review, broad synthesis, summarization, and cross-perspective aggregation.
+   - Use `cursor` for general coding-agent tasks, repo review, implementation planning, and optional autonomous changes.
    - Use `mock` for examples, deterministic CI checks, smoke tests, and workflows that must run without real credentials.
    - Let config or `--provider` provide defaults unless the workflow needs explicit per-agent provider choices.
 
@@ -75,14 +76,14 @@ When using this skill:
    - Set `structuredOutput: { transport: "auto" }` with `schema` unless there is a specific reason to choose another transport.
    - Use `transport: "prompt"` when you want schema instructions injected into the provider prompt explicitly.
    - Use `transport: "validate-only"` only when the prompt already contains exact output instructions and you only want local validation.
-   - Do not use `transport: "native"` for current `codex`, `gemini`, or `mock` workflows; current adapters reject it.
+   - Do not use `transport: "native"` for current `codex`, `gemini`, `cursor`, or `mock` workflows; current adapters reject it.
    - Ask agents to return exactly one JSON object when a schema is required.
 
 7. Set `permissions` only when the workflow requires autonomous execution.
    - Omit `permissions` for most workflows. Providers run with their configured approval behaviour by default.
    - Use `permissions: { mode: "dangerously-full-access" }` only when the agent must apply changes, write files, or execute commands without approval prompts.
    - Document the reason in a workflow comment when using `dangerously-full-access`.
-   - Note the concrete per-provider effect: `codex` appends `--dangerously-bypass-approvals-and-sandbox`; `gemini` switches to `--approval-mode yolo`; `mock` records the field but has no runtime effect.
+   - Note the concrete per-provider effect: `codex` appends `--dangerously-bypass-approvals-and-sandbox`; `gemini` switches to `--approval-mode yolo`; `cursor` maps to the configured dangerous flag, default `--force`; `mock` records the field but has no runtime effect.
 
 8. Make concurrency and failure behavior explicit when it matters.
    - Document expected `--concurrency`, `--timeout-ms`, and `--fail-fast` usage for CLI runs.

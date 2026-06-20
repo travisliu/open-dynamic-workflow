@@ -9,6 +9,7 @@ import {
 import { OpenCodeCliAdapter, type OpenCodeProviderConfig } from "./opencode-cli.js";
 import { AntigravityCliAdapter, type AntigravityProviderConfig } from "./antigravity-cli.js";
 import { PiCodingAgentAdapter, type PiCodingAgentProviderConfig } from "./pi-coding-agent.js";
+import { CursorAgentAdapter, type CursorAgentProviderConfig } from "./cursor-agent.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 
@@ -60,6 +61,7 @@ export function createDefaultProviderRegistry(deps: RegistryDeps): ProviderRegis
   registry.register(new OpenCodeCliAdapter(deps.config.providers["opencode"] as OpenCodeProviderConfig));
   registry.register(new AntigravityCliAdapter(deps.config.providers["antigravity"] as AntigravityProviderConfig));
   registry.register(new PiCodingAgentAdapter(deps.config.providers["pi"] as PiCodingAgentProviderConfig));
+  registry.register(new CursorAgentAdapter(deps.config.providers["cursor"] as CursorAgentProviderConfig | undefined));
   
   return registry;
 }

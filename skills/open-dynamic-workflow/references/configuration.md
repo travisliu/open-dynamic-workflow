@@ -154,6 +154,19 @@ providers:
     noThemes: true
     approvalMode: "no-approve"
     deterministicEnv: true
+  cursor:
+    command: "agent"
+    args: []
+    promptMode: "arg"
+    promptFlag: "-p"
+    outputFormat: "json"
+    outputFormatFlag: "--output-format"
+    trustFlag: "--trust"
+    modeFlag: "--mode"
+    defaultMode: "ask"
+    modelArg: { flag: "--model" }
+    workspaceFlag: false
+    dangerouslySkipPermissionsFlag: "--force"
 ```
 
 #### Adapter-specific provider keys
@@ -216,6 +229,19 @@ The following keys are supported by specific provider adapters.
 | `noThemes` | `boolean` | `true` | Boolean. | If true, passes `--no-themes`. |
 
 *Note: Switching to `dangerously-full-access` mode changes the active tool list to `fullAccessTools` but does NOT imply `--approve`. Approval must be configured separately via `approvalMode`.*
+
+**Cursor (cursor)**
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `promptMode` | `string` | `"arg"` | `"arg"` or `"stdin"`. | Specifies how the prompt is passed to the Cursor Agent CLI. |
+| `promptFlag` | `string` | `"-p"` | Non-empty string. | Flag used to specify the prompt. |
+| `outputFormat` | `string` | `"json"` | `"text"`, `"json"`, or `"stream-json"`. | The expected output format from the Cursor Agent CLI. |
+| `outputFormatFlag` | `string` | `"--output-format"` | Non-empty string. | Flag used to specify the output format. |
+| `trustFlag` | `string \| false` | `"--trust"` | Non-empty string or `false`. | Flag used to establish workspace trust. Set to `false` to disable. |
+| `modeFlag` | `string` | `"--mode"` | Non-empty string. | Flag used to specify execution mode. |
+| `defaultMode` | `string` | `"ask"` | Non-empty string. | Default mode (e.g., `"ask"`, `"plan"`). |
+| `dangerouslySkipPermissionsFlag` | `string` | `"--force"` | Non-empty string. | Flag used to skip interactive permission/confirmation prompts. |
+| `workspaceFlag` | `string \| false` | `false` | Non-empty string or `false`. | Flag used to pass the workspace path. |
 
 ---
 

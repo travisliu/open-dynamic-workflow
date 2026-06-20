@@ -81,7 +81,7 @@ type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
 type DirectAgentCallInput = {
   id?: string;
   label?: string;
-  provider?: "codex" | "gemini" | "copilot" | "mock" | "opencode" | "antigravity" | "pi" | string;
+  provider?: "codex" | "gemini" | "copilot" | "mock" | "opencode" | "antigravity" | "pi" | "cursor" | string;
   prompt: string;
   model?: string;
   schema?: JsonSchema;
@@ -98,7 +98,7 @@ type DefinitionAgentCallInput = {
   id?: string;
   definition: string;
   label?: string;
-  provider?: "codex" | "gemini" | "copilot" | "mock" | "opencode" | "antigravity" | "pi" | string;
+  provider?: "codex" | "gemini" | "copilot" | "mock" | "opencode" | "antigravity" | "pi" | "cursor" | string;
   prompt?: string;
   model?: string;
   schema?: JsonSchema;
@@ -119,7 +119,7 @@ type DefinitionAgentCallInput = {
 | ----------------- | -------: | ------------------------------------------------------------------------------ |
 | `id`              |       No | Stable identifier for the agent call and artifacts.                            |
 | `label`           |       No | Human-readable label for output.                                               |
-| `provider`        |       No | Provider to use: `mock`, `codex`, `gemini`, `copilot`, `opencode`, `antigravity`, or `pi`. |
+| `provider`        |       No | Provider to use: `mock`, `codex`, `gemini`, `copilot`, `opencode`, `antigravity`, `pi`, or `cursor`. |
 | `prompt`          |      Yes | Prompt sent to the provider.                                                   |
 | `model`           |       No | Model override for this call.                                                  |
 | `schema`          |       No | JSON Schema used to validate structured output.                                |
@@ -729,6 +729,7 @@ Built-in providers:
 | `opencode` | General purpose coding agent with read-only config injection. |
 | `antigravity` | High-fidelity terminal-first agent with sandbox support. |
 | `pi` | Tool-use coding agent with explicit safe/full toolsets. |
+| `cursor`  | General coding-agent tasks, repo review, implementation planning, optional autonomous changes. |
 
 Provider behavior should not leak into workflow semantics. Workflows should call `agent()` and let the runtime, scheduler, and adapter handle provider execution.
 
@@ -742,6 +743,7 @@ The `permissions` field on `agent()` affects provider CLI arguments at the adapt
 | `gemini` | `--approval-mode plan` (or config default) | Replaces `--approval-mode <value>` with `--approval-mode yolo` |
 | `copilot`| Default mode (no broad allow-all/yolo flags) | Appends `--yolo` |
 | `mock`   | No subprocess approval concept | Field is accepted and recorded; no runtime effect |
+| `cursor` | `--mode ask` by default | Maps to the configured dangerous flag, default `--force` |
 
 ---
 

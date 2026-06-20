@@ -15,7 +15,8 @@ describe("ProviderRegistry", () => {
         copilot: { command: "copilot" },
         opencode: { command: "opencode" },
         antigravity: { command: "agy" },
-        pi: { command: "pi" }
+        pi: { command: "pi" },
+        cursor: { command: "agent" }
       },
       security: {
         allowWorkflowImports: false,
@@ -36,7 +37,7 @@ describe("ProviderRegistry", () => {
     const providers = registry.list().map(a => a.name);
 
     // Assert
-    expect(providers).toEqual(["mock", "codex", "gemini", "copilot", "opencode", "antigravity", "pi"]);
+    expect(providers).toEqual(["mock", "codex", "gemini", "copilot", "opencode", "antigravity", "pi", "cursor"]);
   });
 
   it("55. retrieves new provider adapters by name", () => {
@@ -46,7 +47,8 @@ describe("ProviderRegistry", () => {
         copilot: { command: "copilot" },
         opencode: { command: "opencode" },
         antigravity: { command: "agy" },
-        pi: { command: "pi" }
+        pi: { command: "pi" },
+        cursor: { command: "agent" }
       }
     } as unknown as ResolvedConfig;
     const registry = createDefaultProviderRegistry({ config: dummyConfig });
@@ -56,12 +58,14 @@ describe("ProviderRegistry", () => {
     const opencode = registry.get("opencode");
     const antigravity = registry.get("antigravity");
     const pi = registry.get("pi");
+    const cursor = registry.get("cursor");
 
     // Assert
     expect(copilot.name).toBe("copilot");
     expect(opencode.name).toBe("opencode");
     expect(antigravity.name).toBe("antigravity");
     expect(pi.name).toBe("pi");
+    expect(cursor.name).toBe("cursor");
   });
 
   // Keep existing utility tests
