@@ -159,11 +159,11 @@ export function formatVerboseLoopRoundTerminal(payload: LoopRoundTerminalPayload
   const label = payload.label ?? payload.loopId;
   const dur = formatDuration(payload.durationMs);
   const lines: string[] = [];
-  lines.push(`Loop round: ${label} round ${payload.roundIndex + 1} ${payload.status} ${dur}`);
+  const roundNum = payload.roundNumber ?? (payload.roundIndex + 1);
+  lines.push(`Loop round: ${label} round ${roundNum} ${payload.status} ${dur}`);
   if (sequence !== undefined && timestamp !== undefined) {
     lines.push(`  Event: #${sequence} ${timestamp}`);
   }
-  if (payload.break) lines.push(`  Break: true`);
   if (payload.reason) lines.push(`  Reason: ${payload.reason}`);
   if (payload.artifactPath) lines.push(`  Artifacts: ${payload.artifactPath}`);
   if (payload.error) {
@@ -180,8 +180,8 @@ export function formatVerboseLoopTerminal(payload: LoopTerminalPayload, sequence
   if (sequence !== undefined && timestamp !== undefined) {
     lines.push(`  Event: #${sequence} ${timestamp}`);
   }
-  lines.push(`  Rounds: ${payload.roundCount}/${payload.maxRounds}`);
-  lines.push(`  Accepted: ${payload.accepted}`);
+  const rounds = payload.roundsCompleted ?? payload.roundCount;
+  lines.push(`  Rounds: ${rounds}/${payload.maxRounds}`);
   if (payload.reason) lines.push(`  Reason: ${payload.reason}`);
   if (payload.artifactPath) lines.push(`  Artifacts: ${payload.artifactPath}`);
   if (payload.error) {
@@ -212,7 +212,8 @@ export function renderVerboseEvent(envelope: EventEnvelope): string | undefined 
     envelope.type === "loop.completed" ||
     envelope.type === "loop.failed" ||
     envelope.type === "loop.cancelled" ||
-    envelope.type === "loop.timed_out"
+    envelope.type === "loop.timed_out" ||
+    envelope.type === "loop.max_rounds"
   ) {
     return formatVerboseLoopTerminal(envelope.payload as LoopTerminalPayload, envelope.sequence, envelope.timestamp);
   }

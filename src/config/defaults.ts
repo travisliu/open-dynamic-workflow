@@ -106,7 +106,7 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
       include: ["workflows/**/*.ts"]
     },
     maxDepth: 8,
-    maxLoopRounds: 60
+    maxLoopRounds: 20
   },
   reporting: {
     mode: "pretty",

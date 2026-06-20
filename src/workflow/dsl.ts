@@ -27,8 +27,8 @@ import { cloneJsonValue } from "./json.js";
 import { getActiveWorkflowInvocation } from "./invocation-types.js";
 import { assertToolAllowed, withToolForbidden } from "./scope.js";
 import { runLoop } from "../loop/run.js";
-import { getActiveLoopContext, recordLoopChildAgentId } from "../loop/context.js";
-import { createLoopAgentId } from "../loop/id.js";
+import { getActiveLoopContext, recordLoopChildAgentId, type ActiveLoopContext } from "../loop/context.js";
+import { createLoopAgentId, normalizeLoopLabel } from "../loop/id.js";
 import type { ToolCallInput, ToolExecutionResult, ToolSettledResult, ToolFailureMode } from "../types/tool.js";
 import type { PreparedToolCall } from "../tools/executor-types.js";
 import type { 
@@ -217,36 +217,10 @@ export function createDsl(runtime: RuntimeState) {
 
     const activeLoop = getActiveLoopContext();
     if (activeLoop) {
-      const roundPrefix = activeLoop.roundId;
-      const isAlreadyScoped = normalizedId === roundPrefix || normalizedId.startsWith(roundPrefix + "-");
-      if (!isAlreadyScoped) {
-        let suffix: string;
-        if (input.id) {
-          suffix = input.id;
-        } else {
-          const rawLabel = input.label?.trim();
-          const idPattern = /^[A-Za-z0-9_.:-]+$/;
-          const isValidLabel = rawLabel &&
-            rawLabel !== "" &&
-            rawLabel !== "." &&
-            rawLabel !== ".." &&
-            !rawLabel.includes("/") &&
-            !rawLabel.includes("\\") &&
-            !rawLabel.includes("..") &&
-            idPattern.test(rawLabel);
+      const activeInvocation = getActiveWorkflowInvocation();
+      const isChildWorkflow = !!(activeInvocation && activeLoop.workflowInvocationId && activeInvocation.workflowInvocationId !== activeLoop.workflowInvocationId);
 
-          if (isValidLabel) {
-            suffix = rawLabel;
-          } else {
-            suffix = `agent-${++runtime.agentCounter}`;
-          }
-        }
-        normalizedId = createLoopAgentId({
-          loopId: activeLoop.loopId,
-          roundIndex: activeLoop.roundIndex,
-          suffix
-        });
-      }
+      normalizedId = resolveLoopAgentId(normalizedId, input, activeLoop, isChildWorkflow, runtime);
       recordLoopChildAgentId(normalizedId);
     }
 
@@ -918,21 +892,59 @@ export function createDsl(runtime: RuntimeState) {
 
     workflow: workflowFunction,
 
-    loop: async (initialState: any, runRound: any, options?: any) => {
+    loop: async (input: any) => {
       const activeInvocation = getActiveWorkflowInvocation();
       return runLoop({
-        initialState,
-        runRound,
-        options,
+        loopInput: input,
         runtime,
         signal: activeInvocation?.signal || runtime.abortController.signal,
         dsl: {
           agent: runAgentCall,
           workflow: workflowFunction,
-          parallel: parallelFunction,
           log: logWorkflow
         }
       });
     }
   };
+}
+
+function isSafeAgentId(id: string | undefined): boolean {
+  if (!id) return false;
+  const trimmed = id.trim();
+  const pattern = /^[A-Za-z0-9_.:-]+$/;
+  return (
+    trimmed !== "" &&
+    trimmed !== "." &&
+    trimmed !== ".." &&
+    !trimmed.includes("/") &&
+    !trimmed.includes("\\") &&
+    !trimmed.includes("..") &&
+    pattern.test(trimmed)
+  );
+}
+
+function resolveLoopAgentId(
+  currentId: string,
+  input: { id?: string | undefined; label?: string | undefined },
+  activeLoop: ActiveLoopContext,
+  isChildWorkflow: boolean,
+  runtime: RuntimeState
+): string {
+  const normalizedLabel = normalizeLoopLabel(activeLoop.label);
+  const loopPrefix = `${normalizedLabel}:round-${activeLoop.roundNumber}`;
+
+  if (currentId === loopPrefix || currentId.startsWith(loopPrefix + ":")) {
+    return currentId;
+  }
+
+  let suffix: string | undefined;
+  if (isChildWorkflow && input.id) {
+    suffix = input.id;
+  } else if (!input.id) {
+    suffix = isSafeAgentId(input.label) ? input.label!.trim() : `agent-${++runtime.agentCounter}`;
+  }
+
+  return suffix !== undefined
+    ? createLoopAgentId({ label: activeLoop.label, roundNumber: activeLoop.roundNumber, suffix })
+    : currentId;
 }

@@ -1,19 +1,17 @@
-import type { LoopResult, LoopSummary } from "./types.js";
+import type { LoopExecutionRecord, LoopSummary } from "./types.js";
 
 /**
- * Builds a compact summary from a loop result.
+ * Builds a compact summary from a loop execution record.
  */
-export function buildLoopSummary(result: LoopResult<any, any>): LoopSummary {
+export function buildLoopSummary(record: LoopExecutionRecord<any>): LoopSummary {
   return {
-    loopId: result.loopId,
-    ...(result.label !== undefined ? { label: result.label } : {}),
-    status: result.status,
-    accepted: result.accepted,
-    roundCount: result.roundCount,
-    maxRounds: result.maxRounds,
-    durationMs: result.durationMs,
-    artifactPath: result.artifactPath,
-    ...(result.reason !== undefined ? { reason: result.reason } : {}),
-    ...(result.error !== undefined ? { error: result.error } : {}),
+    loopId: record.loopId,
+    label: record.label,
+    status: record.status,
+    roundsCompleted: record.roundsCompleted,
+    maxRounds: record.maxRounds,
+    durationMs: record.durationMs,
+    artifactPath: record.artifactPath,
+    ...(record.error !== undefined ? { error: record.error } : {}),
   };
 }

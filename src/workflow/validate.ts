@@ -95,6 +95,7 @@ export function validateWorkflow(
   options: ValidateWorkflowOptions
 ): WorkflowValidationIssue[] {
   const issues: WorkflowValidationIssue[] = [];
+  const loopLabelsSeen = new Set<string>();
   const sourceFile = ts.createSourceFile(
     workflow.sourcePath,
     workflow.sourceText,
@@ -457,40 +458,140 @@ export function validateWorkflow(
     }
   }
 
-  function validateLoopCall(node: ts.CallExpression, isContextForm: boolean, contextName: string = "ctx") {
+  function validateLoopCall(
+    node: ts.CallExpression,
+    isContextForm: boolean,
+    contextName: string = "ctx",
+    isForbiddenContext: boolean = false,
+    functionDepth: number = 0,
+    isInsideParallel: boolean = false,
+    isInsideLoopRun: boolean = false,
+    isInsideMainWorkflow: boolean = false
+  ) {
     const callPrefix = isContextForm ? `${contextName}.loop()` : "loop()";
 
-    if (node.arguments.length < 2) {
-      report(node, `${callPrefix} requires at least two arguments: initialState and runRound.`);
+    if (isInsideParallel) {
+      report(node, `loop() inside parallel() is not supported to prevent state overwrites.`);
+    }
+    if (isInsideLoopRun) {
+      report(node, `Nested loops are not supported to prevent state overwrites.`);
+    }
+    if (functionDepth > 0 && !isInsideMainWorkflow && !isInsideLoopRun) {
+      report(node, `loop() is not allowed inside helper functions or recursive scopes to prevent state overwrites.`);
+    }
+
+    if (node.arguments.length !== 1) {
+      report(node, `${callPrefix} now accepts exactly one object argument.`);
       return;
     }
-    if (node.arguments.length > 3) {
-      report(node, `${callPrefix} accepts at most three arguments.`);
+
+    const firstArg = node.arguments[0];
+    if (!firstArg) {
+      report(node, `${callPrefix} now accepts exactly one object argument.`);
+      return;
+    }
+    if (!ts.isObjectLiteralExpression(firstArg)) {
+      if (isStaticValue(firstArg)) {
+        report(firstArg, `${callPrefix} argument must be an object literal.`);
+      }
+      visit(firstArg, isForbiddenContext, functionDepth, isInsideLoopRun, new Set(), isInsideParallel, isInsideMainWorkflow);
       return;
     }
 
-    const runRound = node.arguments[1];
-    if (runRound && !ts.isArrowFunction(runRound) && !ts.isFunctionExpression(runRound)) {
-      report(runRound, `${callPrefix} second argument must be a function expression or arrow function.`);
+    const propsMap = new Map<string, ts.Expression | ts.MethodDeclaration>();
+    const seenKeys = new Set<string>();
+
+    for (const prop of firstArg.properties) {
+      if (ts.isSpreadAssignment(prop)) {
+        report(prop, `${callPrefix} does not support spread properties.`);
+        continue;
+      }
+      if (ts.isShorthandPropertyAssignment(prop)) {
+        const key = prop.name.text;
+        report(prop, `${callPrefix} does not support shorthand property '${key}'.`);
+        continue;
+      }
+      if (ts.isMethodDeclaration(prop)) {
+        if (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name)) {
+          report(prop, `${callPrefix} does not support computed method names.`);
+          continue;
+        }
+        const key = prop.name.text;
+        if (key !== "run") {
+          report(prop, `${callPrefix} does not support method properties for '${key}'.`);
+        }
+        propsMap.set(key, prop);
+        seenKeys.add(key);
+        continue;
+      }
+      if (ts.isPropertyAssignment(prop)) {
+        if (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name)) {
+          report(prop, `${callPrefix} does not support computed property names.`);
+          continue;
+        }
+        const key = prop.name.text;
+        propsMap.set(key, prop.initializer);
+        seenKeys.add(key);
+        continue;
+      }
+      report(prop, `${callPrefix} contains unsupported property type.`);
     }
 
-    const optionsArg = node.arguments[2];
-    if (optionsArg) {
-      if (ts.isObjectLiteralExpression(optionsArg)) {
-        const allowedLoopOptionKeys = new Set([
-          "label",
-          "maxRounds",
-          "stopWhen",
-          "nextState",
-          "onFailureState",
-          "failureMode",
-          "timeoutMs",
-          "resultMode",
-          "metadata"
-        ]);
+    const allowedKeys = new Set(["label", "initialState", "options", "run"]);
+    for (const key of seenKeys) {
+      if (key === "runRound") {
+        report(firstArg, `${callPrefix} does not support 'runRound'. Use 'run' instead.`);
+      } else if (!allowedKeys.has(key)) {
+        report(firstArg, `${callPrefix} contains unsupported top-level key '${key}'.`);
+      }
+    }
 
-        const propsMap = new Map<string, ts.Expression>();
-        for (const prop of optionsArg.properties) {
+    const requiredKeys = ["label", "initialState", "options", "run"];
+    for (const reqKey of requiredKeys) {
+      if (!seenKeys.has(reqKey)) {
+        report(firstArg, `${callPrefix} is missing required '${reqKey}' property.`);
+      }
+    }
+
+    const labelInit = propsMap.get("label");
+    if (labelInit && isStaticValue(labelInit)) {
+      const labelVal = parseStaticProperties(labelInit);
+      if (typeof labelVal !== "string") {
+        report(labelInit, "label must be a string literal.");
+      } else if (labelVal.trim() === "") {
+        report(labelInit, "label cannot be empty.");
+      } else {
+        const normalizedLabel = labelVal
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9_.:-]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+        if (loopLabelsSeen.has(normalizedLabel)) {
+          report(labelInit, `Duplicate loop label detected: '${labelVal}'. All loop labels in a workflow must be unique.`);
+        } else {
+          loopLabelsSeen.add(normalizedLabel);
+        }
+      }
+    }
+
+    if (labelInit) {
+      visit(labelInit, isForbiddenContext, functionDepth);
+    }
+
+    const initialStateInit = propsMap.get("initialState");
+    if (initialStateInit) {
+      visit(initialStateInit, isForbiddenContext, functionDepth);
+    }
+
+    const optionsInit = propsMap.get("options");
+    if (optionsInit) {
+      if (ts.isObjectLiteralExpression(optionsInit)) {
+        const allowedLoopOptionKeys = new Set(["failureMode", "maxRounds", "timeoutMs"]);
+        const deprecatedKeys = new Set(["stopWhen", "nextState", "onFailureState", "resultMode", "metadata"]);
+        const optPropsMap = new Map<string, ts.Expression>();
+        const optSeenKeys = new Set<string>();
+
+        for (const prop of optionsInit.properties) {
           if (ts.isSpreadAssignment(prop)) {
             report(prop, `${callPrefix} does not support spread properties in options.`);
             continue;
@@ -504,20 +605,29 @@ export function validateWorkflow(
             continue;
           }
           const key = prop.name.text;
+          if (deprecatedKeys.has(key)) {
+            report(prop.name, `${callPrefix} option '${key}' is deprecated or unsupported.`);
+            continue;
+          }
           if (!allowedLoopOptionKeys.has(key)) {
             report(prop.name, `${callPrefix} options contain unsupported key '${key}'.`);
             continue;
           }
-          propsMap.set(key, prop.initializer);
+          optPropsMap.set(key, prop.initializer);
+          optSeenKeys.add(key);
         }
 
-        for (const [key, init] of propsMap.entries()) {
+        if (!optSeenKeys.has("maxRounds")) {
+          report(optionsInit, `${callPrefix} options is missing required 'maxRounds'.`);
+        }
+
+        for (const [key, init] of optPropsMap.entries()) {
           const isStatic = isStaticValue(init);
           const staticVal = isStatic ? parseStaticProperties(init) : undefined;
 
           if (key === "maxRounds") {
             if (isStatic) {
-              const ceiling = options.maxLoopRounds ?? 60;
+              const ceiling = options.maxLoopRounds ?? 20;
               if (typeof staticVal !== "number" || isNaN(staticVal) || !Number.isInteger(staticVal) || staticVal < 1) {
                 report(init, "maxRounds must be a positive integer.");
               } else if (staticVal > ceiling) {
@@ -534,51 +644,109 @@ export function validateWorkflow(
             if (isStatic) {
               if (typeof staticVal !== "string") {
                 report(init, "failureMode must be a string literal.");
-              } else if (staticVal !== "fail-fast" && staticVal !== "settled" && staticVal !== "continue") {
-                report(init, "failureMode must be 'fail-fast', 'settled', or 'continue'.");
+              } else if (staticVal !== "throw" && staticVal !== "settled") {
+                report(init, "failureMode must be 'throw' or 'settled'.");
               }
             }
-          } else if (key === "resultMode") {
-            if (isStatic) {
-              if (typeof staticVal !== "string") {
-                report(init, "resultMode must be a string literal.");
-              } else if (staticVal !== "history") {
-                report(init, "resultMode must be 'history'.");
+          }
+        }
+      } else if (isStaticValue(optionsInit)) {
+        report(optionsInit, `${callPrefix} options must be an object literal.`);
+      }
+
+      visit(optionsInit, isForbiddenContext, functionDepth);
+    }
+
+    const runInit = propsMap.get("run");
+    if (runInit) {
+      if (!ts.isArrowFunction(runInit) && !ts.isFunctionExpression(runInit) && !ts.isMethodDeclaration(runInit)) {
+        report(runInit, `${callPrefix} 'run' property must be a function expression, arrow function, or method property.`);
+      } else {
+        const params = runInit.parameters;
+        const localLoopContextNames = new Set<string>();
+        if (params && params.length >= 2) {
+          const secondParam = params[1];
+          if (secondParam && ts.isIdentifier(secondParam.name)) {
+            localLoopContextNames.add(secondParam.name.text);
+          }
+        }
+        if (localLoopContextNames.size === 0) {
+          localLoopContextNames.add("ctx");
+          localLoopContextNames.add("context");
+        }
+
+        function validateReturnExpression(expr: ts.Expression) {
+          let unwrapped = expr;
+          while (ts.isParenthesizedExpression(unwrapped)) {
+            unwrapped = unwrapped.expression;
+          }
+
+          if (ts.isObjectLiteralExpression(unwrapped)) {
+            const retKeys = new Set<string>();
+            let doneInit: ts.Expression | undefined;
+
+            for (const prop of unwrapped.properties) {
+              if (ts.isPropertyAssignment(prop) || ts.isMethodDeclaration(prop)) {
+                const propName = ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : "";
+                if (propName) {
+                  retKeys.add(propName);
+                  if (propName === "done" && ts.isPropertyAssignment(prop)) {
+                    doneInit = prop.initializer;
+                  }
+                }
+              } else if (ts.isShorthandPropertyAssignment(prop)) {
+                const propName = prop.name.text;
+                retKeys.add(propName);
               }
             }
-          } else if (key === "label") {
-            if (isStatic) {
-              if (typeof staticVal !== "string") {
-                report(init, "label must be a string literal.");
-              } else if (staticVal.trim() === "") {
-                report(init, "label cannot be empty.");
-              }
+
+            if (retKeys.has("result")) {
+              report(unwrapped, "Loop run return must not contain 'result'.");
             }
-          } else if (key === "metadata") {
-            if (isStatic) {
-              if (typeof staticVal !== "object" || staticVal === null || Array.isArray(staticVal)) {
-                report(init, "metadata must be an object literal.");
-              }
+            if (!retKeys.has("done")) {
+              report(unwrapped, "Loop run return must contain 'done'.");
             }
-          } else if (key === "stopWhen" || key === "nextState" || key === "onFailureState") {
-            if (!ts.isArrowFunction(init) && !ts.isFunctionExpression(init)) {
-              report(init, `${key} must be a function expression or arrow function.`);
+            if (!retKeys.has("nextState")) {
+              report(unwrapped, "Loop run return must contain 'nextState'.");
+            }
+
+            if (doneInit && isStaticValue(doneInit)) {
+              const doneVal = parseStaticProperties(doneInit);
+              if (typeof doneVal !== "boolean") {
+                report(doneInit, "done must be a boolean.");
+              }
             }
           }
         }
 
-        const failureModeInit = propsMap.get("failureMode");
-        if (failureModeInit && isStaticValue(failureModeInit)) {
-          const fmVal = parseStaticProperties(failureModeInit);
-          if (fmVal === "continue") {
-            const onFailureStateInit = propsMap.get("onFailureState");
-            if (!onFailureStateInit) {
-              report(optionsArg, "onFailureState is required when failureMode is 'continue'.");
+        function findReturnStatements(n: ts.Node, returns: ts.ReturnStatement[]) {
+          if (ts.isReturnStatement(n)) {
+            returns.push(n);
+            return;
+          }
+          if (ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) || ts.isMethodDeclaration(n)) {
+            return;
+          }
+          ts.forEachChild(n, child => findReturnStatements(child, returns));
+        }
+
+        if (runInit.body) {
+          if (ts.isBlock(runInit.body)) {
+            const returns: ts.ReturnStatement[] = [];
+            findReturnStatements(runInit.body, returns);
+            for (const ret of returns) {
+              if (ret.expression) {
+                validateReturnExpression(ret.expression);
+              } else {
+                report(ret, "Loop run return must contain 'done' and 'nextState'.");
+              }
             }
+          } else {
+            validateReturnExpression(runInit.body);
           }
         }
-      } else if (isStaticValue(optionsArg)) {
-        report(optionsArg, `${callPrefix} options must be an object literal.`);
+
+        visit(runInit, true, functionDepth, true, localLoopContextNames);
       }
     }
   }
@@ -704,20 +872,22 @@ export function validateWorkflow(
     }
   }
 
-  function isToolOrCtxTool(node: ts.Node): boolean {
+  function isToolOrCtxTool(node: ts.Node, currentLoopCtxNames?: ReadonlySet<string>): boolean {
     // direct tool
     if (ts.isIdentifier(node) && node.text === "tool") return true;
     
     // ctx.tool
     if (ts.isPropertyAccessExpression(node) && 
-        ts.isIdentifier(node.expression) && contextParameterNames.has(node.expression.text) && 
+        ts.isIdentifier(node.expression) && 
+        (contextParameterNames.has(node.expression.text) || (currentLoopCtxNames && currentLoopCtxNames.has(node.expression.text))) && 
         node.name.text === "tool") {
       return true;
     }
 
     // ctx["tool"]
     if (ts.isElementAccessExpression(node) && 
-        ts.isIdentifier(node.expression) && contextParameterNames.has(node.expression.text) && 
+        ts.isIdentifier(node.expression) && 
+        (contextParameterNames.has(node.expression.text) || (currentLoopCtxNames && currentLoopCtxNames.has(node.expression.text))) && 
         ts.isStringLiteral(node.argumentExpression) && node.argumentExpression.text === "tool") {
       return true;
     }
@@ -727,42 +897,50 @@ export function validateWorkflow(
     if (ts.isPropertyAccessExpression(node)) {
       const name = node.name.text;
       if (name === "bind" || name === "call" || name === "apply") {
-        if (isToolOrCtxTool(node.expression)) return true;
+        if (isToolOrCtxTool(node.expression, currentLoopCtxNames)) return true;
       }
     }
 
     if (ts.isCallExpression(node)) {
-      if (isToolOrCtxTool(node.expression)) return true;
+      if (isToolOrCtxTool(node.expression, currentLoopCtxNames)) return true;
     }
 
     return false;
   }
 
-  function isLikelyWorkflowContext(node: ts.Node): boolean {
-    if (ts.isIdentifier(node) && contextParameterNames.has(node.text)) return true;
+  function isLikelyWorkflowContext(node: ts.Node, currentLoopCtxNames?: ReadonlySet<string>): boolean {
+    if (ts.isIdentifier(node) && (contextParameterNames.has(node.text) || (currentLoopCtxNames && currentLoopCtxNames.has(node.text)))) return true;
     return false;
   }
 
 
-  function checkBindingForToolAlias(name: ts.BindingName, initializer?: ts.Expression) {
+  function checkBindingForToolAlias(name: ts.BindingName, initializer?: ts.Expression, currentLoopCtxNames?: ReadonlySet<string>) {
     if (ts.isObjectBindingPattern(name)) {
       for (const element of name.elements) {
         const propName = element.propertyName ? (ts.isIdentifier(element.propertyName) ? element.propertyName.text : undefined) : (ts.isIdentifier(element.name) ? element.name.text : undefined);
         if (propName === "tool") {
           // If we have an initializer, check if it's the context.
           // If no initializer (like in parameter), we assume it's aliasing if the parameter looks like a context.
-          if (!initializer || isLikelyWorkflowContext(initializer)) {
+          if (!initializer || isLikelyWorkflowContext(initializer, currentLoopCtxNames)) {
              report(element, "Aliasing tool() is not allowed. Use it directly as tool() or ctx.tool().");
           }
         }
         if (element.name && ts.isObjectBindingPattern(element.name)) {
-          checkBindingForToolAlias(element.name, initializer);
+          checkBindingForToolAlias(element.name, initializer, currentLoopCtxNames);
         }
       }
     }
   }
 
-  function visit(node: ts.Node, isForbiddenContext: boolean = false, functionDepth: number = 0) {
+  function visit(
+    node: ts.Node,
+    isForbiddenContext: boolean = false,
+    functionDepth: number = 0,
+    isInsideLoopRun: boolean = false,
+    loopContextNames: ReadonlySet<string> = new Set(),
+    isInsideParallel: boolean = false,
+    isInsideMainWorkflow: boolean = false
+  ) {
     // Skip the metadata declaration statement (export const meta = { ... })
     if (sourceFile.statements.length > 0 && node === sourceFile.statements[0]) {
       if (ts.isVariableStatement(node) && node.modifiers?.some(m => m.kind === ts.SyntaxKind.ExportKeyword)) {
@@ -779,26 +957,29 @@ export function validateWorkflow(
 
     let nextForbiddenContext = isForbiddenContext;
     let nextFunctionDepth = functionDepth;
+    let nextInsideLoopRun = isInsideLoopRun;
+    let nextInsideMainWorkflow = isInsideMainWorkflow;
+    const nextLoopContextNames = new Set(loopContextNames);
 
     if (ts.isVariableDeclaration(node)) {
       const init = node.initializer;
       if (init) {
-        if (isToolOrCtxTool(init)) {
+        if (isToolOrCtxTool(init, nextLoopContextNames)) {
           report(node, "Aliasing tool() is not allowed. Use it directly as tool() or ctx.tool().");
         }
-        checkBindingForToolAlias(node.name, init);
+        checkBindingForToolAlias(node.name, init, nextLoopContextNames);
       } else {
-        checkBindingForToolAlias(node.name);
+        checkBindingForToolAlias(node.name, undefined, nextLoopContextNames);
       }
     }
 
     if (ts.isParameter(node)) {
-      checkBindingForToolAlias(node.name);
+      checkBindingForToolAlias(node.name, undefined, nextLoopContextNames);
     }
 
     if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
       const rhs = node.right;
-      if (isToolOrCtxTool(rhs)) {
+      if (isToolOrCtxTool(rhs, nextLoopContextNames)) {
         report(node, "Aliasing tool() is not allowed. Use it directly as tool() or ctx.tool().");
       }
     }
@@ -807,6 +988,7 @@ export function validateWorkflow(
       nextFunctionDepth++;
       if (nextFunctionDepth > 1) {
         nextForbiddenContext = true;
+        nextInsideMainWorkflow = false;
       } else if (nextFunctionDepth === 1) {
         // Only the default exported function (the main workflow) is allowed to contain tools.
         let isMainWorkflow = false;
@@ -820,6 +1002,9 @@ export function validateWorkflow(
         
         if (!isMainWorkflow) {
           nextForbiddenContext = true;
+          nextInsideMainWorkflow = false;
+        } else {
+          nextInsideMainWorkflow = true;
         }
       }
     }
@@ -829,7 +1014,7 @@ export function validateWorkflow(
       
       // Reject tool being passed as an argument
       for (const arg of node.arguments) {
-        if (isToolOrCtxTool(arg)) {
+        if (isToolOrCtxTool(arg, nextLoopContextNames)) {
           report(arg, "Aliasing tool() is not allowed. Use it directly as tool() or ctx.tool().");
         }
       }
@@ -881,7 +1066,7 @@ export function validateWorkflow(
                   }
 
                   if (!hasNameProp) {
-                    report(element, "pipeline() stage object is missing 'name' property.");
+                     report(element, "pipeline() stage object is missing 'name' property.");
                   } else if (nameValue !== undefined) {
                     if (stageNamesSeen.has(nameValue)) {
                       report(element, `pipeline() duplicate stage name detected: '${nameValue}'.`);
@@ -924,29 +1109,25 @@ export function validateWorkflow(
             if (idx === 1) {
               // stagesArg and its children (the stage objects and their 'run' methods)
               // need to recursively forbid tools.
-              visit(arg, true, nextFunctionDepth);
+              visit(arg, true, nextFunctionDepth, nextInsideLoopRun, nextLoopContextNames, isInsideParallel, false);
             } else {
-              visit(arg, nextForbiddenContext, nextFunctionDepth);
+              visit(arg, nextForbiddenContext, nextFunctionDepth, nextInsideLoopRun, nextLoopContextNames, isInsideParallel, nextInsideMainWorkflow);
             }
           });
           return;
         } else if (calleeText === "parallel") {
           nextForbiddenContext = true;
-        } else if (calleeText === "loop") {
-          validateLoopCall(node, false);
-          node.arguments.forEach((arg, idx) => {
-            if (idx === 1) {
-              // Forbidden context for the round callback
-              visit(arg, true, nextFunctionDepth);
-            } else {
-              visit(arg, nextForbiddenContext, nextFunctionDepth);
-            }
+          node.arguments.forEach((arg) => {
+            visit(arg, true, nextFunctionDepth, nextInsideLoopRun, nextLoopContextNames, true, nextInsideMainWorkflow);
           });
+          return;
+        } else if (calleeText === "loop") {
+          validateLoopCall(node, false, "ctx", isForbiddenContext, functionDepth, isInsideParallel, isInsideLoopRun, isInsideMainWorkflow);
           return;
         } else if (calleeText === "defineAgent") {
           const firstArg = node.arguments[0];
           if (firstArg && ts.isObjectLiteralExpression(firstArg)) {
-            visit(firstArg, true, nextFunctionDepth);
+            visit(firstArg, true, nextFunctionDepth, nextInsideLoopRun, nextLoopContextNames, isInsideParallel, false);
             return;
           }
         } else if (calleeText === "agent") {
@@ -965,38 +1146,51 @@ export function validateWorkflow(
       } else if (ts.isPropertyAccessExpression(callee)) {
         const obj = callee.expression;
         const prop = callee.name;
-        if (ts.isIdentifier(obj) && contextParameterNames.has(obj.text)) {
-          if (prop.text === "agent") {
-            validateAgentCall(node, true, obj.text);
-          } else if (prop.text === "workflow") {
-            validateWorkflowCall(node, true, obj.text);
-          } else if (prop.text === "loop") {
-            validateLoopCall(node, true, obj.text);
-            node.arguments.forEach((arg, idx) => {
-              if (idx === 1) {
-                visit(arg, true, nextFunctionDepth);
-              } else {
-                visit(arg, nextForbiddenContext, nextFunctionDepth);
-              }
-            });
-            return;
-          } else if (prop.text === "tool") {
-            validateToolCall(node, true, nextForbiddenContext, obj.text);
+        if (ts.isIdentifier(obj)) {
+          const isContextParam = contextParameterNames.has(obj.text) || nextLoopContextNames.has(obj.text);
+          if (isContextParam) {
+            if (prop.text === "agent") {
+              validateAgentCall(node, true, obj.text);
+            } else if (prop.text === "workflow") {
+              validateWorkflowCall(node, true, obj.text);
+            } else if (prop.text === "loop") {
+              validateLoopCall(node, true, obj.text, isForbiddenContext, functionDepth, isInsideParallel, isInsideLoopRun, isInsideMainWorkflow);
+              return;
+            } else if (prop.text === "tool") {
+              validateToolCall(node, true, nextForbiddenContext, obj.text);
+            }
+          }
+          if (nextLoopContextNames.has(obj.text) || (nextInsideLoopRun && (obj.text === "ctx" || obj.text === "context"))) {
+            if (prop.text === "break") {
+              report(node, `${obj.text}.break() is not supported inside loop run callback.`);
+            } else if (prop.text === "parallel") {
+              report(node, `${obj.text}.parallel() is not supported inside loop run callback. Use top-level parallel() around loop task thunks instead.`);
+            }
           }
         }
       } else if (ts.isElementAccessExpression(callee)) {
         const obj = callee.expression;
         const arg = callee.argumentExpression;
-        if (ts.isIdentifier(obj) && contextParameterNames.has(obj.text) && ts.isStringLiteral(arg)) {
+        if (ts.isIdentifier(obj) && ts.isStringLiteral(arg)) {
           const propName = arg.text;
-          if (["agent", "workflow", "tool"].includes(propName)) {
-            report(node, `Computed access forms like ${obj.text}["${propName}"]() are not allowed. Use direct property access like ${obj.text}.${propName}() instead.`);
-            if (propName === "agent") {
-              validateAgentCall(node, true, obj.text);
-            } else if (propName === "workflow") {
-              validateWorkflowCall(node, true, obj.text);
-            } else if (propName === "tool") {
-              validateToolCall(node, true, nextForbiddenContext, obj.text);
+          const isContextParam = contextParameterNames.has(obj.text) || nextLoopContextNames.has(obj.text);
+          if (isContextParam) {
+            if (["agent", "workflow", "tool"].includes(propName)) {
+              report(node, `Computed access forms like ${obj.text}["${propName}"]() are not allowed. Use direct property access like ${obj.text}.${propName}() instead.`);
+              if (propName === "agent") {
+                validateAgentCall(node, true, obj.text);
+              } else if (propName === "workflow") {
+                validateWorkflowCall(node, true, obj.text);
+              } else if (propName === "tool") {
+                validateToolCall(node, true, nextForbiddenContext, obj.text);
+              }
+            }
+          }
+          if (nextLoopContextNames.has(obj.text) || (nextInsideLoopRun && (obj.text === "ctx" || obj.text === "context"))) {
+            if (propName === "break") {
+              report(node, `Computed access forms like ${obj.text}["break"]() are not allowed.`);
+            } else if (propName === "parallel") {
+              report(node, `${obj.text}.parallel() is not supported inside loop run callback. Use top-level parallel() around loop task thunks instead.`);
             }
           }
         }
@@ -1061,7 +1255,7 @@ export function validateWorkflow(
       }
     }
 
-    ts.forEachChild(node, (child) => visit(child, nextForbiddenContext, nextFunctionDepth));
+    ts.forEachChild(node, (child) => visit(child, nextForbiddenContext, nextFunctionDepth, nextInsideLoopRun, nextLoopContextNames, isInsideParallel, nextInsideMainWorkflow));
   }
 
   visit(sourceFile);

@@ -19,19 +19,19 @@ describe("PrettyViewBuilder - Loops", () => {
       },
       {
         type: "loop.round.completed",
-        payload: { loopId: "loop-1", roundIndex: 1, status: "completed", durationMs: 100, break: false },
+        payload: { loopId: "loop-1", roundIndex: 0, roundNumber: 1, status: "completed", durationMs: 100 },
       },
       {
         type: "loop.round.completed",
-        payload: { loopId: "loop-1", roundIndex: 2, status: "completed", durationMs: 120, break: true },
+        payload: { loopId: "loop-1", roundIndex: 1, roundNumber: 2, status: "completed", durationMs: 120 },
       },
       {
         type: "loop.completed",
         payload: { 
           loopId: "loop-1", 
-          status: "satisfied", 
-          accepted: true, 
-          roundCount: 2, 
+          status: "succeeded", 
+          roundsCompleted: 2, 
+          roundCount: 2,
           maxRounds: 5, 
           durationMs: 300, 
           reason: "done" 
@@ -57,7 +57,6 @@ describe("PrettyViewBuilder - Loops", () => {
     expect(loopNode.status).toBe("succeeded");
     expect(loopNode.roundCount).toBe(2);
     expect(loopNode.maxRounds).toBe(5);
-    expect(loopNode.accepted).toBe(true);
     expect(loopNode.reason).toBe("done");
 
     expect(view.summary.loopCounts.total).toBe(1);
@@ -82,8 +81,8 @@ describe("PrettyViewBuilder - Loops", () => {
         payload: { 
           loopId: "loop-1", 
           status: "failed", 
-          accepted: false, 
-          roundCount: 1, 
+          roundsCompleted: 1, 
+          roundCount: 1,
           maxRounds: 5, 
           durationMs: 200, 
           artifactPath: "loops/loop-1",

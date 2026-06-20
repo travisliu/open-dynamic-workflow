@@ -15,7 +15,7 @@ describe("PrettyRenderer - Loops", () => {
           durationMs: 1500,
           roundCount: 3,
           maxRounds: 5,
-          accepted: true
+          reason: "done"
         }
       ],
       summary: {
@@ -33,7 +33,7 @@ describe("PrettyRenderer - Loops", () => {
     };
 
     const output = renderPrettyView(view);
-    expect(output).toContain("✓ loop review-loop  3/5 rounds  accepted  1.5s");
+    expect(output).toContain("✓ loop review-loop  3/5 rounds  done  1.5s");
     expect(output).toContain("loops:     1 succeeded");
   });
 });

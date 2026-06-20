@@ -102,7 +102,7 @@ describe("Loop Resume/Cache Integration", () => {
     expect(runDir2Name).toBeDefined();
     const runDir2 = path.join(TEMP_DIR, runDir2Name!);
     
-    const cacheHitJsonPath = path.join(runDir2, "agents/loop-1-round-0001-resume/cache-hit.json");
+    const cacheHitJsonPath = path.join(runDir2, "agents/resume-loop:round-1:resume/cache-hit.json");
     const cacheHitStat = await fs.stat(cacheHitJsonPath);
     expect(cacheHitStat).toBeDefined();
   });
@@ -196,6 +196,26 @@ describe("Loop Resume/Cache Integration", () => {
     const parsed1 = JSON.parse(result1.stdout);
     const runId1 = parsed1.runId;
 
+    // First-run assertions
+    const runDir1 = path.join(TEMP_DIR, runId1);
+    const agentDir1 = path.join(runDir1, "agents/resume-nested-parent-loop:round-1:nested-child-agent");
+    const agentDir2 = path.join(runDir1, "agents/resume-nested-parent-loop:round-2:nested-child-agent");
+    const unscopedDir = path.join(runDir1, "agents/nested-child-agent");
+
+    expect(await fs.stat(agentDir1).then(() => true, () => false)).toBe(true);
+    expect(await fs.stat(agentDir2).then(() => true, () => false)).toBe(true);
+    expect(await fs.stat(unscopedDir).then(() => true, () => false)).toBe(false);
+
+    // Check calls.jsonl
+    const callsJsonlPath = path.join(runDir1, "calls.jsonl");
+    const callsContent = await fs.readFile(callsJsonlPath, "utf8");
+    const calls = callsContent.split("\n").filter(l => l.trim()).map(l => JSON.parse(l));
+    const agentCalls = calls.filter(c => c.kind === "agent");
+
+    expect(agentCalls).toHaveLength(2);
+    expect(agentCalls[0].callId).toBe("resume-nested-parent-loop:round-1:nested-child-agent");
+    expect(agentCalls[1].callId).toBe("resume-nested-parent-loop:round-2:nested-child-agent");
+
     // 2. Second run: resume
     const result2 = await runCli([
       "run",
@@ -234,8 +254,8 @@ describe("Loop Resume/Cache Integration", () => {
     const runDir1 = path.join(TEMP_DIR, runId1);
 
     // 2. Assert both round-scoped agent artifact directories exist
-    const agentDir1 = path.join(runDir1, "agents/loop-1-round-0001-test-permissions-agent");
-    const agentDir2 = path.join(runDir1, "agents/loop-1-round-0002-test-permissions-agent");
+    const agentDir1 = path.join(runDir1, "agents/repeated-parent-loop:round-1:test-permissions-agent");
+    const agentDir2 = path.join(runDir1, "agents/repeated-parent-loop:round-2:test-permissions-agent");
     const unscopedDir = path.join(runDir1, "agents/test-permissions-agent");
 
     expect(await fs.stat(agentDir1).then(() => true, () => false)).toBe(true);
@@ -249,14 +269,14 @@ describe("Loop Resume/Cache Integration", () => {
     const agentCalls = calls.filter(c => c.kind === "agent");
 
     expect(agentCalls).toHaveLength(2);
-    expect(agentCalls[0].callId).toBe("loop-1-round-0001-test-permissions-agent");
-    expect(agentCalls[1].callId).toBe("loop-1-round-0002-test-permissions-agent");
+    expect(agentCalls[0].callId).toBe("repeated-parent-loop:round-1:test-permissions-agent");
+    expect(agentCalls[1].callId).toBe("repeated-parent-loop:round-2:test-permissions-agent");
 
     // 4. Assert loop nested-calls.json contains correct round-scoped child agent IDs
-    const nestedCalls1 = JSON.parse(await fs.readFile(path.join(runDir1, "loops/loop-1/rounds/0001/nested-calls.json"), "utf8"));
-    const nestedCalls2 = JSON.parse(await fs.readFile(path.join(runDir1, "loops/loop-1/rounds/0002/nested-calls.json"), "utf8"));
-    expect(nestedCalls1).toContain("loop-1-round-0001-test-permissions-agent");
-    expect(nestedCalls2).toContain("loop-1-round-0002-test-permissions-agent");
+    const nestedCalls1 = JSON.parse(await fs.readFile(path.join(runDir1, "loops/repeated-parent-loop/rounds/0001/nested-calls.json"), "utf8"));
+    const nestedCalls2 = JSON.parse(await fs.readFile(path.join(runDir1, "loops/repeated-parent-loop/rounds/0002/nested-calls.json"), "utf8"));
+    expect(nestedCalls1.agents).toContain("repeated-parent-loop:round-1:test-permissions-agent");
+    expect(nestedCalls2.agents).toContain("repeated-parent-loop:round-2:test-permissions-agent");
 
     // 5. Resume and assert cache hits happen for both scoped child agents
     const result2 = await runCli([
@@ -297,4 +317,40 @@ describe("Loop Resume/Cache Integration", () => {
     const unscopedDir = path.join(runDir1, "agents/test-permissions-agent");
     expect(await fs.stat(unscopedDir).then(() => true, () => false)).toBe(true);
   });
+
+  it("detects cache mismatch and disables cache hits when loop initial state changes but first prompt/ID remains unchanged", async () => {
+    const workflowPath1 = path.resolve("tests/fixtures/workflows/loop-resume-cache.workflow.js");
+    const workflowPath2 = path.resolve("tests/fixtures/workflows/loop-resume-state-mismatch.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/mock.config.yaml");
+
+    // 1. Run first workflow to populate cache
+    const result1 = await runCli([
+      "run",
+      workflowPath1,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--report", "json"
+    ]);
+    expect(result1.error).toBeNull();
+    const parsed1 = JSON.parse(result1.stdout);
+    const runId1 = parsed1.runId;
+
+    // 2. Resume using the second workflow (which has a mismatch initial state, but same first agent prompt)
+    const result2 = await runCli([
+      "run",
+      workflowPath2,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--resume", runId1,
+      "--report", "jsonl"
+    ]);
+    expect(result2.error).toBeNull();
+
+    // 3. Assert that no cache hit events occurred because the loop-start marker mismatched
+    const lines = result2.stdout.split("\n").filter(l => l.trim());
+    const events = lines.map(l => JSON.parse(l));
+    const cacheHits = events.filter(e => e.type === "agent.cache_hit");
+    expect(cacheHits).toHaveLength(0);
+  });
 });
+

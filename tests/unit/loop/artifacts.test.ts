@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  writeLoopDefinitionArtifact,
-  writeRoundArtifacts,
-  writeLoopHistoryArtifact,
-  writeLoopResultArtifact
+  writeLoopDefinition,
+  writeLoopInitialState,
+  writeLoopFinalState,
+  writeLoopExecutionRecord,
+  writeLoopError,
+  writeLoopReplayArtifact,
+  writeRoundArtifacts
 } from "../../../src/loop/artifacts.js";
 
 describe("Loop Artifact Writers", () => {
@@ -20,44 +23,60 @@ describe("Loop Artifact Writers", () => {
   };
 
   it("writes loop definition to correct path", async () => {
-    await writeLoopDefinitionArtifact(mockStore as any, "loop-1", { options: {} });
+    await writeLoopDefinition(mockStore as any, "loop-1", { options: {} });
     expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/loop.json", { options: {} });
   });
 
+  it("writes loop initial state, final state, result, error, and replay", async () => {
+    await writeLoopInitialState(mockStore as any, "loop-1", { state: 1 });
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/initial-state.json", { state: 1 });
+
+    await writeLoopFinalState(mockStore as any, "loop-1", { state: 2 });
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/final-state.json", { state: 2 });
+
+    await writeLoopExecutionRecord(mockStore as any, "loop-1", { loopId: "loop-1" } as any);
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/result.json", { loopId: "loop-1" });
+
+    await writeLoopError(mockStore as any, "loop-1", { message: "error" });
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/error.json", { message: "error" });
+
+    await writeLoopReplayArtifact(mockStore as any, "loop-1", { kind: "loop" } as any);
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/replay.json", { kind: "loop" });
+  });
+
   it("writes round artifacts to padded round directory", async () => {
+    vi.clearAllMocks();
     await writeRoundArtifacts(mockStore as any, "loop-2", 5, {
-      round: { status: "completed" },
-      stateBefore: { count: 0 },
-      stateAfter: { count: 1 },
-      result: { some: "large result" },
-      nestedCalls: ["agent-1"]
+      inputState: { count: 0 },
+      runResult: { done: false, nextState: { count: 1 } },
+      nextState: { count: 1 },
+      error: undefined,
+      nestedCalls: {
+        agents: ["agent-1"],
+        workflows: []
+      }
     });
 
-    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/round.json", { status: "completed" });
-    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/state.before.json", { count: 0 });
-    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/state.after.json", { count: 1 });
-    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/result.preview.json", expect.anything());
-    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/nested-calls.json", ["agent-1"]);
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/input-state.json", { count: 0 });
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/run-result.json", { done: false, nextState: { count: 1 } });
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/next-state.json", { count: 1 });
+    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-2/rounds/0005/nested-calls.json", {
+      agents: ["agent-1"],
+      workflows: []
+    });
   });
 
   it("skips optional round artifacts", async () => {
     vi.clearAllMocks();
     await writeRoundArtifacts(mockStore as any, "loop-3", 1, {
-      round: {},
-      stateBefore: {}
+      inputState: { count: 0 }
     });
     
     const paths = mockStore.writeJson.mock.calls.map(call => call[0]);
-    expect(paths).not.toContain("loops/loop-3/rounds/0001/state.after.json");
-    expect(paths).not.toContain("loops/loop-3/rounds/0001/result.preview.json");
+    expect(paths).toContain("loops/loop-3/rounds/0001/input-state.json");
+    expect(paths).not.toContain("loops/loop-3/rounds/0001/run-result.json");
+    expect(paths).not.toContain("loops/loop-3/rounds/0001/next-state.json");
     expect(paths).not.toContain("loops/loop-3/rounds/0001/error.json");
-  });
-
-  it("writes history and final result", async () => {
-    await writeLoopHistoryArtifact(mockStore as any, "loop-1", []);
-    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/history.json", []);
-
-    await writeLoopResultArtifact(mockStore as any, "loop-1", { status: "satisfied" } as any);
-    expect(mockStore.writeJson).toHaveBeenCalledWith("loops/loop-1/result.json", { status: "satisfied" });
+    expect(paths).not.toContain("loops/loop-3/rounds/0001/nested-calls.json");
   });
 });

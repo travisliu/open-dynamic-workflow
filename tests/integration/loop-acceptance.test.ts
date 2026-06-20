@@ -90,28 +90,21 @@ describe("Loop Acceptance (AAA)", () => {
     
     // Check loop summary in JSON report
     expect(parsed.loops).toBeDefined();
-    expect(parsed.loops[0].status).toBe("satisfied");
-    expect(parsed.loops[0].roundCount).toBe(2);
-    expect(parsed.loops[0].accepted).toBe(true);
-    // LoopSummary uses 'reason' for stringified result
-    if (parsed.loops[0].result !== undefined) {
-      expect(parsed.loops[0].result).toEqual({ done: true, count: 2 });
-    } else if (parsed.loops[0].reason !== undefined) {
-      expect(parsed.loops[0].reason).toContain("done");
-    }
+    expect(parsed.loops[0].status).toBe("succeeded");
+    expect(parsed.loops[0].roundsCompleted).toBe(2);
 
     // Check artifacts
     const runs = await fs.readdir(TEMP_DIR);
     const runDir = path.join(TEMP_DIR, runs[0]);
-    const loopDir = path.join(runDir, "loops", "loop-1");
+    const loopDir = path.join(runDir, "loops", "loop-break");
     
-    const history = JSON.parse(await fs.readFile(path.join(loopDir, "history.json"), "utf8"));
-    expect(history.length).toBe(2);
-    expect(history[0].state).toEqual({ count: 0 });
-    // history entry uses 'index' and 'status' (completed/failed)
-    expect(history[0].index).toBe(1);
-    expect(history[1].index).toBe(2);
-    expect(history[1].break).toBe(true);
+    expect(await fs.stat(path.join(loopDir, "loop.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "initial-state.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "final-state.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "result.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "rounds/0001/input-state.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "rounds/0001/run-result.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "rounds/0001/next-state.json"))).toBeDefined();
 
     const loopMeta = JSON.parse(await fs.readFile(path.join(loopDir, "loop.json"), "utf8"));
     expect(loopMeta.options.maxRounds).toBe(5);
@@ -133,11 +126,8 @@ describe("Loop Acceptance (AAA)", () => {
     // Assert
     expect(result.error).toBeNull();
     const parsed = JSON.parse(result.stdout);
-    expect(parsed.loops[0].status).toBe("satisfied");
-    // count starts at 0. round 1 -> 1. round 2 -> 2. round 3 -> 3. 
-    // stopWhen ({state}) sees state BEFORE round. 
-    // round 1: state 0. round 2: state 1. round 3: state 2. round 4: state 3 -> MATCH.
-    expect(parsed.loops[0].roundCount).toBe(4);
+    expect(parsed.loops[0].status).toBe("succeeded");
+    expect(parsed.loops[0].roundsCompleted).toBe(3);
   });
 
   it("verifies maxRounds terminal behavior", async () => {
@@ -154,11 +144,10 @@ describe("Loop Acceptance (AAA)", () => {
     ]);
 
     // Assert
-    expect(result.error).toBeNull();
     const parsed = JSON.parse(result.stdout);
+    expect(parsed.status).toBe("failed");
     expect(parsed.loops[0].status).toBe("max_rounds");
-    expect(parsed.loops[0].roundCount).toBe(2);
-    expect(parsed.loops[0].accepted).toBe(false);
+    expect(parsed.loops[0].roundsCompleted).toBe(2);
   });
 
   it("verifies failureMode: settled", async () => {
@@ -178,7 +167,7 @@ describe("Loop Acceptance (AAA)", () => {
     expect(result.error).toBeNull();
     const parsed = JSON.parse(result.stdout);
     expect(parsed.loops[0].status).toBe("failed");
-    expect(parsed.loops[0].roundCount).toBe(1);
+    expect(parsed.loops[0].roundsCompleted).toBe(1);
     // In settled mode, it should complete the loop even if rounds fail
     expect(parsed.status).toBe("succeeded"); 
   });
@@ -218,14 +207,14 @@ describe("Loop Acceptance (AAA)", () => {
     expect(result.error).toBeNull();
     const parsed = JSON.parse(result.stdout);
     expect(parsed.status).toBe("succeeded");
-    expect(parsed.loops[0].roundCount).toBe(1);
+    expect(parsed.loops[0].roundsCompleted).toBe(1);
     
     // Verify nested loop artifacts exist
     const runs = await fs.readdir(TEMP_DIR);
     const runDir = path.join(TEMP_DIR, runs[0]);
-    const roundDir = path.join(runDir, "loops/loop-1/rounds/0001");
+    const roundDir = path.join(runDir, "loops/nested-parallel-loop/rounds/0001");
     expect(await fs.stat(roundDir)).toBeDefined();
-    expect(await fs.stat(path.join(roundDir, "round.json"))).toBeDefined();
+    expect(await fs.stat(path.join(roundDir, "run-result.json"))).toBeDefined();
   });
 
   it("verifies existing non-loop workflows continue to function normally", async () => {
@@ -267,10 +256,10 @@ describe("Loop Acceptance (AAA)", () => {
     
     const loopStarted = events.find(e => e.type === "loop.started");
     expect(loopStarted.payload).toBeDefined();
-    expect(loopStarted.payload.loopId).toBe("loop-1");
+    expect(loopStarted.payload.loopId).toBe("loop-break");
 
     const roundCompleted = events.find(e => e.type === "loop.round.completed");
-    expect(roundCompleted.payload.roundIndex).toBe(1);
+    expect(roundCompleted.payload.roundIndex).toBe(0);
     expect(roundCompleted.payload.historyEntry).toBeUndefined();
   });
 
@@ -290,9 +279,8 @@ describe("Loop Acceptance (AAA)", () => {
     // Assert
     expect(result.error).toBeNull();
     // Check for loop node in execution section
-    expect(result.stdout).toContain("loop loop-1");
+    expect(result.stdout).toContain("loop loop-break");
     expect(result.stdout).toContain("2/5 rounds");
-    expect(result.stdout).toContain("accepted");
     // Check for loops summary line
     expect(result.stdout).toContain("loops:     1 succeeded");
   });

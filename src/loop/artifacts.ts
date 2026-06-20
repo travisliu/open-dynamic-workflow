@@ -1,40 +1,66 @@
-import * as path from "node:path";
 import type { ArtifactStore } from "../types/artifacts.js";
-import { createPreview } from "../tools/serialization.js";
 import { cloneJsonValue } from "../workflow/json.js";
-import type { LoopResult, LoopHistoryEntry, LoopReplayRecord } from "./types.js";
+import type { LoopExecutionRecord, LoopReplayRecord } from "./types.js";
 
 /**
  * Writes the loop definition artifact.
  */
-export async function writeLoopDefinitionArtifact(
+export async function writeLoopDefinition(
   artifactStore: ArtifactStore,
   loopId: string,
   data: unknown
 ): Promise<string> {
-  return artifactStore.writeJson(`loops/${loopId}/loop.json`, cloneJsonValue(data, "loop definition"));
+  return artifactStore.writeJson(`loops/${loopId}/loop.json`, data);
 }
 
 /**
- * Writes the loop history artifact.
+ * Writes the loop initial state artifact.
  */
-export async function writeLoopHistoryArtifact(
+export async function writeLoopInitialState(
   artifactStore: ArtifactStore,
   loopId: string,
-  history: LoopHistoryEntry[]
+  initialState: unknown
 ): Promise<string> {
-  return artifactStore.writeJson(`loops/${loopId}/history.json`, history);
+  return artifactStore.writeJson(
+    `loops/${loopId}/initial-state.json`,
+    cloneJsonValue(initialState, "loop initial state")
+  );
 }
 
 /**
- * Writes the loop result artifact.
+ * Writes the loop final state artifact.
  */
-export async function writeLoopResultArtifact(
+export async function writeLoopFinalState(
   artifactStore: ArtifactStore,
   loopId: string,
-  result: LoopResult<any, any>
+  finalState: unknown
 ): Promise<string> {
-  return artifactStore.writeJson(`loops/${loopId}/result.json`, result);
+  return artifactStore.writeJson(
+    `loops/${loopId}/final-state.json`,
+    cloneJsonValue(finalState, "loop final state")
+  );
+}
+
+/**
+ * Writes the loop execution record (result.json).
+ */
+export async function writeLoopExecutionRecord(
+  artifactStore: ArtifactStore,
+  loopId: string,
+  record: LoopExecutionRecord<any>
+): Promise<string> {
+  return artifactStore.writeJson(`loops/${loopId}/result.json`, record);
+}
+
+/**
+ * Writes the loop error artifact.
+ */
+export async function writeLoopError(
+  artifactStore: ArtifactStore,
+  loopId: string,
+  error: unknown
+): Promise<string> {
+  return artifactStore.writeJson(`loops/${loopId}/error.json`, error);
 }
 
 /**
@@ -54,42 +80,36 @@ export async function writeLoopReplayArtifact(
 export async function writeRoundArtifacts(
   artifactStore: ArtifactStore,
   loopId: string,
-  roundIndex: number,
+  roundNumber: number,
   data: {
-    round: unknown;
-    stateBefore: unknown;
-    stateAfter?: unknown;
-    result?: unknown;
+    inputState: unknown;
+    runResult?: unknown;
+    nextState?: unknown;
     error?: unknown;
-    control?: unknown;
-    nestedCalls?: string[];
+    nestedCalls?: {
+      agents: string[];
+      workflows: string[];
+    };
   }
-): Promise<{ roundPath: string }> {
-  const paddedIndex = roundIndex.toString().padStart(4, "0");
-  const baseDir = `loops/${loopId}/rounds/${paddedIndex}`;
+): Promise<void> {
+  const paddedNumber = roundNumber.toString().padStart(4, "0");
+  const baseDir = `loops/${loopId}/rounds/${paddedNumber}`;
 
-  const roundPath = await artifactStore.writeJson(`${baseDir}/round.json`, data.round);
-  await artifactStore.writeJson(`${baseDir}/state.before.json`, cloneJsonValue(data.stateBefore, "round state.before"));
-  
-  if (data.stateAfter !== undefined) {
-    await artifactStore.writeJson(`${baseDir}/state.after.json`, cloneJsonValue(data.stateAfter, "round state.after"));
+  await artifactStore.writeJson(`${baseDir}/input-state.json`, cloneJsonValue(data.inputState, "round inputState"));
+
+  if (data.runResult !== undefined) {
+    await artifactStore.writeJson(`${baseDir}/run-result.json`, cloneJsonValue(data.runResult, "round runResult"));
   }
-  
-  if (data.result !== undefined) {
-    await artifactStore.writeJson(`${baseDir}/result.preview.json`, createPreview(data.result));
+
+  if (data.nextState !== undefined) {
+    await artifactStore.writeJson(`${baseDir}/next-state.json`, cloneJsonValue(data.nextState, "round nextState"));
   }
-  
+
   if (data.error !== undefined) {
     await artifactStore.writeJson(`${baseDir}/error.json`, data.error);
   }
 
-  if (data.control !== undefined) {
-    await artifactStore.writeJson(`${baseDir}/control.json`, data.control);
-  }
-  
   if (data.nestedCalls !== undefined) {
     await artifactStore.writeJson(`${baseDir}/nested-calls.json`, data.nestedCalls);
   }
-
-  return { roundPath };
 }

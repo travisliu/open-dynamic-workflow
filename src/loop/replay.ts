@@ -41,20 +41,42 @@ export function stableHashJson(value: unknown): string {
  */
 export function buildLoopStartReplayMarker(input: {
   loopId: string;
-  label?: string;
+  label: string;
+  parentLoopId?: string;
+  maxRounds: number;
   optionsFingerprint: string;
   initialStateHash: string;
-  maxRounds: number;
   maxRoundsCeiling: number;
 }): string {
   return stableHashJson({
     kind: "loop-start",
     loopId: input.loopId,
     label: input.label,
+    ...(input.parentLoopId !== undefined ? { parentLoopId: input.parentLoopId } : {}),
+    maxRounds: input.maxRounds,
     optionsFingerprint: input.optionsFingerprint,
     initialStateHash: input.initialStateHash,
-    maxRounds: input.maxRounds,
     maxRoundsCeiling: input.maxRoundsCeiling,
+  });
+}
+
+import { normalizeLoopLabel } from "./id.js";
+
+function normalizeNestedCallSequence(
+  loopId: string,
+  label: string,
+  roundNumber: number,
+  sequence: string[]
+): string[] {
+  const normalizedLabel = normalizeLoopLabel(label);
+  const prefix = `${loopId}:${normalizedLabel}:round-${roundNumber}:`;
+  let workflowCount = 0;
+  return sequence.map((id) => {
+    if (id.startsWith(prefix)) {
+      workflowCount++;
+      return `${prefix}workflow-${workflowCount}`;
+    }
+    return id;
   });
 }
 
@@ -63,26 +85,30 @@ export function buildLoopStartReplayMarker(input: {
  */
 export function buildLoopRoundReplayMarker(input: {
   loopId: string;
-  roundId: string;
+  label: string;
   roundIndex: number;
+  roundNumber: number;
+  nestedCallSequence: string[];
   stateBeforeHash: string;
   stateAfterHash?: string;
-  break: boolean;
-  stopMatched?: boolean;
-  terminalReason?: string;
-  nestedCallSequence: string[];
+  status?: string;
 }): string {
+  const normalizedSequence = normalizeNestedCallSequence(
+    input.loopId,
+    input.label,
+    input.roundNumber,
+    input.nestedCallSequence
+  );
   return stableHashJson({
     kind: "loop-round",
     loopId: input.loopId,
-    roundId: input.roundId,
+    label: input.label,
     roundIndex: input.roundIndex,
+    roundNumber: input.roundNumber,
+    nestedCallSequence: normalizedSequence,
     stateBeforeHash: input.stateBeforeHash,
-    stateAfterHash: input.stateAfterHash,
-    break: input.break,
-    stopMatched: input.stopMatched,
-    terminalReason: input.terminalReason,
-    nestedCallSequence: input.nestedCallSequence,
+    ...(input.stateAfterHash !== undefined ? { stateAfterHash: input.stateAfterHash } : {}),
+    ...(input.status !== undefined ? { status: input.status } : {}),
   });
 }
 

@@ -51,7 +51,7 @@ Generated configuration is guaranteed to pass schema validation.
 | `timeoutMs` | `integer` | `900_000` | Positive integer (>= 1) in ms. | Global timeout for workflow execution. |
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Global model override fallback for provider execution. |
 | `workflow.maxDepth` | `integer` | `8` | Positive integer (>= 1). | Maximum recursion/invocation depth for nested workflows. |
-| `workflow.maxLoopRounds` | `integer` | `60` | Positive integer (>= 1). | Global ceiling for `loop()` `maxRounds`; static and runtime validation reject loop options above this value. |
+| `workflow.maxLoopRounds` | `integer` | `20` | Positive integer (>= 1). | Global ceiling for `loop()` `maxRounds`; static and runtime validation reject loop options above this value. |
 | `failFast` | `boolean` | `false` | Boolean. | If true, aborts execution immediately on the first task failure. |
 
 ---
@@ -62,7 +62,7 @@ Generated configuration is guaranteed to pass schema validation.
 | :--- | :--- | :--- | :--- | :--- |
 | `discovery.include` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns for workflow discovery. Used by `list workflows` and for name-based `run`/`validate` lookup. |
 | `maxDepth` | `integer` | `8` | Positive integer (>= 1). | Maximum recursion/invocation depth for nested workflows. |
-| `maxLoopRounds` | `integer` | `60` | Positive integer (>= 1). | Maximum allowed `maxRounds` value for `loop()` calls. |
+| `maxLoopRounds` | `integer` | `20` | Positive integer (>= 1). | Maximum allowed `maxRounds` value for `loop()` calls. |
 
 ---
 

@@ -22,18 +22,55 @@ describe("Loop Replay and Cache Helpers", () => {
   });
 
   describe("buildLoopStartReplayMarker", () => {
-    it("returns a deterministic hash", () => {
-      const marker = buildLoopStartReplayMarker({
+    it("returns a deterministic hash and changes when inputs change", () => {
+      const baseArgs = {
         loopId: "loop-1",
+        label: "loop-label",
         optionsFingerprint: "opts-hash",
         initialStateHash: "state-hash",
         maxRounds: 5,
-        maxRoundsCeiling: 60
-      });
-      expect(typeof marker).toBe("string");
-      expect(marker.length).toBe(64); // sha256 hex
+        maxRoundsCeiling: 20
+      };
+      const marker1 = buildLoopStartReplayMarker(baseArgs);
+      expect(typeof marker1).toBe("string");
+      expect(marker1.length).toBe(64); // sha256 hex
+
+      const marker2 = buildLoopStartReplayMarker({ ...baseArgs, initialStateHash: "state-hash-2" });
+      expect(marker1).not.toBe(marker2);
+
+      const marker3 = buildLoopStartReplayMarker({ ...baseArgs, optionsFingerprint: "opts-hash-2" });
+      expect(marker1).not.toBe(marker3);
+
+      const marker4 = buildLoopStartReplayMarker({ ...baseArgs, maxRoundsCeiling: 100 });
+      expect(marker1).not.toBe(marker4);
     });
   });
+
+  describe("buildLoopRoundReplayMarker", () => {
+    it("returns a deterministic hash and changes when inputs change", () => {
+      const baseArgs = {
+        loopId: "loop-1",
+        label: "loop-label",
+        roundIndex: 0,
+        roundNumber: 1,
+        nestedCallSequence: ["call-1"],
+        stateBeforeHash: "state-before-hash"
+      };
+      const marker1 = buildLoopRoundReplayMarker(baseArgs);
+      expect(typeof marker1).toBe("string");
+      expect(marker1.length).toBe(64);
+
+      const marker2 = buildLoopRoundReplayMarker({ ...baseArgs, stateBeforeHash: "state-before-hash-2" });
+      expect(marker1).not.toBe(marker2);
+
+      const marker3 = buildLoopRoundReplayMarker({ ...baseArgs, stateAfterHash: "state-after-hash" });
+      expect(marker1).not.toBe(marker3);
+
+      const marker4 = buildLoopRoundReplayMarker({ ...baseArgs, status: "failed" });
+      expect(marker1).not.toBe(marker4);
+    });
+  });
+
 
   describe("recordLoopCacheMarker", () => {
     const mockStore = {

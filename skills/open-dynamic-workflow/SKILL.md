@@ -42,7 +42,7 @@ When using this skill:
    - Use a single `agent()` when one agent can complete the task.
    - Use `parallel()` when independent reviews or analyses can run concurrently and then be summarized.
    - Use `pipeline()` when many items must pass through the same ordered stages.
-   - Use `loop()` when one stateful goal should repeat through serial rounds until explicit break, `stopWhen`, `maxRounds`, timeout, cancellation, or failure policy termination.
+   - Use `loop()` when one stateful goal should repeat through serial rounds until completed, failed, timed out, cancelled, or maxRounds is reached.
    - Use fan-out / fan-in when multiple independent branches should be summarized by a final agent.
 
 3. Draft valid workflow metadata first.
@@ -56,10 +56,9 @@ When using this skill:
    - Use `parallel()` with task thunks, not already-started promises.
    - Use `pipeline()` with named stage objects.
    - Use `ctx.agent()` inside pipeline stage `run()` functions.
-   - Use `loop(initialState, async (state, ctx) => ..., options)` for iterative stateful work.
-   - Use `ctx.agent()`, `ctx.workflow()`, and `ctx.parallel()` inside loop round callbacks.
-   - Use `ctx.break(value, { reason, state })` or return `{ break: true, value, reason, state }` to stop a loop successfully.
-   - Use `nextState` to advance state after a non-breaking round; when omitted, the previous state is reused.
+   - Use `loop({ label, initialState, options, run })` for iterative stateful work.
+   - Use `ctx.agent()` and `ctx.workflow()` inside loop round callbacks.
+   - Return `{ done: true, nextState }` to complete a loop successfully.
    - Use `phase()` to mark major progress points.
    - Use `log()` only for non-sensitive operational metadata.
    - Use `tool()` for invoking registered, deterministic tool definitions (only at workflow top level or inside a child workflow, not inside `parallel()`, pipeline stages, or loop rounds).
@@ -88,7 +87,7 @@ When using this skill:
 8. Make concurrency and failure behavior explicit when it matters.
    - Document expected `--concurrency`, `--timeout-ms`, and `--fail-fast` usage for CLI runs.
    - For `pipeline()`, choose `strategy`, `concurrency`, and `failFast` based on whether partial item failure should be tolerated.
-   - For `loop()`, choose `maxRounds`, `failureMode`, `timeoutMs`, `stopWhen`, and `nextState` based on whether partial round failure should stop, settle, or continue with `onFailureState`.
+   - For `loop()`, choose `maxRounds`, `failureMode`, and `timeoutMs` based on whether partial round failure should throw or settle.
    - Prefer item-tolerant behavior for analysis pipelines unless the user wants strict gating.
 
 9. Add run instructions.
@@ -104,7 +103,7 @@ When using this skill:
    - Check that `pipeline()` stages are named objects.
    - Check that pipeline stages use `ctx.agent()`.
    - Check that `loop()` has an initial state, a round callback, valid options, and a bounded `maxRounds`.
-   - Check that loop rounds use `ctx.agent()`, `ctx.workflow()`, and `ctx.parallel()`, not top-level `agent()` for round-local provider work.
+   - Check that loop rounds use `ctx.agent()` and `ctx.workflow()`, not top-level `agent()` for round-local provider work.
    - Check that `tool()` is only called at top level or inside child workflows, and uses valid/registered definition IDs.
    - Check that `tool()` is not called or aliased inside `parallel()` callbacks, pipeline stages, loop rounds, or shared-agent definitions.
    - Check for secrets in prompts/logs.
@@ -124,8 +123,7 @@ When using this skill:
 - Do not call global `agent()` from inside a pipeline stage; use `ctx.agent()`.
 - Do not call global `agent()` from inside a loop round when the work belongs to that round; use `ctx.agent()` and stable IDs such as `ctx.agentId("review")`.
 - Do not call `tool()` inside `parallel()` callbacks, pipeline stages, loop rounds, or `defineAgent.run()`.
-- Do not write unbounded loops. Use `loop()` with explicit `maxRounds`; the default is 5 and the global ceiling is configured by `workflow.maxLoopRounds` (default 60).
-- Do not use top-level domain data shaped like `{ break: true }` as a normal loop round result; top-level `break: true` is loop control flow. Nest domain data if it needs a `break` field.
+- Do not write unbounded loops. Use `loop()` with explicit, required `maxRounds`; the global ceiling is configured by `workflow.maxLoopRounds` (default 20).
 - Do not assume automatic patch application, automatic commits, automatic merge, approval gates, DAG pipelines, retries, worktree isolation, container isolation, distributed execution, or resumable runs are available unless explicitly implemented.
 - Do not log secrets, tokens, credentials, full private source dumps, or unnecessary raw provider output.
 - Only set `permissions: { mode: "dangerously-full-access" }` when the workflow explicitly requires autonomous execution without approval prompts. Document the reason in a workflow comment adjacent to the agent call.
@@ -361,12 +359,17 @@ export const meta = {
 
 phase("iterate");
 
-const loopResult = await loop(
-  {
+const loopResult = await loop({
+  label: "plan-review-loop",
+  initialState: {
     plan: "Initial migration plan",
     remainingIssues: []
   },
-  async (state, ctx) => {
+  options: {
+    maxRounds: 5,
+    failureMode: "throw"
+  },
+  run: async (state, ctx) => {
     const review = await ctx.agent({
       id: ctx.agentId("review"),
       provider: "codex",
@@ -396,35 +399,18 @@ const loopResult = await loop(
       structuredOutput: { transport: "auto" }
     });
 
-    if (verification.json?.accepted === true) {
-      return ctx.break(
-        { review, improvement, verification },
-        {
-          reason: verification.json.reason,
-          state: {
-            plan: verification.json.revisedPlan,
-            remainingIssues: []
-          }
-        }
-      );
-    }
+    const accepted = verification.json?.accepted === true;
+    const nextState = {
+      plan: verification.json?.revisedPlan ?? state.plan,
+      remainingIssues: verification.json?.remainingIssues ?? state.remainingIssues
+    };
 
     return {
-      review,
-      improvement,
-      verification
+      done: accepted,
+      nextState
     };
-  },
-  {
-    label: "plan-review-loop",
-    maxRounds: 5,
-    failureMode: "fail-fast",
-    nextState: ({ state, round }) => ({
-      plan: round.result?.verification?.json?.revisedPlan ?? state.plan,
-      remainingIssues: round.result?.verification?.json?.remainingIssues ?? state.remainingIssues
-    })
   }
-);
+});
 
 phase("summarize");
 
@@ -454,7 +440,7 @@ Before returning a final Open Dynamic Workflow workflow, confirm:
 - `parallel()` receives functions, not promises.
 - `pipeline()` stages are named objects.
 - Pipeline stages call `ctx.agent()`.
-- `loop()` uses a bounded `maxRounds`, round-local `ctx.agent()` calls, and explicit break or `stopWhen` conditions.
+- `loop()` uses a bounded, required `maxRounds`, round-local `ctx.agent()` calls, and returns `{ done, nextState }` to control execution.
 - Provider choices are intentional and explainable.
 - Structured output schemas are valid JSON Schema objects.
 - Structured output uses a supported transport: `auto`, `prompt`, or `validate-only`.

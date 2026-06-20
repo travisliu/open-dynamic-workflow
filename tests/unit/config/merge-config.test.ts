@@ -143,6 +143,6 @@ describe("Merge Config", () => {
     };
     const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
     expect(merged.workflow.maxDepth).toBe(3);
-    expect(merged.workflow.maxLoopRounds).toBe(60);
+    expect(merged.workflow.maxLoopRounds).toBe(20);
   });
 });

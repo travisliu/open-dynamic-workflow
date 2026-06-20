@@ -56,7 +56,7 @@ describe("Loop Artifacts Integration", () => {
       "--out", TEMP_DIR
     ]);
 
-    if (result.error) return;
+    expect(result.error).toBeNull();
 
     const runs = await fs.readdir(TEMP_DIR);
     const runDir = path.join(TEMP_DIR, runs[0]!);
@@ -68,8 +68,11 @@ describe("Loop Artifacts Integration", () => {
 
     const loopDir = path.join(loopsDir, loopDirs[0]!);
     expect(await fs.stat(path.join(loopDir, "loop.json"))).toBeDefined();
-    expect(await fs.stat(path.join(loopDir, "history.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "initial-state.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "final-state.json"))).toBeDefined();
     expect(await fs.stat(path.join(loopDir, "result.json"))).toBeDefined();
-    expect(await fs.stat(path.join(loopDir, "rounds/0001/round.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "rounds/0001/input-state.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "rounds/0001/run-result.json"))).toBeDefined();
+    expect(await fs.stat(path.join(loopDir, "rounds/0001/next-state.json"))).toBeDefined();
   });
 });

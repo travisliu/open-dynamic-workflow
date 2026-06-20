@@ -52,7 +52,8 @@ export type EventType =
   | "loop.completed"
   | "loop.failed"
   | "loop.cancelled"
-  | "loop.timed_out";
+  | "loop.timed_out"
+  | "loop.max_rounds";
 
 export interface EventEnvelope<TPayload = unknown> {
   schemaVersion: "open-dynamic-workflow.event.v1";
@@ -387,6 +388,7 @@ export interface LoopStartedPayload {
   loopId: string;
   workflowInvocationId: string;
   label?: string;
+  parentLoopId?: string;
   maxRounds: number;
   timeoutMs?: number;
   artifactPath?: string;
@@ -398,6 +400,7 @@ export interface LoopRoundStartedPayload {
   workflowInvocationId: string;
   label?: string;
   roundIndex: number;
+  roundNumber: number;
   roundId: string;
   startedAt: string;
   artifactPath?: string;
@@ -408,11 +411,11 @@ export interface LoopRoundTerminalPayload {
   workflowInvocationId: string;
   label?: string;
   roundIndex: number;
+  roundNumber: number;
   roundId: string;
   status: "completed" | "failed" | "cancelled" | "timed_out";
   durationMs: number;
-  break: boolean;
-  stopMatched?: boolean;
+  statePreview?: unknown;
   reason?: string;
   artifactPath?: string;
   error?: SerializedError;
@@ -422,12 +425,13 @@ export interface LoopTerminalPayload {
   loopId: string;
   workflowInvocationId: string;
   label?: string;
-  status: "satisfied" | "max_rounds" | "failed" | "cancelled" | "timed_out";
-  accepted: boolean;
+  status: "succeeded" | "max_rounds" | "failed" | "cancelled" | "timed_out";
+  roundsCompleted: number;
   roundCount: number;
   maxRounds: number;
   durationMs: number;
   reason?: string;
   artifactPath?: string;
   error?: SerializedError;
+  statePreview?: unknown;
 }

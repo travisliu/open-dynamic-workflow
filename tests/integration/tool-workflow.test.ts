@@ -145,12 +145,12 @@ describe("Tool Workflow Integration", () => {
     expect(report.tools[0].definitionId).toBe("echo");
   });
 
-  it("should reject indirect child tool call from forbidden parallel ancestry (Case 53)", async () => {
+  it("should allow indirect child tool call from parallel ancestry (Case 53)", async () => {
     const childWfPath = path.join(workflowDir, "child.workflow.ts");
     await fs.writeFile(childWfPath, `
       export const meta = { name: "child-tool", description: "child desc" };
-      export default async () => {
-        return await tool({ definition: "echo", args: { msg: "forbidden" } });
+      export default async (ctx) => {
+        return await ctx.tool({ definition: "echo", args: { msg: "allowed" } });
       };
     `);
 
@@ -173,9 +173,9 @@ describe("Tool Workflow Integration", () => {
       "json"
     ], projectDir);
 
+    expect(result.error).toBeNull();
     const report = JSON.parse(result.stdout);
-    expect(report.status).toBe("failed");
-    expect(report.error.message).toContain("tool() is not allowed in parallel task context");
+    expect(report.status).toBe("succeeded");
   });
 
   it("should produce failure artifacts and report summary for invalid output (Case 55)", async () => {

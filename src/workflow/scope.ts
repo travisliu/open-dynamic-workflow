@@ -106,27 +106,13 @@ export function deriveChildWorkflowToolScope(
   parentScope: DslExecutionScope | undefined,
   childInvocation: WorkflowInvocationContext
 ): DslExecutionScope {
-  // If no parent scope, start fresh
-  if (!parentScope) {
-    return {
-      runId: childInvocation.runId,
-      workflowInvocationId: childInvocation.workflowInvocationId,
-      parentWorkflowInvocationId: childInvocation.parentWorkflowInvocationId,
-      location: "workflow-top-level",
-      toolAllowed: true,
-      topLevelWindow: false
-    };
-  }
-
-  // Inherit tool restriction if any
   return {
     runId: childInvocation.runId,
     workflowInvocationId: childInvocation.workflowInvocationId,
     parentWorkflowInvocationId: childInvocation.parentWorkflowInvocationId,
     location: "workflow-top-level",
-    toolAllowed: parentScope.toolAllowed,
-    topLevelWindow: false,
-    inheritedToolRestriction: parentScope.inheritedToolRestriction || (parentScope.toolAllowed ? undefined : parentScope.location)
+    toolAllowed: true,
+    topLevelWindow: false
   };
 }
 

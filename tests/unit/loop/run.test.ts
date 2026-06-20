@@ -20,7 +20,6 @@ describe("Loop Runner", () => {
     mockDsl = {
       agent: vi.fn(),
       workflow: vi.fn(),
-      parallel: vi.fn(),
       log: vi.fn(),
     };
     mockRuntime = {
@@ -28,7 +27,7 @@ describe("Loop Runner", () => {
       artifactsDir: "/tmp",
       eventSink: mockEventSink,
       artifactStore: mockArtifactStore,
-      config: { workflow: { maxLoopRounds: 60 } },
+      config: { workflow: { maxLoopRounds: 20 } },
       loopCounter: 0,
       loopSummaries: [],
       callSequence: 0,
@@ -36,238 +35,155 @@ describe("Loop Runner", () => {
     };
   });
 
-  it("executes serial rounds until satisfied", async () => {
-    const runRound = vi.fn()
-      .mockResolvedValueOnce({ count: 1 })
-      .mockResolvedValueOnce({ break: true, value: "final" });
+  it("executes serial rounds until done in throw mode", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ done: false, nextState: { count: 1 } })
+      .mockResolvedValueOnce({ done: true, nextState: { count: 2 } });
 
     const result = await runLoop({
-      initialState: { count: 0 },
-      runRound,
-      options: { maxRounds: 5 },
+      loopInput: {
+        label: "test-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 5, failureMode: "throw" },
+        run
+      },
       runtime: mockRuntime,
       signal: new AbortController().signal,
       dsl: mockDsl,
     });
 
-    expect(result.status).toBe("satisfied");
-    expect(result.accepted).toBe(true);
-    expect(result.roundCount).toBe(2);
-    expect(result.final).toBe("final");
-    expect(runRound).toHaveBeenCalledTimes(2);
+    expect(result).toEqual({ count: 2 });
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(mockRuntime.loopSummaries[0].status).toBe("succeeded");
+    expect(mockRuntime.loopSummaries[0].roundsCompleted).toBe(2);
   });
 
-  it("stops at maxRounds", async () => {
-    const runRound = vi.fn().mockResolvedValue({ count: 1 });
+  it("executes serial rounds until done in settled mode", async () => {
+    const run = vi.fn()
+      .mockResolvedValueOnce({ done: false, nextState: { count: 1 } })
+      .mockResolvedValueOnce({ done: true, nextState: { count: 2 } });
 
     const result = await runLoop({
-      initialState: { count: 0 },
-      runRound,
-      options: { maxRounds: 2 },
+      loopInput: {
+        label: "test-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 5, failureMode: "settled" },
+        run
+      },
       runtime: mockRuntime,
       signal: new AbortController().signal,
       dsl: mockDsl,
     });
 
-    expect(result.status).toBe("max_rounds");
-    expect(result.accepted).toBe(false);
-    expect(result.roundCount).toBe(2);
-  });
-
-  it("evaluates stopWhen", async () => {
-    const runRound = vi.fn().mockResolvedValue({ count: 1 });
-    const stopWhen = vi.fn()
-      .mockResolvedValueOnce(false)
-      .mockResolvedValueOnce(true);
-
-    const result = await runLoop({
-      initialState: { count: 0 },
-      runRound,
-      options: { maxRounds: 5, stopWhen },
-      runtime: mockRuntime,
-      signal: new AbortController().signal,
-      dsl: mockDsl,
+    expect(result).toEqual({
+      ok: true,
+      status: "succeeded",
+      label: "test-loop",
+      loopId: "test-loop",
+      roundsCompleted: 2,
+      finalState: { count: 2 },
+      artifacts: {
+        dir: "loops/test-loop"
+      }
     });
-
-    expect(result.status).toBe("satisfied");
-    expect(result.roundCount).toBe(2);
-    expect(stopWhen).toHaveBeenCalledTimes(2);
   });
 
-  it("handles fail-fast failure mode", async () => {
-    const runRound = vi.fn().mockRejectedValue(new Error("boom"));
+  it("throws loop exhaustion error at maxRounds in throw mode", async () => {
+    const run = vi.fn().mockResolvedValue({ done: false, nextState: { count: 1 } });
 
     await expect(runLoop({
-      initialState: { count: 0 },
-      runRound,
-      options: { failureMode: "fail-fast" },
+      loopInput: {
+        label: "test-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 2, failureMode: "throw" },
+        run
+      },
       runtime: mockRuntime,
       signal: new AbortController().signal,
       dsl: mockDsl,
-    })).rejects.toThrow("boom");
+    })).rejects.toThrow("test-loop");
 
-    expect(mockRuntime.loopSummaries[0].status).toBe("failed");
+    expect(mockRuntime.loopSummaries[0].status).toBe("max_rounds");
   });
 
-  it("handles settled failure mode", async () => {
-    const runRound = vi.fn().mockRejectedValue(new Error("boom"));
+  it("returns failure envelope at maxRounds in settled mode", async () => {
+    const run = vi.fn().mockResolvedValue({ done: false, nextState: { count: 1 } });
 
     const result = await runLoop({
-      initialState: { count: 0 },
-      runRound,
-      options: { failureMode: "settled" },
+      loopInput: {
+        label: "test-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 2, failureMode: "settled" },
+        run
+      },
       runtime: mockRuntime,
       signal: new AbortController().signal,
       dsl: mockDsl,
     });
 
-    expect(result.status).toBe("failed");
-    expect(result.accepted).toBe(false);
-    expect(result.error?.message).toBe("boom");
+    expect(result).toEqual({
+      ok: false,
+      status: "max_rounds",
+      label: "test-loop",
+      loopId: "test-loop",
+      roundsCompleted: 2,
+      finalState: { count: 1 },
+      error: expect.any(Object),
+      artifacts: {
+        dir: "loops/test-loop"
+      }
+    });
   });
 
-  it("honors loop-level timeout", async () => {
-    const runRound = () => new Promise(resolve => setTimeout(resolve, 100));
+  it("honors loop-level timeout in throw mode", async () => {
+    const run = () => new Promise(resolve => setTimeout(resolve, 100));
+
+    await expect(runLoop({
+      loopInput: {
+        label: "test-loop",
+        initialState: {},
+        options: { maxRounds: 5, timeoutMs: 10, failureMode: "throw" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    })).rejects.toThrow("timed out");
+
+    expect(mockRuntime.loopSummaries[0].status).toBe("timed_out");
+  });
+
+  it("honors loop-level timeout in settled mode", async () => {
+    const run = () => new Promise(resolve => setTimeout(resolve, 100));
 
     const result = await runLoop({
-      initialState: {},
-      runRound,
-      options: { timeoutMs: 10 },
+      loopInput: {
+        label: "test-loop",
+        initialState: {},
+        options: { maxRounds: 5, timeoutMs: 10, failureMode: "settled" },
+        run
+      },
       runtime: mockRuntime,
       signal: new AbortController().signal,
       dsl: mockDsl,
     });
 
-    expect(result.status).toBe("timed_out");
-  });
-
-  it("uses previous state by default when nextState is omitted", async () => {
-    const runRound = vi.fn().mockImplementation((state) => {
-      return { count: state.count + 1 }; // Return something different
+    expect(result).toEqual({
+      ok: false,
+      status: "timed_out",
+      label: "test-loop",
+      loopId: "test-loop",
+      roundsCompleted: 1,
+      finalState: {},
+      error: expect.any(Object),
+      artifacts: {
+        dir: "loops/test-loop"
+      }
     });
-
-    const result = await runLoop({
-      initialState: { count: 42 },
-      runRound,
-      options: { maxRounds: 3 },
-      runtime: mockRuntime,
-      signal: new AbortController().signal,
-      dsl: mockDsl,
-    });
-
-    expect(result.roundCount).toBe(3);
-    // Every round should have received the same initial state { count: 42 }
-    expect(runRound).toHaveBeenNthCalledWith(1, { count: 42 }, expect.anything());
-    expect(runRound).toHaveBeenNthCalledWith(2, { count: 42 }, expect.anything());
-    expect(runRound).toHaveBeenNthCalledWith(3, { count: 42 }, expect.anything());
-    
-    expect(result.finalState).toEqual({ count: 42 });
-  });
-
-  it("updates state when nextState is provided", async () => {
-    const runRound = vi.fn().mockImplementation((state) => ({ val: state.val + 1 }));
-    const nextState = vi.fn().mockImplementation(({ state, round }) => ({ val: state.val + round.result.val }));
-
-    const result = await runLoop({
-      initialState: { val: 10 },
-      runRound,
-      options: { maxRounds: 2, nextState },
-      runtime: mockRuntime,
-      signal: new AbortController().signal,
-      dsl: mockDsl,
-    });
-
-    // Round 1: state {val:10}, result {val:11}. nextState => 10 + 11 = 21.
-    // Round 2: state {val:21}, result {val:22}. nextState => not called if maxRounds reached
-    expect(runRound).toHaveBeenNthCalledWith(1, { val: 10 }, expect.anything());
-    expect(runRound).toHaveBeenNthCalledWith(2, { val: 21 }, expect.anything());
-    expect(result.finalState).toEqual({ val: 21 });
-  });
-
-  it("passes current round history to stopWhen and nextState", async () => {
-    const runRound = vi.fn().mockImplementation((state) => ({ count: state.count + 1 }));
-    let historyInStopWhen: any[] = [];
-    let historyInNextState: any[] = [];
-
-    const stopWhen = vi.fn().mockImplementation(({ history }) => {
-      historyInStopWhen = [...history];
-      return history.length >= 2;
-    });
-
-    const nextState = vi.fn().mockImplementation(({ state, round, history }) => {
-      historyInNextState = [...history];
-      return { count: state.count + round.result.count };
-    });
-
-    await runLoop({
-      initialState: { count: 0 },
-      runRound,
-      options: { maxRounds: 5, stopWhen, nextState },
-      runtime: mockRuntime,
-      signal: new AbortController().signal,
-      dsl: mockDsl,
-    });
-
-    // Round 1:
-    // historyInStopWhen should have 1 entry (round 1)
-    // historyInNextState should have 1 entry (round 1)
-    // Round 2:
-    // historyInStopWhen should have 2 entries (round 1, round 2)
-    // result stops here because stopWhen returns true
-
-    expect(historyInStopWhen.length).toBe(2);
-    expect(historyInStopWhen[0].index).toBe(1);
-    expect(historyInStopWhen[1].index).toBe(2);
-    expect(historyInStopWhen[1].result).toEqual({ count: 2 });
-    
-    // nextState was only called for Round 1
-    expect(historyInNextState.length).toBe(1);
-    expect(historyInNextState[0].index).toBe(1);
-  });
-
-  it("clears timeout and removes abort listener on normal completion", async () => {
-    vi.useFakeTimers();
-    const runRound = vi.fn().mockResolvedValue({ break: true });
-    const signal = new AbortController().signal;
-    const removeEventListenerSpy = vi.spyOn(signal, "removeEventListener");
-
-    await runLoop({
-      initialState: {},
-      runRound,
-      options: { timeoutMs: 1000 },
-      runtime: mockRuntime,
-      signal,
-      dsl: mockDsl,
-    });
-
-    expect(vi.getTimerCount()).toBe(0);
-    expect(removeEventListenerSpy).toHaveBeenCalledWith("abort", expect.any(Function));
-    vi.useRealTimers();
-  });
-
-  it("does not accept break if timeout occurs during round execution", async () => {
-    const runRound = () => new Promise(resolve => setTimeout(() => resolve({ break: true, value: "too-late" }), 100));
-    const nextState = vi.fn().mockImplementation(({ state }) => state);
-    const stopWhen = vi.fn().mockReturnValue(false);
-
-    const result = await runLoop({
-      initialState: {},
-      runRound,
-      options: { timeoutMs: 10, nextState, stopWhen },
-      runtime: mockRuntime,
-      signal: new AbortController().signal,
-      dsl: mockDsl,
-    });
-
-    expect(result.status).toBe("timed_out");
-    expect(result.accepted).toBe(false);
-    expect(result.final).toBeUndefined();
-    expect(nextState).not.toHaveBeenCalled();
-    expect(stopWhen).not.toHaveBeenCalled();
   });
 
   it("propagates active workflow invocation ID to loop events", async () => {
-    const runRound = vi.fn().mockResolvedValue({ break: true });
+    const run = vi.fn().mockResolvedValue({ done: true, nextState: {} });
     const mockInvocation = {
       workflowInvocationId: "invocation-123",
       workflowName: "test-flow",
@@ -277,9 +193,12 @@ describe("Loop Runner", () => {
 
     await withActiveWorkflowInvocation(mockInvocation, async () => {
       await runLoop({
-        initialState: {},
-        runRound,
-        options: {},
+        loopInput: {
+          label: "test-loop",
+          initialState: {},
+          options: { maxRounds: 5 },
+          run
+        },
         runtime: mockRuntime,
         signal: new AbortController().signal,
         dsl: mockDsl,
@@ -298,5 +217,197 @@ describe("Loop Runner", () => {
     expect(mockEventSink.emit).toHaveBeenCalledWith("loop.completed", expect.objectContaining({
       workflowInvocationId: "invocation-123"
     }));
+  });
+
+  it("handles non-JSON-safe initialState in throw mode", async () => {
+    const run = vi.fn();
+    const badState = { fn: () => {} };
+
+    await expect(runLoop({
+      loopInput: {
+        label: "bad-state-loop",
+        initialState: badState,
+        options: { maxRounds: 5, failureMode: "throw" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    })).rejects.toThrow("initialState is not JSON-safe");
+
+    expect(run).not.toHaveBeenCalled();
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/bad-state-loop/loop.json", expect.any(Object));
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/bad-state-loop/error.json", expect.any(Object));
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/bad-state-loop/result.json", expect.objectContaining({
+      status: "failed",
+      roundsCompleted: 0,
+      initialState: undefined,
+    }));
+    expect(mockRuntime.loopSummaries[0].status).toBe("failed");
+    expect(mockRuntime.loopSummaries[0].roundsCompleted).toBe(0);
+    expect(mockEventSink.emit).toHaveBeenCalledWith("loop.started", expect.any(Object));
+    expect(mockEventSink.emit).toHaveBeenCalledWith("loop.failed", expect.any(Object));
+  });
+
+  it("handles cyclic initialState in settled mode", async () => {
+    const run = vi.fn();
+    const cyclicState: any = {};
+    cyclicState.self = cyclicState;
+
+    await expect(runLoop({
+      loopInput: {
+        label: "cyclic-state-loop",
+        initialState: cyclicState,
+        options: { maxRounds: 5, failureMode: "settled" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    })).rejects.toThrow("initialState is not JSON-safe");
+
+    expect(run).not.toHaveBeenCalled();
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/cyclic-state-loop/loop.json", expect.any(Object));
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/cyclic-state-loop/error.json", expect.any(Object));
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/cyclic-state-loop/result.json", expect.objectContaining({
+      status: "failed",
+      roundsCompleted: 0,
+      initialState: undefined,
+    }));
+    expect(mockRuntime.loopSummaries[0].status).toBe("failed");
+    expect(mockRuntime.loopSummaries[0].roundsCompleted).toBe(0);
+    expect(mockEventSink.emit).toHaveBeenCalledWith("loop.started", expect.any(Object));
+    expect(mockEventSink.emit).toHaveBeenCalledWith("loop.failed", expect.any(Object));
+  });
+
+  it("prevents state mutation from affecting artifacts/records in success case", async () => {
+    const run = vi.fn().mockImplementation(async (state: any) => {
+      state.count = 999;
+      return { done: true, nextState: { count: 1 } };
+    });
+
+    const result = await runLoop({
+      loopInput: {
+        label: "mutate-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 5, failureMode: "throw" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    });
+
+    expect(result).toEqual({ count: 1 });
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith(
+      "loops/mutate-loop/rounds/0001/input-state.json",
+      { count: 0 }
+    );
+    expect(mockRuntime.loopSummaries[0].status).toBe("succeeded");
+  });
+
+  it("prevents state mutation from affecting records in failure case", async () => {
+    const run = vi.fn().mockImplementation(async (state: any) => {
+      state.count = 999;
+      throw new Error("failed round");
+    });
+
+    await expect(runLoop({
+      loopInput: {
+        label: "mutate-fail-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 5, failureMode: "throw" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    })).rejects.toThrow("failed round");
+
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith(
+      "loops/mutate-fail-loop/rounds/0001/input-state.json",
+      { count: 0 }
+    );
+  });
+
+  it("ensures each round in multi-round receives non-mutated state", async () => {
+    const run = vi.fn()
+      .mockImplementationOnce(async (state: any) => {
+        state.count = 999;
+        return { done: false, nextState: { count: 1 } };
+      })
+      .mockImplementationOnce(async (state: any) => {
+        return { done: true, nextState: { count: state.count + 1 } };
+      });
+
+    const result = await runLoop({
+      loopInput: {
+        label: "multi-mutate-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 5, failureMode: "throw" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    });
+
+    expect(result).toEqual({ count: 2 });
+    expect(run).toHaveBeenNthCalledWith(2, { count: 1 }, expect.any(Object));
+  });
+
+  it("rejects unsupported properties in run result in throw mode and writes error artifacts", async () => {
+    const run = vi.fn().mockResolvedValue({ done: true, nextState: {}, debug: "x" });
+
+    await expect(runLoop({
+      loopInput: {
+        label: "unsupported-key-loop",
+        initialState: {},
+        options: { maxRounds: 5, failureMode: "throw" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    })).rejects.toThrow("contains unsupported property 'debug'");
+
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/unsupported-key-loop/rounds/0001/error.json", expect.any(Object));
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/unsupported-key-loop/error.json", expect.any(Object));
+    expect(mockArtifactStore.writeJson).toHaveBeenCalledWith("loops/unsupported-key-loop/result.json", expect.objectContaining({
+      status: "failed",
+      roundsCompleted: 1,
+    }));
+    expect(mockRuntime.loopSummaries[0].status).toBe("failed");
+    expect(mockEventSink.emit).toHaveBeenCalledWith("loop.round.failed", expect.any(Object));
+    expect(mockEventSink.emit).toHaveBeenCalledWith("loop.failed", expect.any(Object));
+  });
+
+  it("rejects unsupported properties in run result in settled mode and returns settled failure envelope", async () => {
+    const run = vi.fn().mockResolvedValue({ done: true, nextState: {}, debug: () => {} });
+
+    const result = await runLoop({
+      loopInput: {
+        label: "unsupported-key-settled-loop",
+        initialState: {},
+        options: { maxRounds: 5, failureMode: "settled" },
+        run
+      },
+      runtime: mockRuntime,
+      signal: new AbortController().signal,
+      dsl: mockDsl,
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: "failed",
+      label: "unsupported-key-settled-loop",
+      loopId: "unsupported-key-settled-loop",
+      roundsCompleted: 1,
+      finalState: {},
+      error: expect.any(Object),
+      artifacts: {
+        dir: "loops/unsupported-key-settled-loop"
+      }
+    });
   });
 });

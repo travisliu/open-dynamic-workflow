@@ -425,179 +425,100 @@ agent tasks start immediately.
 
 ---
 
-## 6. `loop()`
+### 6. `loop()`
 
-Runs goal-oriented repeated execution of one callback against a single evolving state.
-
-Use `loop()` for workflows like review -> fix plan -> verify -> repeat until accepted. Use `pipeline()` instead when many independent items need the same ordered stages.
+Runs goal-oriented repeated execution of a callback until a stop condition is met or maximum rounds are reached.
 
 ### Example
 
 ```ts
-const loopResult = await loop(
-  {
-    plan: "Initial migration plan",
-    remainingIssues: []
-  },
-  async (state, ctx) => {
-    const review = await ctx.agent({
-      id: ctx.agentId("review"),
+const result = await loop({
+  label: "review-loop",
+  initialState: { attempt: 0, remainingIssues: [] },
+  options: { maxRounds: 5, failureMode: "throw", timeoutMs: 300_000 },
+  run: async (state, ctx) => {
+    const nextState = { ...state, attempt: state.attempt + 1 };
+    
+    await ctx.agent({
+      id: ctx.agentId(`review`),
       provider: "codex",
-      prompt: `Review this plan:\n${JSON.stringify(state, null, 2)}`
+      prompt: `Review current state (attempt ${nextState.attempt}): ${JSON.stringify(state)}`
     });
 
-    const verification = await ctx.agent({
-      id: ctx.agentId("verify"),
-      provider: "codex",
-      prompt: `Return JSON with accepted, reason, remainingIssues, and revisedPlan:\n${JSON.stringify(review, null, 2)}`,
-      schema: {
-        type: "object",
-        properties: {
-          accepted: { type: "boolean" },
-          reason: { type: "string" },
-          remainingIssues: { type: "array", items: { type: "string" } },
-          revisedPlan: { type: "string" }
-        },
-        required: ["accepted", "reason", "remainingIssues", "revisedPlan"]
-      },
-      structuredOutput: { transport: "auto" }
-    });
-
-    if (verification.json?.accepted === true) {
-      return ctx.break(
-        { review, verification },
-        {
-          reason: verification.json.reason,
-          state: {
-            plan: verification.json.revisedPlan,
-            remainingIssues: []
-          }
-        }
-      );
-    }
-
-    return { review, verification };
-  },
-  {
-    label: "plan-review-loop",
-    maxRounds: 5,
-    failureMode: "fail-fast",
-    nextState: ({ state, round }) => ({
-      plan: round.result?.verification?.json?.revisedPlan ?? state.plan,
-      remainingIssues: round.result?.verification?.json?.remainingIssues ?? state.remainingIssues
-    })
+    return {
+      done: nextState.remainingIssues.length === 0,
+      nextState
+    };
   }
-);
+});
 ```
 
 ### Conceptual signature
 
 ```ts
-loop<TState, TRoundResult, TFinal = TRoundResult>(
-  initialState: TState,
-  runRound: (
-    state: TState,
-    context: LoopRoundContext<TState, TRoundResult, TFinal>
-  ) => Promise<TRoundReturn<TRoundResult, TFinal>> | TRoundReturn<TRoundResult, TFinal>,
-  options?: LoopOptions<TState, TRoundResult, TFinal>
-): Promise<LoopResult<TState, TFinal>>;
-```
+loop<TState>(input: LoopInput<TState>): Promise<TState | LoopSettledResult<TState>>;
 
-### `LoopOptions`
+interface LoopInput<TState> {
+  label: string;
+  initialState: TState;
+  options: LoopOptions;
+  run: (state: TState, context: LoopRoundContext) => Promise<LoopRoundResult<TState>>;
+}
 
-```ts
-interface LoopOptions<TState, TRoundResult, TFinal = TRoundResult> {
-  label?: string;
-  maxRounds?: number;
-  stopWhen?: (input: {
-    round: LoopRoundView<TRoundResult>;
-    state: TState;
-    history: LoopHistoryEntry[];
-  }) => boolean | Promise<boolean>;
-  nextState?: (input: {
-    state: TState;
-    round: LoopRoundView<TRoundResult>;
-    history: LoopHistoryEntry[];
-  }) => TState | Promise<TState>;
-  onFailureState?: (input: {
-    state: TState;
-    error: SerializedError;
-    round: LoopHistoryEntry;
-    history: LoopHistoryEntry[];
-  }) => TState | Promise<TState>;
-  failureMode?: "fail-fast" | "settled" | "continue";
+interface LoopOptions {
+  maxRounds: number; // Required. Enforced ceiling (default max 20).
+  failureMode?: "throw" | "settled"; // Default "throw"
   timeoutMs?: number;
-  resultMode?: "history";
-  metadata?: Record<string, unknown>;
+}
+
+interface LoopRoundResult<TState> {
+  done: boolean;
+  nextState: TState;
 }
 ```
 
 ### `LoopRoundContext`
 
-Inside a loop round, use the provided round context:
+Inside the round callback, you must use the provided `context` object:
 
 ```ts
-interface LoopRoundContext<TState, TRoundResult, TFinal = TRoundResult> {
+interface LoopRoundContext {
   loopId: string;
-  loopLabel?: string;
-  runId: string;
-  artifactsDir: string;
+  label: string;
   roundIndex: number;
-  roundId: string;
-  maxRounds: number;
+  roundNumber: number;
   signal: AbortSignal;
 
   agent(input: AgentCallInput): Promise<AgentResult>;
   workflow<T = unknown>(input: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>>;
-  parallel<TTasks extends ParallelTasks<unknown>>(tasks: TTasks): Promise<ParallelResult<TTasks>>;
   log(message: string, data?: unknown): void;
   agentId(suffix?: string): string;
-  break<TBreakFinal = TFinal>(
-    value?: TBreakFinal,
-    options?: { reason?: string; state?: TState }
-  ): LoopBreak<TBreakFinal>;
   sleep(ms: number): Promise<void>;
 }
 ```
 
-### Terminal conditions
+> [!NOTE]
+> `ctx.tool()`, `ctx.parallel()`, `ctx.break()`, `runId`, `artifactsDir`, `roundId`, and `maxRounds` are **not** exposed on the loop context inside the round callback.
+>
+> If you provide an explicit `id` when calling `ctx.agent({ id: ... })`, it is preserved exactly. For deterministic, round-scoped IDs, use `ctx.agentId("suffix")` (e.g. `id: ctx.agentId("suffix")`).
 
-The loop stops when one of these conditions occurs:
+### Success and Failure Semantics
 
-* The round returns `ctx.break(value, { reason, state })`.
-* The round returns a top-level `{ break: true, value, reason, state }` object.
-* `stopWhen({ round, state, history })` returns true after a non-breaking round.
-* `maxRounds` is reached.
-* `timeoutMs` expires.
-* Workflow cancellation occurs.
-* `failureMode` stops execution after a failed round.
+* **Throw Mode (`failureMode: "throw"`)**:
+  * Success: Returns the final `nextState` directly.
+  * Failure: Throws an error on failed, timed-out, cancelled, or max-round exhaustion outcomes.
+* **Settled Mode (`failureMode: "settled"`)**:
+  * Returns success/failure envelopes instead of throwing:
+    * Settled Success: `{ ok: true, status: "succeeded", label, loopId, roundsCompleted, finalState, artifacts: { dir } }`
+    * Settled Failure: `{ ok: false, status: "failed" | "cancelled" | "timed_out" | "max_rounds", label, loopId, roundsCompleted, finalState?, error?, artifacts: { dir } }`
 
-### State progression
+### Rules
 
-* The first round receives `initialState`.
-* After a non-breaking round, `nextState({ state, round, history })` derives the state for the next round.
-* If `nextState` is omitted, the previous state is reused.
-* `nextState` is not called after break, stop, or final max-round termination.
-
-### Failure modes
-
-| Mode | Behavior |
-| ---- | -------- |
-| `"fail-fast"` | Default. A failed round records partial loop data and fails the workflow. |
-| `"settled"` | Records failure data and returns a failed `LoopResult` without failing the workflow. |
-| `"continue"` | Requires `onFailureState`; failed rounds use it to derive the next state and continue. |
-
-### Loop rules
-
-* `maxRounds` defaults to `5`.
-* `workflow.maxLoopRounds` defaults to `60` and is the global ceiling for loop `maxRounds`.
-* Static and runtime validation reject `maxRounds` above the resolved ceiling.
-* `ctx.agent()`, `ctx.workflow()`, and `ctx.parallel()` are allowed inside loop rounds.
-* Provider-backed work inside loop rounds must go through `ctx.agent()` and the scheduler.
-* Use `ctx.agentId("review")` for stable round-scoped agent IDs.
-* `tool()` and `ctx.tool()` are forbidden inside loop rounds.
-* A top-level `{ break: true }` return is control flow. Nest domain data if it needs a `break` field.
-* Loop events and reports should stay compact; full state/result details belong in artifacts.
+* `ctx.agent()` and `ctx.workflow()` are allowed inside rounds.
+* `tool()` and `ctx.tool()` are **forbidden** inside loop callbacks.
+* `maxRounds` is required for every loop call. `workflow.maxLoopRounds` acts as a ceiling (default 20), not a default value.
+* Loop results are persisted in run artifacts.
+* Prefix-based cache reuse is supported; cache mismatch stops prefix reuse at the first diverging loop marker.
 
 ---
 
@@ -1245,53 +1166,45 @@ Good: call `tool()` before the loop, or call a child workflow that performs top-
 ```ts
 const input = await tool({ definition: "read-json", args: { path: "input.json" } });
 
-const result = await loop(input, async (state, ctx) => {
-  const review = await ctx.agent({
-    id: ctx.agentId("review"),
-    prompt: `Review this input:\n${JSON.stringify(state, null, 2)}`
-  });
-  return ctx.break(review, { reason: "reviewed" });
+const result = await loop({
+  label: "review-input-loop",
+  initialState: input,
+  options: { maxRounds: 5 },
+  run: async (state, ctx) => {
+    const review = await ctx.agent({
+      id: ctx.agentId("review"),
+      prompt: `Review this input:\n${JSON.stringify(state, null, 2)}`
+    });
+    return { done: true, nextState: review };
+  }
 });
 ```
 
 Bad: using an unbounded or above-ceiling loop.
 
 ```ts
-const result = await loop({}, async () => {
-  return {};
-}, {
-  maxRounds: 1000 // ❌ Rejected when workflow.maxLoopRounds is the default 60.
+const result = await loop({
+  label: "invalid-ceiling-loop",
+  initialState: {},
+  options: {
+    maxRounds: 1000 // ❌ Rejected when workflow.maxLoopRounds is the default 20.
+  },
+  run: async () => {
+    return { done: true, nextState: {} };
+  }
 });
 ```
 
 Good:
 
 ```ts
-const result = await loop({}, async (state, ctx) => {
-  return ctx.break({ done: true }, { reason: "complete" });
-}, {
-  maxRounds: 5
-});
-```
-
-Bad: returning top-level `{ break: true }` as ordinary domain data.
-
-```ts
-const result = await loop({}, async () => {
-  return { break: true, value: "domain flag" }; // ❌ Stops the loop.
-});
-```
-
-Good:
-
-```ts
-const result = await loop({}, async () => {
-  return {
-    result: {
-      break: true,
-      value: "domain flag"
-    }
-  };
+const result = await loop({
+  label: "valid-loop",
+  initialState: {},
+  options: { maxRounds: 5 },
+  run: async (state, ctx) => {
+    return { done: true, nextState: {} };
+  }
 });
 ```
 
@@ -1472,12 +1385,17 @@ export const meta = {
 
 phase("iterate");
 
-const loopResult = await loop(
-  {
+const loopResult = await loop({
+  label: "loop-review",
+  initialState: {
     plan: "Initial implementation plan",
     remainingIssues: []
   },
-  async (state, ctx) => {
+  options: {
+    maxRounds: 5,
+    failureMode: "throw"
+  },
+  run: async (state, ctx) => {
     const review = await ctx.agent({
       id: ctx.agentId("review"),
       provider: "codex",
@@ -1501,27 +1419,18 @@ const loopResult = await loop(
       structuredOutput: { transport: "auto" }
     });
 
-    if (verification.json?.accepted === true) {
-      return ctx.break(
-        { review, verification },
-        {
-          reason: verification.json.reason,
-          state: { plan: verification.json.revisedPlan, remainingIssues: [] }
-        }
-      );
-    }
+    const accepted = verification.json?.accepted === true;
+    const nextState = {
+      plan: verification.json?.revisedPlan ?? state.plan,
+      remainingIssues: verification.json?.remainingIssues ?? state.remainingIssues
+    };
 
-    return { review, verification };
-  },
-  {
-    label: "loop-review",
-    maxRounds: 5,
-    nextState: ({ state, round }) => ({
-      plan: round.result?.verification?.json?.revisedPlan ?? state.plan,
-      remainingIssues: round.result?.verification?.json?.remainingIssues ?? state.remainingIssues
-    })
+    return {
+      done: accepted,
+      nextState
+    };
   }
-);
+});
 
 phase("summarize");
 

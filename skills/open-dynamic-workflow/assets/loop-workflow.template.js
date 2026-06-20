@@ -6,12 +6,17 @@ export const meta = {
 
 phase("iterate");
 
-const loopResult = await loop(
-  {
+const loopResult = await loop({
+  label: "loop-review",
+  initialState: {
     plan: "Initial implementation plan",
     remainingIssues: []
   },
-  async (state, ctx) => {
+  options: {
+    maxRounds: 5,
+    failureMode: "throw"
+  },
+  run: async (state, ctx) => {
     const review = await ctx.agent({
       id: ctx.agentId("review"),
       provider: "codex",
@@ -46,38 +51,17 @@ const loopResult = await loop(
       }
     });
 
-    if (verification.json?.accepted === true) {
-      return ctx.break(
-        { review, revision, verification },
-        {
-          reason: verification.json.reason,
-          state: {
-            plan: verification.json.revisedPlan,
-            remainingIssues: []
-          }
-        }
-      );
-    }
+    const accepted = verification.json?.accepted === true;
+    const nextState = {
+      plan: verification.json?.revisedPlan ?? state.plan,
+      remainingIssues: verification.json?.remainingIssues ?? state.remainingIssues
+    };
 
     return {
-      review,
-      revision,
-      verification
+      done: accepted,
+      nextState
     };
-  },
-  {
-    label: "loop-review",
-    maxRounds: 5,
-    failureMode: "fail-fast",
-    nextState: ({ state, round }) => ({
-      plan: round.result?.verification?.json?.revisedPlan ?? state.plan,
-      remainingIssues: round.result?.verification?.json?.remainingIssues ?? state.remainingIssues
-    })
   }
-);
+});
 
 phase("summarize");
-
-export default {
-  loopResult
-};

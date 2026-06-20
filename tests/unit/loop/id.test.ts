@@ -2,22 +2,22 @@ import { describe, expect, it } from "vitest";
 import {
   createLoopId,
   createRoundId,
-  createLoopAgentId
+  createLoopAgentId,
+  normalizeLoopLabel
 } from "../../../src/loop/id.js";
 import { InvalidDslCallError } from "../../../src/workflow/errors.js";
 
 describe("Loop ID Helpers", () => {
   describe("createLoopId", () => {
-    it("generates correct loop ID for positive integers", () => {
-      expect(createLoopId(1)).toBe("loop-1");
-      expect(createLoopId(42)).toBe("loop-42");
+    it("generates normalized loop ID for labels", () => {
+      expect(createLoopId("Repair Loop")).toBe("repair-loop");
+      expect(createLoopId("nested:loop-label")).toBe("nested:loop-label");
     });
 
-    it("throws on invalid sequence numbers", () => {
-      expect(() => createLoopId(0)).toThrow(InvalidDslCallError);
-      expect(() => createLoopId(-5)).toThrow(InvalidDslCallError);
-      expect(() => createLoopId(NaN)).toThrow(InvalidDslCallError);
-      expect(() => createLoopId("1" as any)).toThrow(InvalidDslCallError);
+    it("throws on invalid labels", () => {
+      expect(() => createLoopId("")).toThrow(InvalidDslCallError);
+      expect(() => createLoopId(null as any)).toThrow(InvalidDslCallError);
+      expect(() => createLoopId(123 as any)).toThrow(InvalidDslCallError);
     });
   });
 
@@ -40,27 +40,27 @@ describe("Loop ID Helpers", () => {
   describe("createLoopAgentId", () => {
     it("creates correct deterministic agent ID without suffix", () => {
       const id = createLoopAgentId({
-        loopId: "loop-1",
-        roundIndex: 1
+        label: "bounded-repair-loop",
+        roundNumber: 1
       });
-      expect(id).toBe("loop-1-round-0001");
+      expect(id).toBe("bounded-repair-loop:round-1");
     });
 
     it("creates correct deterministic agent ID with suffix", () => {
       const id = createLoopAgentId({
-        loopId: "loop-2",
-        roundIndex: 5,
+        label: "Bounded Repair Loop",
+        roundNumber: 5,
         suffix: "reviewer"
       });
-      expect(id).toBe("loop-2-round-0005-reviewer");
+      expect(id).toBe("bounded-repair-loop:round-5:reviewer");
     });
 
     it("accepts valid suffixes", () => {
       const validSuffixes = ["agent-1", "review.v1", "task_3", "step:final"];
       for (const suffix of validSuffixes) {
         expect(() => createLoopAgentId({
-          loopId: "loop-1",
-          roundIndex: 1,
+          label: "my-loop",
+          roundNumber: 1,
           suffix
         })).not.toThrow();
       }
@@ -79,8 +79,8 @@ describe("Loop ID Helpers", () => {
       ];
       for (const suffix of invalidSuffixes) {
         expect(() => createLoopAgentId({
-          loopId: "loop-1",
-          roundIndex: 1,
+          label: "my-loop",
+          roundNumber: 1,
           suffix
         })).toThrow(InvalidDslCallError);
       }

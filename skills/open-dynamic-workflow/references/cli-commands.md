@@ -145,7 +145,7 @@ open-dynamic-workflow validate workflows/review.ts
 * Supported `pipeline()` usage is accepted.
 * Obviously invalid `pipeline()` usage is rejected.
 * Static `loop()` call shapes and `LoopOptions` are checked.
-* Static loop `maxRounds` values must be positive integers and must not exceed `workflow.maxLoopRounds` (default 60).
+* Static loop `maxRounds` values must be positive integers and must not exceed `workflow.maxLoopRounds` (default 20).
 * `tool()` and `ctx.tool()` usage inside loop callbacks is rejected.
 * Shared agent definitions in `sharedAgents.dir` are loaded and validated.
 * Verifies that `agent({ definition })` and `ctx.agent({ definition })` calls use string literal IDs that exist in the shared agent registry (when `sharedAgents.allowDynamicIds` is false).

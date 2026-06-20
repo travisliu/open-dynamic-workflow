@@ -2,112 +2,161 @@ import { describe, expect, it } from "vitest";
 import {
   getIsoTimestamp,
   getDurationMs,
-  createHistoryEntry,
-  createRoundView,
-  isLoopBreak,
-  isPlainBreakObject,
-  normalizeBreakReturn,
-  buildLoopResult
+  createLoopRoundRecord,
+  createLoopExecutionRecord,
+  createSettledSuccessEnvelope,
+  createSettledFailureEnvelope,
+  createLoopExhaustionError,
+  createInvalidRunResultError
 } from "../../../src/loop/results.js";
 
 describe("Loop Result Helpers", () => {
-  describe("isLoopBreak", () => {
-    it("identifies branded loop breaks", () => {
-      expect(isLoopBreak({ __brand: "loop-break" })).toBe(true);
-      expect(isLoopBreak({ __brand: "loop-break", value: 42 })).toBe(true);
-      expect(isLoopBreak({ break: true })).toBe(false);
-      expect(isLoopBreak(null)).toBe(false);
-      expect(isLoopBreak({})).toBe(false);
+  describe("getIsoTimestamp", () => {
+    it("returns valid ISO timestamp", () => {
+      const stamp = getIsoTimestamp();
+      expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z$/);
     });
   });
 
-  describe("isPlainBreakObject", () => {
-    it("identifies plain break objects", () => {
-      expect(isPlainBreakObject({ break: true })).toBe(true);
-      expect(isPlainBreakObject({ break: true, value: "done" })).toBe(true);
-      expect(isPlainBreakObject({ break: false })).toBe(false);
-      expect(isPlainBreakObject({ __brand: "loop-break" })).toBe(false);
-      expect(isPlainBreakObject(null)).toBe(false);
+  describe("getDurationMs", () => {
+    it("calculates duration between timestamps", () => {
+      const start = "2026-06-19T10:00:00.000Z";
+      const end = "2026-06-19T10:00:05.123Z";
+      expect(getDurationMs(start, end)).toBe(5123);
+      expect(getDurationMs(end, start)).toBe(0); // clamp to 0
     });
   });
 
-  describe("normalizeBreakReturn", () => {
-    it("normalizes branded breaks", () => {
-      const result = normalizeBreakReturn({ __brand: "loop-break", value: "final", reason: "satisfied" } as any);
-      expect(result.isBreak).toBe(true);
-      expect(result.finalValue).toBe("final");
-      expect(result.reason).toBe("satisfied");
-    });
-
-    it("normalizes plain break objects", () => {
-      const result = normalizeBreakReturn({ break: true, value: "final", state: { x: 1 } } as any);
-      expect(result.isBreak).toBe(true);
-      expect(result.finalValue).toBe("final");
-      expect(result.finalState).toEqual({ x: 1 });
-    });
-
-    it("normalizes normal results", () => {
-      const result = normalizeBreakReturn({ some: "data" } as any);
-      expect(result.isBreak).toBe(false);
-      expect(result.roundResult).toEqual({ some: "data" });
-    });
-  });
-
-  describe("createHistoryEntry", () => {
-    it("creates a concise entry", () => {
-      const entry = createHistoryEntry({
-        index: 1,
+  describe("createLoopRoundRecord", () => {
+    it("creates loop round record structure", () => {
+      const record = createLoopRoundRecord({
+        index: 0,
+        roundNumber: 1,
         status: "completed",
-        break: false,
-        durationMs: 120
+        inputState: { val: 1 },
+        nextState: { val: 2 },
+        durationMs: 150,
+        nestedCalls: {
+          agents: ["agent-1"],
+          workflows: []
+        }
       });
-      expect(entry).toEqual({
-        index: 1,
+
+      expect(record).toEqual({
+        index: 0,
+        roundNumber: 1,
         status: "completed",
-        break: false,
-        durationMs: 120
+        inputState: { val: 1 },
+        nextState: { val: 2 },
+        durationMs: 150,
+        nestedCalls: {
+          agents: ["agent-1"],
+          workflows: []
+        }
       });
     });
-
-    it("includes optional fields", () => {
-      const entry = createHistoryEntry({
-        index: 2,
-        status: "completed",
-        break: true,
-        stopMatched: true,
-        reason: "matched",
-        durationMs: 50,
-        artifactPath: "path/to/artifact"
-      });
-      expect(entry.stopMatched).toBe(true);
-      expect(entry.reason).toBe("matched");
-      expect(entry.artifactPath).toBe("path/to/artifact");
-    });
   });
 
-  describe("buildLoopResult", () => {
-    it("builds a complete LoopResult", () => {
-      const result = buildLoopResult({
+  describe("createLoopExecutionRecord", () => {
+    it("creates loop execution record structure", () => {
+      const record = createLoopExecutionRecord({
         loopId: "loop-1",
-        status: "satisfied",
-        accepted: true,
-        roundCount: 2,
+        label: "test-loop",
+        status: "succeeded",
+        roundsCompleted: 1,
         maxRounds: 5,
-        finalState: { done: true },
-        final: "result",
-        reason: "accepted",
-        history: [],
-        startedAt: "2026-06-17T10:00:00Z",
-        finishedAt: "2026-06-17T10:00:05Z",
-        durationMs: 5000,
+        initialState: { val: 0 },
+        finalState: { val: 1 },
+        rounds: [
+          createLoopRoundRecord({
+            index: 0,
+            roundNumber: 1,
+            status: "completed",
+            inputState: { val: 0 },
+            nextState: { val: 1 },
+            durationMs: 100,
+            nestedCalls: {
+              agents: [],
+              workflows: []
+            }
+          })
+        ],
+        startedAt: "2026-06-19T10:00:00.000Z",
+        finishedAt: "2026-06-19T10:00:01.000Z",
+        durationMs: 1000,
         artifactPath: "loops/loop-1"
       });
-      expect(result.schemaVersion).toBe("open-dynamic-workflow.loop-result.v1");
-      expect(result.loopId).toBe("loop-1");
-      expect(result.status).toBe("satisfied");
-      expect(result.finalState).toEqual({ done: true });
-      expect(result.final).toBe("result");
-      expect(result.reason).toBe("accepted");
+
+      expect(record.schemaVersion).toBe("open-dynamic-workflow.loop-result.v2");
+      expect(record.loopId).toBe("loop-1");
+      expect(record.label).toBe("test-loop");
+      expect(record.status).toBe("succeeded");
+      expect(record.roundsCompleted).toBe(1);
+      expect(record.maxRounds).toBe(5);
+      expect(record.initialState).toEqual({ val: 0 });
+      expect(record.finalState).toEqual({ val: 1 });
+      expect(record.rounds).toHaveLength(1);
+    });
+  });
+
+  describe("createSettledSuccessEnvelope", () => {
+    it("creates success envelope structure", () => {
+      const env = createSettledSuccessEnvelope({
+        label: "test-loop",
+        loopId: "loop-1",
+        roundsCompleted: 2,
+        finalState: { done: true },
+        artifactsDir: "loops/loop-1"
+      });
+
+      expect(env).toEqual({
+        ok: true,
+        status: "succeeded",
+        label: "test-loop",
+        loopId: "loop-1",
+        roundsCompleted: 2,
+        finalState: { done: true },
+        artifacts: {
+          dir: "loops/loop-1"
+        }
+      });
+    });
+  });
+
+  describe("createSettledFailureEnvelope", () => {
+    it("creates failure envelope structure", () => {
+      const env = createSettledFailureEnvelope({
+        status: "max_rounds",
+        label: "test-loop",
+        loopId: "loop-1",
+        roundsCompleted: 3,
+        finalState: { count: 3 },
+        error: { message: "exhausted" },
+        artifactsDir: "loops/loop-1"
+      });
+
+      expect(env).toEqual({
+        ok: false,
+        status: "max_rounds",
+        label: "test-loop",
+        loopId: "loop-1",
+        roundsCompleted: 3,
+        finalState: { count: 3 },
+        error: { message: "exhausted" },
+        artifacts: {
+          dir: "loops/loop-1"
+        }
+      });
+    });
+  });
+
+  describe("errors", () => {
+    it("creates expected error classes", () => {
+      const exh = createLoopExhaustionError("test", 5);
+      expect(exh.message).toContain("Loop 'test' exhausted maxRounds of 5.");
+
+      const inv = createInvalidRunResultError("test", "missing done");
+      expect(inv.message).toContain("Loop 'test' round returned invalid run result: missing done");
     });
   });
 });

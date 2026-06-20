@@ -1,14 +1,12 @@
 import type {
-  LoopResult,
-  LoopHistoryEntry,
-  LoopRoundView,
-  LoopStatus,
-  LoopRoundStatus,
-  LoopBreak,
-  LoopReturnBreak,
-  TRoundReturn,
+  LoopRoundRecord,
+  LoopExecutionRecord,
+  LoopSettledSuccess,
+  LoopSettledFailure,
 } from "./types.js";
 import type { SerializedError } from "../types/errors.js";
+import { OpenDynamicWorkflowError } from "../errors/types.js";
+import { ErrorCode } from "../errors/codes.js";
 
 /**
  * Returns the current ISO timestamp.
@@ -27,146 +25,137 @@ export function getDurationMs(startIso: string, endIso: string): number {
 }
 
 /**
- * Creates a concise history entry for a round.
+ * Creates a concise round record.
  */
-export function createHistoryEntry(input: {
+export function createLoopRoundRecord<TState>(input: {
   index: number;
-  status: LoopRoundStatus;
-  state: any;
-  nextState?: any;
-  result?: any;
-  error?: SerializedError;
-  break: boolean;
-  stopMatched?: boolean;
-  reason?: string;
+  roundNumber: number;
+  status: "completed" | "failed" | "cancelled" | "timed_out";
+  inputState: TState;
+  nextState?: TState;
   durationMs: number;
-  artifactPath?: string;
-}): LoopHistoryEntry {
+  error?: SerializedError;
+  nestedCalls: {
+    agents: string[];
+    workflows: string[];
+  };
+}): LoopRoundRecord<TState> {
   return {
     index: input.index,
+    roundNumber: input.roundNumber,
     status: input.status,
-    state: input.state,
+    inputState: input.inputState,
     ...(input.nextState !== undefined ? { nextState: input.nextState } : {}),
-    ...(input.result !== undefined ? { result: input.result } : {}),
-    ...(input.error !== undefined ? { error: input.error } : {}),
-    break: input.break,
-    ...(input.stopMatched !== undefined ? { stopMatched: input.stopMatched } : {}),
-    ...(input.reason !== undefined ? { reason: input.reason } : {}),
     durationMs: input.durationMs,
-    ...(input.artifactPath !== undefined ? { artifactPath: input.artifactPath } : {}),
+    ...(input.error !== undefined ? { error: input.error } : {}),
+    nestedCalls: {
+      agents: [...input.nestedCalls.agents],
+      workflows: [...input.nestedCalls.workflows],
+    },
   };
 }
 
 /**
- * Creates a concise round view for predicates.
+ * Creates an execution record.
  */
-export function createRoundView<TRoundResult>(input: {
-  index: number;
-  roundId: string;
-  status: LoopRoundStatus;
-  result?: TRoundResult;
-  error?: SerializedError;
-  durationMs: number;
-}): LoopRoundView<TRoundResult> {
-  return {
-    index: input.index,
-    roundId: input.roundId,
-    status: input.status,
-    ...(input.result !== undefined ? { result: input.result } : {}),
-    ...(input.error !== undefined ? { error: input.error } : {}),
-    durationMs: input.durationMs,
-  };
-}
-
-/**
- * Checks if a value is a branded LoopBreak.
- */
-export function isLoopBreak(value: unknown): value is LoopBreak<any> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    (value as any).__brand === "loop-break"
-  );
-}
-
-/**
- * Checks if a value is a plain break object { break: true }.
- */
-export function isPlainBreakObject(value: unknown): value is LoopReturnBreak<any> {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    (value as any).break === true
-  );
-}
-
-/**
- * Normalizes a round return value into break signals and results.
- */
-export function normalizeBreakReturn<TRoundResult, TFinal>(
-  value: TRoundReturn<TRoundResult, TFinal>
-): {
-  isBreak: boolean;
-  finalValue?: TFinal;
-  reason?: string;
-  roundResult?: TRoundResult;
-  finalState?: unknown;
-} {
-  if (isLoopBreak(value)) {
-    return {
-      isBreak: true,
-      ...(value.value !== undefined ? { finalValue: value.value } : {}),
-      ...(value.reason !== undefined ? { reason: value.reason } : {}),
-      ...(value.state !== undefined ? { finalState: value.state } : {}),
-    };
-  }
-  if (isPlainBreakObject(value)) {
-    return {
-      isBreak: true,
-      ...(value.value !== undefined ? { finalValue: value.value } : {}),
-      ...(value.reason !== undefined ? { reason: value.reason } : {}),
-      ...(value.state !== undefined ? { finalState: value.state } : {}),
-    };
-  }
-  return { isBreak: false, roundResult: value as TRoundResult };
-}
-
-/**
- * Builds the final LoopResult.
- */
-export function buildLoopResult<TState, TFinal>(input: {
+export function createLoopExecutionRecord<TState>(input: {
   loopId: string;
-  label?: string;
-  status: LoopStatus;
-  accepted: boolean;
-  roundCount: number;
+  label: string;
+  status: "succeeded" | "failed" | "cancelled" | "timed_out" | "max_rounds";
+  roundsCompleted: number;
   maxRounds: number;
-  finalState: TState;
-  final?: TFinal;
-  reason?: string;
-  history: LoopHistoryEntry[];
+  initialState: TState;
+  finalState?: TState;
+  rounds: LoopRoundRecord<TState>[];
   startedAt: string;
   finishedAt: string;
   durationMs: number;
   artifactPath: string;
   error?: SerializedError;
-}): LoopResult<TState, TFinal> {
+}): LoopExecutionRecord<TState> {
   return {
-    schemaVersion: "open-dynamic-workflow.loop-result.v1",
+    schemaVersion: "open-dynamic-workflow.loop-result.v2",
     loopId: input.loopId,
-    ...(input.label !== undefined ? { label: input.label } : {}),
+    label: input.label,
     status: input.status,
-    accepted: input.accepted,
-    roundCount: input.roundCount,
+    roundsCompleted: input.roundsCompleted,
     maxRounds: input.maxRounds,
-    finalState: input.finalState,
-    ...(input.final !== undefined ? { final: input.final } : {}),
-    ...(input.reason !== undefined ? { reason: input.reason } : {}),
-    history: [...input.history],
+    initialState: input.initialState,
+    ...(input.finalState !== undefined ? { finalState: input.finalState } : {}),
+    rounds: [...input.rounds],
     startedAt: input.startedAt,
     finishedAt: input.finishedAt,
     durationMs: input.durationMs,
     artifactPath: input.artifactPath,
     ...(input.error !== undefined ? { error: input.error } : {}),
   };
+}
+
+/**
+ * Creates settled success envelope.
+ */
+export function createSettledSuccessEnvelope<TState>(input: {
+  label: string;
+  loopId: string;
+  roundsCompleted: number;
+  finalState: TState;
+  artifactsDir: string;
+}): LoopSettledSuccess<TState> {
+  return {
+    ok: true,
+    status: "succeeded",
+    label: input.label,
+    loopId: input.loopId,
+    roundsCompleted: input.roundsCompleted,
+    finalState: input.finalState,
+    artifacts: {
+      dir: input.artifactsDir,
+    },
+  };
+}
+
+/**
+ * Creates settled failure envelope.
+ */
+export function createSettledFailureEnvelope<TState>(input: {
+  status: "failed" | "cancelled" | "timed_out" | "max_rounds";
+  label: string;
+  loopId: string;
+  roundsCompleted: number;
+  finalState?: TState;
+  error?: SerializedError;
+  artifactsDir: string;
+}): LoopSettledFailure<TState> {
+  return {
+    ok: false,
+    status: input.status,
+    label: input.label,
+    loopId: input.loopId,
+    roundsCompleted: input.roundsCompleted,
+    ...(input.finalState !== undefined ? { finalState: input.finalState } : {}),
+    ...(input.error !== undefined ? { error: input.error } : {}),
+    artifacts: {
+      dir: input.artifactsDir,
+    },
+  };
+}
+
+/**
+ * Creates loop exhaustion error.
+ */
+export function createLoopExhaustionError(label: string, maxRounds: number): Error {
+  return new OpenDynamicWorkflowError(
+    ErrorCode.WORKFLOW_FAILED,
+    `Loop '${label}' exhausted maxRounds of ${maxRounds}.`
+  );
+}
+
+/**
+ * Creates invalid round result error.
+ */
+export function createInvalidRunResultError(label: string, details: string): Error {
+  return new OpenDynamicWorkflowError(
+    ErrorCode.WORKFLOW_INVALID_CALL,
+    `Loop '${label}' round returned invalid run result: ${details}`
+  );
 }

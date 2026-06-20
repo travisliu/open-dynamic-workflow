@@ -63,7 +63,7 @@ export function buildGeneratedConfig(input: {
         include: [workflowIncludePattern(workflowsDirDisplay)]
       },
       maxDepth: 8,
-      maxLoopRounds: 60
+      maxLoopRounds: 20
     }
   };
 

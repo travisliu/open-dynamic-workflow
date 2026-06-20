@@ -49,7 +49,7 @@ describe("Loop Validation Integration", () => {
 
     expect(result.error).toBeDefined();
     expect(result.stderr).toContain("maxRounds");
-    expect(result.stderr).toContain("exceeds the configured ceiling of 60");
+    expect(result.stderr).toContain("exceeds the configured ceiling of 20");
   });
 
   it("fails validation if tool() is used inside loop", async () => {
@@ -66,10 +66,9 @@ describe("Loop Validation Integration", () => {
     const result = await runCli(["validate", workflowPath]);
 
     expect(result.error).toBeDefined();
-    expect(result.stderr).toContain("maxRounds must be a positive integer");
-    expect(result.stderr).toContain("timeoutMs must be a positive integer");
-    expect(result.stderr).toContain("failureMode must be 'fail-fast', 'settled', or 'continue'");
-    expect(result.stderr).toContain("resultMode must be 'history'");
-    expect(result.stderr).toContain("label cannot be empty");
+    expect(result.stderr).toContain("maxRounds must be a positive integer.");
+    expect(result.stderr).toContain("timeoutMs must be a positive integer.");
+    expect(result.stderr).toContain("failureMode must be 'throw' or 'settled'.");
+    expect(result.stderr).toContain("label cannot be empty.");
   });
 });

@@ -205,9 +205,9 @@ Use this when a repeated, stateful callback should run until a specific goal or 
 Expected result:
 
 * A workflow that uses `loop()`.
-* A round callback returning either `ctx.break()` or `{ break: true }` when the verification succeeds.
-* Loop options including `maxRounds` (default is 5) and `nextState` to pass the updated code/issues/plan to the next round.
-* The loop result containing the final value, state, and concise round history.
+* A round callback returning `{ done: true, nextState }` when the verification succeeds.
+* Loop options including `maxRounds` (required, e.g., 5).
+* The loop result containing the final state directly, or a settled success/failure envelope.
 * Commands such as `npx @travisliu/open-dynamic-workflow validate workflows/loop-review.ts` and `npx @travisliu/open-dynamic-workflow run workflows/loop-review.ts`.
 
 ### Prompting Tips

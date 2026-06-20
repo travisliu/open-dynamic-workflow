@@ -3,7 +3,7 @@ import type { JsonObject, JsonValue, WorkflowStatus } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
 import type { ToolSummary, ToolCallInput, ToolExecutionResult, ToolSettledResult } from "./tool.js";
-import type { LoopRoundContext, LoopOptions, LoopResult, LoopSummary } from "../loop/types.js";
+import type { LoopInput, LoopSettledResult, LoopSummary } from "../loop/types.js";
 
 export type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary };
 
@@ -110,14 +110,15 @@ export interface WorkflowRuntimeContext {
   workflow<T = JsonValue>(input: WorkflowThrowCallInput): Promise<T>;
   workflow<T = JsonValue>(input: WorkflowSettledCallInput): Promise<WorkflowSettledResult<T>>;
   workflow<T = JsonValue>(input: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>>;
-  loop<TState, TRoundResult = unknown, TFinal = TRoundResult>(
-    initialState: TState,
-    runRound: (
-      state: TState,
-      context: LoopRoundContext<TState, TRoundResult, TFinal>
-    ) => Promise<unknown> | unknown,
-    options?: LoopOptions<TState, TRoundResult, TFinal>
-  ): Promise<LoopResult<TState, TFinal>>;
+  loop<TState>(
+    input: LoopInput<TState> & { options: { failureMode?: "throw" } }
+  ): Promise<TState>;
+  loop<TState>(
+    input: LoopInput<TState> & { options: { failureMode: "settled" } }
+  ): Promise<LoopSettledResult<TState>>;
+  loop<TState>(
+    input: LoopInput<TState>
+  ): Promise<TState | LoopSettledResult<TState>>;
 }
 
 export interface WorkflowIdentity {

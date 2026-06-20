@@ -299,21 +299,23 @@ export class PrettyViewBuilder {
       case "loop.completed":
       case "loop.failed":
       case "loop.cancelled":
-      case "loop.timed_out": {
+      case "loop.timed_out":
+      case "loop.max_rounds": {
         const node = this.nodesById.get(payload.loopId) as any;
         if (node) {
           const statusPart = type.split(".").pop();
           if (statusPart) {
             if (statusPart === "completed") {
               node.status = "succeeded";
+            } else if (statusPart === "max_rounds") {
+              node.status = "failed";
             } else {
               node.status = this.mapStatus(statusPart);
             }
           }
           node.durationMs = payload.durationMs;
-          node.roundCount = payload.roundCount;
+          node.roundCount = payload.roundsCompleted ?? payload.roundCount;
           node.maxRounds = payload.maxRounds;
-          node.accepted = payload.accepted;
           node.reason = payload.reason;
           if (payload.artifactPath) node.artifactPath = payload.artifactPath;
         }

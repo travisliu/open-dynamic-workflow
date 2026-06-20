@@ -106,8 +106,8 @@ function renderExecutionNodes(nodes: PrettyExecutionNode[], depth: number, lines
         if (node.roundCount !== undefined) {
           parts.push(`${node.roundCount}${node.maxRounds ? "/" + node.maxRounds : ""} rounds`);
         }
-        if (node.accepted !== undefined) {
-          parts.push(node.accepted ? "accepted" : "max rounds");
+        if (node.reason) {
+          parts.push(node.reason);
         }
         if (duration) {
           parts.push(duration);

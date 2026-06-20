@@ -1,10 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type {
-  LoopRoundContext,
-  LoopBreak,
-  LoopStatus,
-} from "./types.js";
-import { createLoopAgentId } from "./id.js";
+import type { LoopContext } from "./types.js";
+import { createLoopAgentId, normalizeLoopLabel } from "./id.js";
 import type { AgentCallInput, AgentResult } from "../types/agent.js";
 import type { WorkflowCallInput, WorkflowSettledResult } from "../types/workflow.js";
 
@@ -13,11 +9,15 @@ import type { WorkflowCallInput, WorkflowSettledResult } from "../types/workflow
  */
 export interface ActiveLoopContext {
   loopId: string;
-  loopLabel?: string;
+  label: string;
   roundIndex: number;
+  roundNumber: number;
   roundId: string;
   childAgentIds: string[];
+  childWorkflowInvocationIds: string[];
   signal: AbortSignal;
+  parentLoopId?: string;
+  workflowInvocationId?: string;
 }
 
 const loopContextStorage = new AsyncLocalStorage<ActiveLoopContext>();
@@ -52,21 +52,31 @@ export function recordLoopChildAgentId(agentId: string): void {
 }
 
 /**
+ * Records a child workflow invocation ID in the active loop context.
+ */
+export function recordLoopChildWorkflowInvocationId(workflowInvocationId: string): void {
+  const context = getActiveLoopContext();
+  if (context) {
+    if (!context.childWorkflowInvocationIds.includes(workflowInvocationId)) {
+      context.childWorkflowInvocationIds.push(workflowInvocationId);
+    }
+  }
+}
+
+/**
  * Input for creating a loop round context.
  */
 export interface CreateLoopRoundContextInput {
   loopId: string;
-  loopLabel?: string;
+  label: string;
   runId: string;
   artifactsDir: string;
   roundIndex: number;
-  roundId: string;
-  maxRounds: number;
+  roundNumber: number;
   signal: AbortSignal;
   dsl: {
     agent: (input: AgentCallInput) => Promise<AgentResult>;
     workflow: (input: WorkflowCallInput) => Promise<any>;
-    parallel: (tasks: any) => Promise<any>;
     log: (message: string, data?: any) => void;
   };
 }
@@ -74,20 +84,17 @@ export interface CreateLoopRoundContextInput {
 /**
  * Creates the context object passed to loop round callbacks.
  */
-export function createLoopRoundContext<TState, TRoundResult, TFinal>(
+export function createLoopRoundContext(
   input: CreateLoopRoundContextInput
-): LoopRoundContext<TState, TRoundResult, TFinal> {
-  const { loopId, roundIndex, roundId, dsl } = input;
+): LoopContext {
+  const { loopId, label, roundIndex, roundNumber, dsl } = input;
   let agentCounter = 0;
 
   return {
-    loopId: input.loopId,
-    ...(input.loopLabel !== undefined ? { loopLabel: input.loopLabel } : {}),
-    runId: input.runId,
-    artifactsDir: input.artifactsDir,
-    roundIndex: input.roundIndex,
-    roundId: input.roundId,
-    maxRounds: input.maxRounds,
+    loopId,
+    label,
+    roundIndex,
+    roundNumber,
     signal: input.signal,
 
     agent: async (agentInput: AgentCallInput): Promise<AgentResult> => {
@@ -109,14 +116,14 @@ export function createLoopRoundContext<TState, TRoundResult, TFinal>(
 
         if (isValid) {
           agentId = createLoopAgentId({
-            loopId,
-            roundIndex,
+            label,
+            roundNumber,
             suffix,
           });
         } else {
           agentId = createLoopAgentId({
-            loopId,
-            roundIndex,
+            label,
+            roundNumber,
             suffix: `agent-${agentCounter}`,
           });
         }
@@ -126,11 +133,11 @@ export function createLoopRoundContext<TState, TRoundResult, TFinal>(
     },
 
     workflow: async <T = unknown>(workflowInput: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>> => {
-      return dsl.workflow(workflowInput);
-    },
-
-    parallel: async <T>(tasks: any): Promise<any> => {
-      return dsl.parallel(tasks);
+      const result = await dsl.workflow(workflowInput);
+      if (result && typeof result === "object" && "workflowInvocationId" in result) {
+        recordLoopChildWorkflowInvocationId(result.workflowInvocationId as string);
+      }
+      return result;
     },
 
     log: (message: string, data?: any): void => {
@@ -138,8 +145,9 @@ export function createLoopRoundContext<TState, TRoundResult, TFinal>(
         ...(data && typeof data === "object" ? data : { raw: data }),
         loop: {
           loopId,
+          label,
           roundIndex,
-          roundId,
+          roundNumber,
         },
       };
       dsl.log(message, logData);
@@ -147,31 +155,27 @@ export function createLoopRoundContext<TState, TRoundResult, TFinal>(
 
     agentId: (suffix?: string): string => {
       return createLoopAgentId({
-        loopId,
-        roundIndex,
+        label,
+        roundNumber,
         ...(suffix !== undefined ? { suffix } : {}),
       });
     },
 
-    break: <TBreakFinal = TFinal>(
-      value?: TBreakFinal,
-      options?: { reason?: string; state?: TState }
-    ): LoopBreak<TBreakFinal> => {
-      return {
-        __brand: "loop-break",
-        ...(value !== undefined ? { value } : {}),
-        ...(options?.reason !== undefined ? { reason: options.reason } : {}),
-        ...(options?.state !== undefined ? { state: options.state } : {}),
-      };
-    },
-
     sleep: (ms: number): Promise<void> => {
+      if (typeof ms !== "number" || ms < 0 || !Number.isFinite(ms)) {
+        throw new Error("sleep: ms must be a non-negative finite number.");
+      }
       return new Promise((resolve, reject) => {
         const abortHandler = () => {
           clearTimeout(timeout);
           input.signal.removeEventListener("abort", abortHandler);
-          reject(input.signal.reason);
+          reject(input.signal.reason || new Error("Aborted"));
         };
+
+        if (input.signal.aborted) {
+          reject(input.signal.reason || new Error("Aborted"));
+          return;
+        }
 
         const timeout = setTimeout(() => {
           input.signal.removeEventListener("abort", abortHandler);

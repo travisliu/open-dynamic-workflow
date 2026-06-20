@@ -1,21 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
-import { createLoopRoundContext, withActiveLoopContext, getActiveLoopContext, recordLoopChildAgentId } from "../../../src/loop/context.js";
+import {
+  createLoopRoundContext,
+  withActiveLoopContext,
+  getActiveLoopContext,
+  recordLoopChildAgentId,
+  recordLoopChildWorkflowInvocationId,
+} from "../../../src/loop/context.js";
 
 describe("Loop Context Helpers", () => {
   const mockDsl = {
     agent: vi.fn(),
     workflow: vi.fn(),
-    parallel: vi.fn(),
     log: vi.fn(),
   };
 
   const input = {
     loopId: "loop-1",
+    label: "bounded-repair-loop",
     runId: "run-1",
     artifactsDir: "/tmp",
-    roundIndex: 1,
-    roundId: "loop-1-round-0001",
-    maxRounds: 5,
+    roundIndex: 0,
+    roundNumber: 1,
     signal: new AbortController().signal,
     dsl: mockDsl as any,
   };
@@ -24,13 +29,14 @@ describe("Loop Context Helpers", () => {
     it("exposes required properties", () => {
       const ctx = createLoopRoundContext(input);
       expect(ctx.loopId).toBe("loop-1");
-      expect(ctx.roundIndex).toBe(1);
-      expect(ctx.roundId).toBe("loop-1-round-0001");
+      expect(ctx.label).toBe("bounded-repair-loop");
+      expect(ctx.roundIndex).toBe(0);
+      expect(ctx.roundNumber).toBe(1);
     });
 
     it("ctx.agent preserves explicit agent IDs and records them", async () => {
       const ctx = createLoopRoundContext(input);
-      const activeCtx = { loopId: "loop-1", roundIndex: 1, roundId: "round-1", childAgentIds: [] };
+      const activeCtx = { loopId: "loop-1", label: "bounded-repair-loop", roundIndex: 0, roundNumber: 1, roundId: "round-1", childAgentIds: [], childWorkflowInvocationIds: [], signal: input.signal };
       
       await withActiveLoopContext(activeCtx, async () => {
         await ctx.agent({ prompt: "hi", id: "my-agent" });
@@ -44,7 +50,7 @@ describe("Loop Context Helpers", () => {
 
     it("ctx.agent generates loop-scoped IDs from label or counter when ID is absent", async () => {
       const ctx = createLoopRoundContext(input);
-      const activeCtx = { loopId: "loop-1", roundIndex: 1, roundId: "round-1", childAgentIds: [] };
+      const activeCtx = { loopId: "loop-1", label: "bounded-repair-loop", roundIndex: 0, roundNumber: 1, roundId: "round-1", childAgentIds: [], childWorkflowInvocationIds: [], signal: input.signal };
       
       await withActiveLoopContext(activeCtx, async () => {
         await ctx.agent({ prompt: "hi", label: "review" });
@@ -53,32 +59,32 @@ describe("Loop Context Helpers", () => {
       });
 
       expect(mockDsl.agent).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        id: "loop-1-round-0001-review"
+        id: "bounded-repair-loop:round-1:review"
       }));
       expect(mockDsl.agent).toHaveBeenNthCalledWith(3, expect.objectContaining({
-        id: "loop-1-round-0001-agent-2"
+        id: "bounded-repair-loop:round-1:agent-2"
       }));
       expect(mockDsl.agent).toHaveBeenNthCalledWith(4, expect.objectContaining({
-        id: "loop-1-round-0001-agent-3"
+        id: "bounded-repair-loop:round-1:agent-3"
       }));
 
-      expect(activeCtx.childAgentIds).toContain("loop-1-round-0001-review");
-      expect(activeCtx.childAgentIds).toContain("loop-1-round-0001-agent-2");
-      expect(activeCtx.childAgentIds).toContain("loop-1-round-0001-agent-3");
+      expect(activeCtx.childAgentIds).toContain("bounded-repair-loop:round-1:review");
+      expect(activeCtx.childAgentIds).toContain("bounded-repair-loop:round-1:agent-2");
+      expect(activeCtx.childAgentIds).toContain("bounded-repair-loop:round-1:agent-3");
     });
 
     it("ctx.agent preserves IDs returned by ctx.agentId()", async () => {
       const ctx = createLoopRoundContext(input);
-      const activeCtx = { loopId: "loop-1", roundIndex: 1, roundId: "round-1", childAgentIds: [] };
+      const activeCtx = { loopId: "loop-1", label: "bounded-repair-loop", roundIndex: 0, roundNumber: 1, roundId: "round-1", childAgentIds: [], childWorkflowInvocationIds: [], signal: input.signal };
       
       await withActiveLoopContext(activeCtx, async () => {
         await ctx.agent({ prompt: "hi", id: ctx.agentId("custom-name") });
       });
 
       expect(mockDsl.agent).toHaveBeenNthCalledWith(5, expect.objectContaining({
-        id: "loop-1-round-0001-custom-name"
+        id: "bounded-repair-loop:round-1:custom-name"
       }));
-      expect(activeCtx.childAgentIds).toContain("loop-1-round-0001-custom-name");
+      expect(activeCtx.childAgentIds).toContain("bounded-repair-loop:round-1:custom-name");
     });
 
     it("ctx.log includes loop metadata", () => {
@@ -88,20 +94,11 @@ describe("Loop Context Helpers", () => {
         foo: "bar",
         loop: {
           loopId: "loop-1",
-          roundIndex: 1,
-          roundId: "loop-1-round-0001"
+          label: "bounded-repair-loop",
+          roundIndex: 0,
+          roundNumber: 1
         }
       }));
-    });
-
-    it("ctx.break returns a branded LoopBreak", () => {
-      const ctx = createLoopRoundContext(input);
-      const b = ctx.break("final", { reason: "done" });
-      expect(b).toEqual({
-        __brand: "loop-break",
-        value: "final",
-        reason: "done"
-      });
     });
 
     it("ctx.sleep removes abort listener after resolving", async () => {
@@ -135,13 +132,33 @@ describe("Loop Context Helpers", () => {
 
   describe("ActiveLoopContext Storage", () => {
     it("manages context in AsyncLocalStorage", () => {
-      const activeCtx = { loopId: "loop-1", roundIndex: 1, roundId: "round-1", childAgentIds: [] };
+      const activeCtx = { loopId: "loop-1", label: "bounded-repair-loop", roundIndex: 0, roundNumber: 1, roundId: "round-1", childAgentIds: [], childWorkflowInvocationIds: [], signal: input.signal };
       withActiveLoopContext(activeCtx, () => {
         expect(getActiveLoopContext()).toBe(activeCtx);
         recordLoopChildAgentId("agent-1");
         expect(activeCtx.childAgentIds).toContain("agent-1");
+        
+        recordLoopChildWorkflowInvocationId("wf-1");
+        recordLoopChildWorkflowInvocationId("wf-1");
+        expect(activeCtx.childWorkflowInvocationIds).toEqual(["wf-1"]);
       });
       expect(getActiveLoopContext()).toBeUndefined();
+    });
+
+    it("ctx.workflow with settled result records workflowInvocationId", async () => {
+      const activeCtx = { loopId: "loop-1", label: "bounded-repair-loop", roundIndex: 0, roundNumber: 1, roundId: "round-1", childAgentIds: [], childWorkflowInvocationIds: [], signal: input.signal };
+      const ctx = createLoopRoundContext(input);
+      mockDsl.workflow.mockResolvedValueOnce({
+        workflowInvocationId: "wf-1234",
+        status: "succeeded",
+        result: "ok"
+      });
+
+      await withActiveLoopContext(activeCtx, async () => {
+        await ctx.workflow({ name: "some-child", failureMode: "settled" });
+      });
+
+      expect(activeCtx.childWorkflowInvocationIds).toContain("wf-1234");
     });
   });
 });

@@ -160,11 +160,11 @@ describe("Tool Top-Level Integration", () => {
     expect(report.result).toEqual({ reply: "top-level-child" });
   });
 
-  it("should still reject child module top-level tool() when called from forbidden parallel task", async () => {
+  it("should succeed when child module top-level tool() is called from parallel task", async () => {
     const childWfPath = path.join(workflowDir, "child.workflow.ts");
     await fs.writeFile(childWfPath, `
       export const meta = { name: "child-tool", description: "child desc" };
-      const result = await tool({ definition: "echo", args: { msg: "forbidden" } });
+      const result = await tool({ definition: "echo", args: { msg: "allowed-parallel-child" } });
       export default result;
     `);
 
@@ -187,9 +187,9 @@ describe("Tool Top-Level Integration", () => {
       "json"
     ], projectDir);
 
+    expect(result.error).toBeNull();
     const report = JSON.parse(result.stdout);
-    expect(report.status).toBe("failed");
-    expect(report.error.message).toContain("tool() is not allowed in parallel task context");
+    expect(report.status).toBe("succeeded");
   });
 
   it("should reject destructured async tool alias in root workflow", async () => {

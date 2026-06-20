@@ -216,8 +216,14 @@ describe("Tool Composition Validation", () => {
   it("rejects tool() inside loop() round callback", () => {
     const parsed = createParsed(`
       export default async function(ctx) {
-        await ctx.loop({ count: 0 }, async (state, ctx) => {
-          await ctx.tool({ definition: "test-tool", args: {} });
+        await ctx.loop({
+          label: "tool-forbidden-loop",
+          initialState: { count: 0 },
+          options: { maxRounds: 2 },
+          run: async (state, loopCtx) => {
+            await loopCtx.tool({ definition: "test-tool", args: {} });
+            return { done: true, nextState: state };
+          }
         });
       }
     `);

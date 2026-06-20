@@ -5,24 +5,24 @@ const ID_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
 /**
  * Creates a stable loop identifier.
  */
-export function createLoopId(sequence: number): string {
-  if (typeof sequence !== "number" || sequence < 1 || isNaN(sequence)) {
-    throw new InvalidDslCallError("Loop sequence must be a positive integer.");
+export function createLoopId(label: string): string {
+  if (!label || typeof label !== "string" || label.trim() === "") {
+    throw new InvalidDslCallError("Loop label is required to generate loop ID.");
   }
-  return `loop-${sequence}`;
+  return normalizeLoopLabel(label);
 }
 
 /**
  * Creates a stable round identifier.
  */
-export function createRoundId(loopId: string, roundIndex: number): string {
+export function createRoundId(loopId: string, roundNumber: number): string {
   if (!loopId || typeof loopId !== "string") {
     throw new InvalidDslCallError("createRoundId: loopId is required and must be a string.");
   }
-  if (typeof roundIndex !== "number" || roundIndex < 1 || isNaN(roundIndex)) {
-    throw new InvalidDslCallError("createRoundId: roundIndex must be a positive integer.");
+  if (typeof roundNumber !== "number" || roundNumber < 1 || isNaN(roundNumber) || !Number.isInteger(roundNumber)) {
+    throw new InvalidDslCallError("createRoundId: roundNumber must be a positive integer.");
   }
-  const paddedIndex = roundIndex.toString().padStart(4, "0");
+  const paddedIndex = roundNumber.toString().padStart(4, "0");
   return `${loopId}-round-${paddedIndex}`;
 }
 
@@ -30,16 +30,31 @@ export function createRoundId(loopId: string, roundIndex: number): string {
  * Input for createLoopAgentId.
  */
 export interface CreateLoopAgentIdInput {
-  loopId: string;
-  roundIndex: number;
+  label: string;
+  roundNumber: number;
   suffix?: string;
+}
+
+/**
+ * Normalizes a loop label for use in IDs.
+ */
+export function normalizeLoopLabel(label: string): string {
+  if (!label || typeof label !== "string") {
+    return "";
+  }
+  return label
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9_.:-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 /**
  * Creates a stable agent identifier for use inside a loop round.
  */
 export function createLoopAgentId(input: CreateLoopAgentIdInput): string {
-  const roundId = createRoundId(input.loopId, input.roundIndex);
+  const normalizedLabel = normalizeLoopLabel(input.label);
+  const roundPart = `round-${input.roundNumber}`;
 
   if (input.suffix) {
     const trimmedSuffix = input.suffix.trim();
@@ -60,8 +75,8 @@ export function createLoopAgentId(input: CreateLoopAgentIdInput): string {
         `createLoopAgentId: suffix '${input.suffix}' contains invalid characters. Only alphanumeric, underscores, dots, colons, and hyphens are allowed.`
       );
     }
-    return `${roundId}-${trimmedSuffix}`;
+    return `${normalizedLabel}:${roundPart}:${trimmedSuffix}`;
   }
 
-  return roundId;
+  return `${normalizedLabel}:${roundPart}`;
 }

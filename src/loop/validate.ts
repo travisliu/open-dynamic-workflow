@@ -1,143 +1,149 @@
 import { InvalidDslCallError } from "../workflow/errors.js";
-import type { LoopOptions, NormalizedLoopOptions, LoopFailureMode } from "./types.js";
+import type { NormalizedLoopInput, LoopFailureMode } from "./types.js";
 
-const ALLOWED_OPTION_KEYS = [
-  "label",
-  "maxRounds",
-  "stopWhen",
-  "nextState",
-  "onFailureState",
-  "failureMode",
-  "timeoutMs",
-  "resultMode",
-  "metadata",
-];
+const ALLOWED_TOP_LEVEL_KEYS = ["label", "initialState", "options", "run"];
+const ALLOWED_OPTION_KEYS = ["maxRounds", "failureMode", "timeoutMs"];
 
 /**
  * Validates and normalizes loop arguments.
  */
-export function validateAndNormalizeLoopArgs<TState, TRoundResult, TFinal>(
-  initialState: unknown,
-  runRound: unknown,
-  options: unknown,
+export function validateAndNormalizeLoopArgs<TState>(
+  input: unknown,
   maxRoundsCeiling: number
-): NormalizedLoopOptions<TState, TRoundResult, TFinal> {
-  // 1. Validate initialState (must be JSON-serializable, checked at runtime during cloning)
-  // We don't deep-validate here, but we ensure it's provided (can be null/0/false though)
+): NormalizedLoopInput<TState> {
+  // Reject missing input
+  if (input === undefined || input === null) {
+    throw new InvalidDslCallError("loop() input must be a plain object.");
+  }
+
+  // Reject arrays, functions, and other non-object values
+  if (typeof input !== "object" || Array.isArray(input)) {
+    throw new InvalidDslCallError("loop() input must be a plain object.");
+  }
+
+  // Reject unsupported top-level keys
+  const inputKeys = Object.keys(input);
+  for (const key of inputKeys) {
+    if (!ALLOWED_TOP_LEVEL_KEYS.includes(key)) {
+      throw new InvalidDslCallError(`loop() input contains unsupported key '${key}'.`);
+    }
+  }
+
+  // Require label, initialState, options, and run
+  const { label, initialState, options, run } = input as any;
+
+  if (label === undefined) {
+    throw new InvalidDslCallError("loop() missing required field 'label'.");
+  }
   if (initialState === undefined) {
-    throw new InvalidDslCallError("loop() missing initialState.");
+    throw new InvalidDslCallError("loop() missing required field 'initialState'.");
+  }
+  if (options === undefined) {
+    throw new InvalidDslCallError("loop() missing required field 'options'.");
+  }
+  if (run === undefined) {
+    throw new InvalidDslCallError("loop() missing required field 'run'.");
   }
 
-  // 2. Validate runRound
-  if (runRound === undefined) {
-    throw new InvalidDslCallError("loop() missing runRound callback.");
-  }
-  if (typeof runRound !== "function") {
-    throw new InvalidDslCallError("loop() runRound must be a function.");
+  // Require label to be a non-empty string
+  if (typeof label !== "string" || label.trim() === "") {
+    throw new InvalidDslCallError("loop() label must be a non-empty string.");
   }
 
-  // 3. Validate options
-  const presentOptions: string[] = [];
-  let normalizedOptions: NormalizedLoopOptions<TState, TRoundResult, TFinal> = {
-    maxRounds: 5,
-    failureMode: "fail-fast",
-    maxRoundsCeiling,
-    presentOptions,
+  // Require run to be a function
+  if (typeof run !== "function") {
+    throw new InvalidDslCallError("loop() run must be a function.");
+  }
+
+  // Require options to be a plain object
+  if (options === null || typeof options !== "object" || Array.isArray(options)) {
+    throw new InvalidDslCallError("loop() options must be a plain object.");
+  }
+
+  // Reject unsupported options keys
+  const optionKeys = Object.keys(options);
+  for (const key of optionKeys) {
+    if (!ALLOWED_OPTION_KEYS.includes(key)) {
+      throw new InvalidDslCallError(`loop() options contain unsupported key '${key}'.`);
+    }
+  }
+
+  // Require options.maxRounds
+  if (options.maxRounds === undefined) {
+    throw new InvalidDslCallError("loop() options missing required field 'maxRounds'.");
+  }
+
+  // Require maxRounds to be a positive integer and no greater than the configured ceiling
+  const maxRounds = options.maxRounds;
+  if (typeof maxRounds !== "number" || maxRounds < 1 || !Number.isInteger(maxRounds)) {
+    throw new InvalidDslCallError("loop() options maxRounds must be a positive integer.");
+  }
+  if (maxRounds > maxRoundsCeiling) {
+    throw new InvalidDslCallError(
+      `loop() options maxRounds (${maxRounds}) exceeds the global ceiling (${maxRoundsCeiling}).`
+    );
+  }
+
+  // Allow options.failureMode only when it is "throw" or "settled", defaulting to "throw"
+  let failureMode: LoopFailureMode = "throw";
+  if (options.failureMode !== undefined) {
+    if (options.failureMode !== "throw" && options.failureMode !== "settled") {
+      throw new InvalidDslCallError("loop() options failureMode must be 'throw' or 'settled'.");
+    }
+    failureMode = options.failureMode;
+  }
+
+  // Allow options.timeoutMs only when it is a positive integer
+  if (options.timeoutMs !== undefined) {
+    if (typeof options.timeoutMs !== "number" || options.timeoutMs <= 0 || !Number.isInteger(options.timeoutMs)) {
+      throw new InvalidDslCallError("loop() options timeoutMs must be a positive integer.");
+    }
+  }
+
+  return {
+    label,
+    initialState,
+    options: {
+      failureMode,
+      maxRounds,
+      ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+    },
+    run,
   };
+}
 
-  if (options !== undefined) {
-    if (!options || typeof options !== "object" || Array.isArray(options)) {
-      throw new InvalidDslCallError("loop() options must be an object.");
-    }
-
-    const optionKeys = Object.keys(options);
-    for (const key of optionKeys) {
-      if (!ALLOWED_OPTION_KEYS.includes(key)) {
-        throw new InvalidDslCallError(`loop() options contain unsupported key '${key}'.`);
-      }
-      presentOptions.push(key);
-    }
-
-    const opts = options as LoopOptions<TState, TRoundResult, TFinal>;
-
-    if (opts.label !== undefined) {
-      if (typeof opts.label !== "string" || opts.label.trim() === "") {
-        throw new InvalidDslCallError("loop() options label must be a non-empty string.");
-      }
-      normalizedOptions.label = opts.label;
-    }
-
-    if (opts.maxRounds !== undefined) {
-      if (typeof opts.maxRounds !== "number" || opts.maxRounds < 1 || !Number.isInteger(opts.maxRounds)) {
-        throw new InvalidDslCallError("loop() options maxRounds must be a positive integer.");
-      }
-      if (opts.maxRounds > maxRoundsCeiling) {
-        throw new InvalidDslCallError(
-          `loop() options maxRounds (${opts.maxRounds}) exceeds the global ceiling (${maxRoundsCeiling}).`
-        );
-      }
-      normalizedOptions.maxRounds = opts.maxRounds;
-    }
-
-    if (opts.stopWhen !== undefined) {
-      if (typeof opts.stopWhen !== "function") {
-        throw new InvalidDslCallError("loop() options stopWhen must be a function.");
-      }
-      normalizedOptions.stopWhen = opts.stopWhen;
-    }
-
-    if (opts.nextState !== undefined) {
-      if (typeof opts.nextState !== "function") {
-        throw new InvalidDslCallError("loop() options nextState must be a function.");
-      }
-      normalizedOptions.nextState = opts.nextState;
-    }
-
-    if (opts.onFailureState !== undefined) {
-      if (typeof opts.onFailureState !== "function") {
-        throw new InvalidDslCallError("loop() options onFailureState must be a function.");
-      }
-      normalizedOptions.onFailureState = opts.onFailureState;
-    }
-
-    if (opts.failureMode !== undefined) {
-      const validModes: LoopFailureMode[] = ["fail-fast", "settled", "continue"];
-      if (!validModes.includes(opts.failureMode)) {
-        throw new InvalidDslCallError(
-          `loop() options failureMode must be one of: ${validModes.join(", ")}.`
-        );
-      }
-      
-      if (opts.failureMode === "continue" && typeof opts.onFailureState !== "function") {
-        throw new InvalidDslCallError(
-          "loop() options failureMode 'continue' requires a valid onFailureState function."
-        );
-      }
-      
-      normalizedOptions.failureMode = opts.failureMode;
-    }
-
-    if (opts.timeoutMs !== undefined) {
-      if (typeof opts.timeoutMs !== "number" || opts.timeoutMs <= 0 || !Number.isInteger(opts.timeoutMs)) {
-        throw new InvalidDslCallError("loop() options timeoutMs must be a positive integer.");
-      }
-      normalizedOptions.timeoutMs = opts.timeoutMs;
-    }
-
-    if (opts.resultMode !== undefined) {
-      if (opts.resultMode !== "history") {
-        throw new InvalidDslCallError("loop() options resultMode must be 'history'.");
-      }
-      normalizedOptions.resultMode = opts.resultMode;
-    }
-
-    if (opts.metadata !== undefined) {
-      if (!opts.metadata || typeof opts.metadata !== "object" || Array.isArray(opts.metadata)) {
-        throw new InvalidDslCallError("loop() options metadata must be a plain object.");
-      }
-      normalizedOptions.metadata = opts.metadata;
-    }
+/**
+ * Validates the round run result.
+ */
+export function validateLoopRunResult(value: unknown, contextLabel: string): void {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new InvalidDslCallError(`Loop '${contextLabel}' round returned a non-object value.`);
   }
 
-  return normalizedOptions;
+  const obj = value as Record<string, any>;
+  
+  if (obj.done === undefined) {
+    throw new InvalidDslCallError(`Loop '${contextLabel}' round result is missing required property 'done'.`);
+  }
+  if (typeof obj.done !== "boolean") {
+    throw new InvalidDslCallError(`Loop '${contextLabel}' round result property 'done' must be a boolean.`);
+  }
+  
+  if (obj.nextState === undefined) {
+    throw new InvalidDslCallError(`Loop '${contextLabel}' round result is missing required property 'nextState'.`);
+  }
+
+  if (obj.result !== undefined) {
+    throw new InvalidDslCallError(`Loop '${contextLabel}' round returned deprecated property 'result'.`);
+  }
+  
+  if (obj.break !== undefined || obj.__brand === "loop-break") {
+    throw new InvalidDslCallError(`Loop '${contextLabel}' round returned deprecated break signal.`);
+  }
+
+  const allowed = new Set(["done", "nextState"]);
+  const extraKeys = Object.keys(obj).filter(k => !allowed.has(k));
+  if (extraKeys.length > 0) {
+    throw new InvalidDslCallError(`Loop '${contextLabel}' round result contains unsupported property '${extraKeys[0]}'.`);
+  }
 }

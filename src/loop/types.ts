@@ -1,41 +1,108 @@
 import type { SerializedError } from "../types/errors.js";
 
-export interface LoopOptions<TState, TRoundResult = unknown, TFinal = TRoundResult> {
-  label?: string;
-  maxRounds?: number;
-  stopWhen?: (input: { round: LoopRoundView<TRoundResult>; state: TState; history: LoopHistoryEntry[] }) => boolean | Promise<boolean>;
-  nextState?: (input: { state: TState; round: LoopRoundView<TRoundResult>; history: LoopHistoryEntry[] }) => TState | Promise<TState>;
-  onFailureState?: (input: { state: TState; error: SerializedError; round: LoopHistoryEntry; history: LoopHistoryEntry[] }) => TState | Promise<TState>;
-  failureMode?: "fail-fast" | "settled" | "continue";
-  timeoutMs?: number;
-  resultMode?: "history";
-  metadata?: Record<string, unknown>;
-}
-
-export interface NormalizedLoopOptions<TState, TRoundResult, TFinal> extends LoopOptions<TState, TRoundResult, TFinal> {
-  maxRounds: number;
-  failureMode: LoopFailureMode;
-  maxRoundsCeiling: number;
-  presentOptions: string[];
-}
-
-export type LoopFailureMode = "fail-fast" | "settled" | "continue";
-
-export type LoopStatus = "satisfied" | "max_rounds" | "failed" | "cancelled" | "timed_out";
+export type LoopFailureMode = "throw" | "settled";
+export type LoopStatus = "succeeded" | "failed" | "cancelled" | "timed_out" | "max_rounds";
 export type LoopRoundStatus = "completed" | "failed" | "cancelled" | "timed_out";
 
-export interface LoopResult<TState, TFinal> {
+export interface LoopOptions {
+  failureMode?: LoopFailureMode;
+  maxRounds: number;
+  timeoutMs?: number;
+}
+
+export interface LoopInput<TState> {
+  label: string;
+  initialState: TState;
+  options: LoopOptions;
+  run: LoopRunFunction<TState>;
+}
+
+export type LoopRunFunction<TState> = (
+  state: Readonly<TState>,
+  ctx: LoopContext
+) => Promise<LoopRunResult<TState>> | LoopRunResult<TState>;
+
+export interface LoopRunResult<TState> {
+  done: boolean;
+  nextState: TState;
+}
+
+export interface LoopContext {
+  loopId: string;
+  label: string;
+  roundIndex: number;  // zero-based
+  roundNumber: number; // one-based
+  signal: AbortSignal;
+  agent: (input: any) => Promise<any>;
+  workflow: (input: any) => Promise<any>;
+  log: (message: string, data?: any) => void;
+  agentId: (suffix?: string) => string;
+  sleep: (ms: number) => Promise<void>;
+}
+
+export interface LoopSettledSuccess<TState> {
+  ok: true;
+  status: "succeeded";
+  label: string;
+  loopId: string;
+  roundsCompleted: number;
+  finalState: TState;
+  artifacts: {
+    dir: string;
+  };
+}
+
+export interface LoopSettledFailure<TState> {
+  ok: false;
+  status: "failed" | "cancelled" | "timed_out" | "max_rounds";
+  label: string;
+  loopId: string;
+  roundsCompleted: number;
+  finalState?: TState;
+  error?: SerializedError;
+  artifacts: {
+    dir: string;
+  };
+}
+
+export type LoopSettledResult<TState> = LoopSettledSuccess<TState> | LoopSettledFailure<TState>;
+
+// Internal runtime types
+export interface NormalizedLoopInput<TState> {
+  label: string;
+  initialState: TState;
+  options: {
+    failureMode: LoopFailureMode;
+    maxRounds: number;
+    timeoutMs?: number;
+  };
+  run: LoopRunFunction<TState>;
+}
+
+export interface LoopRoundRecord<TState> {
+  index: number; // zero-based round index
+  roundNumber: number; // one-based round number
+  status: "completed" | "failed" | "cancelled" | "timed_out";
+  inputState: TState;
+  nextState?: TState;
+  durationMs: number;
+  error?: SerializedError;
+  nestedCalls: {
+    agents: string[];
+    workflows: string[];
+  };
+}
+
+export interface LoopExecutionRecord<TState> {
   schemaVersion: string;
   loopId: string;
-  label?: string;
-  status: LoopStatus;
-  accepted: boolean;
-  roundCount: number;
+  label: string;
+  status: "succeeded" | "failed" | "cancelled" | "timed_out" | "max_rounds";
+  roundsCompleted: number;
   maxRounds: number;
-  finalState: TState;
-  final?: TFinal;
-  reason?: string;
-  history: LoopHistoryEntry[];
+  initialState: TState;
+  finalState?: TState;
+  rounds: LoopRoundRecord<TState>[];
   startedAt: string;
   finishedAt: string;
   durationMs: number;
@@ -43,91 +110,29 @@ export interface LoopResult<TState, TFinal> {
   error?: SerializedError;
 }
 
-export interface LoopRoundContext<TState, TRoundResult, TFinal> {
-  loopId: string;
-  loopLabel?: string;
-  runId: string;
-  artifactsDir: string;
-  roundIndex: number;
-  roundId: string;
-  maxRounds: number;
-  signal: AbortSignal;
-  agent: (input: any) => Promise<any>;
-  workflow: (input: any) => Promise<any>;
-  parallel: (tasks: any) => Promise<any>;
-  log: (message: string, data?: any) => void;
-  agentId: (suffix?: string) => string;
-  break: <TBreakFinal = TFinal>(value?: TBreakFinal, options?: { reason?: string; state?: TState }) => LoopBreak<TBreakFinal>;
-  sleep: (ms: number) => Promise<void>;
-}
-
-export interface LoopHistoryEntry {
-  index: number;
-  status: LoopRoundStatus;
-  state: any;
-  nextState?: any;
-  result?: any;
-  error?: SerializedError;
-  break: boolean;
-  stopMatched?: boolean;
-  reason?: string;
-  durationMs: number;
-  artifactPath?: string;
-}
-
 export interface LoopSummary {
   loopId: string;
-  label?: string;
-  status: LoopStatus;
-  accepted: boolean;
-  roundCount: number;
+  label: string;
+  status: "succeeded" | "failed" | "cancelled" | "timed_out" | "max_rounds";
+  roundsCompleted: number;
   maxRounds: number;
   durationMs: number;
   artifactPath: string;
-  reason?: string;
   error?: SerializedError;
-}
-
-export interface LoopBreak<TFinal> {
-  __brand: "loop-break";
-  value?: TFinal;
-  reason?: string;
-  state?: unknown;
 }
 
 export interface LoopReplayRecord {
   loopId: string;
-  label?: string;
+  label: string;
   optionsFingerprint: string;
   initialStateHash: string;
   maxRounds: number;
   maxRoundsCeiling: number;
   rounds: Array<{
     index: number;
-    roundId: string;
+    roundNumber: number;
     stateBeforeHash: string;
     stateAfterHash?: string;
-    break: boolean;
-    stopMatched?: boolean;
-    terminalReason?: string;
     nestedCallSequence: string[];
   }>;
-}
-
-export interface LoopReturnBreak<TFinal> {
-  break: true;
-  value?: TFinal;
-  reason?: string;
-  state?: unknown;
-}
-
-export type TRoundReturn<TRoundResult, TFinal> = TRoundResult | LoopBreak<TFinal> | LoopReturnBreak<TFinal>;
-
-export interface LoopRoundView<TRoundResult> {
-  index: number;
-  roundId: string;
-  status: LoopRoundStatus;
-  result?: TRoundResult;
-  error?: SerializedError;
-  durationMs: number;
 }

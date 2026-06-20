@@ -16,6 +16,7 @@ import { cloneJsonValue } from "./json.js";
 import type { RuntimeState } from "./types.js";
 import { createWorkflowInvocationArtifactWriter, WorkflowInvocationArtifactWriter } from "./invocation-artifacts.js";
 import { sanitizeMetadata } from "../security/metadata.js";
+import { getActiveLoopContext, recordLoopChildWorkflowInvocationId } from "../loop/context.js";
 
 const Ajv = (AjvModule as any).default || AjvModule;
 const ajv = new Ajv({ 
@@ -240,7 +241,17 @@ export class DefaultWorkflowInvocationManager implements WorkflowInvocationManag
 
     const startedAtTime = this.now();
     const startedAt = new Date(startedAtTime).toISOString();
-    const workflowInvocationId = this.createInvocationId();
+    let workflowInvocationId: string;
+    const activeLoop = getActiveLoopContext();
+    if (activeLoop) {
+      const { normalizeLoopLabel } = await import("../loop/id.js");
+      const normalizedLabel = normalizeLoopLabel(activeLoop.label);
+      const baseId = this.createInvocationId();
+      workflowInvocationId = `${activeLoop.loopId}:${normalizedLabel}:round-${activeLoop.roundNumber}:${baseId}`;
+      recordLoopChildWorkflowInvocationId(workflowInvocationId);
+    } else {
+      workflowInvocationId = this.createInvocationId();
+    }
     const depth = parent.depth + 1;
 
     let artifactPath: string | undefined;
