@@ -2,9 +2,9 @@
 # yarn lockfile v1
 
 
-"@travisliu/open-dynamic-workflow@file:../travisliu-open-dynamic-workflow-0.3.1.tgz":
-  version "0.3.1"
-  resolved "file:../travisliu-open-dynamic-workflow-0.3.1.tgz"
+"@travisliu/open-dynamic-workflow@file:../travisliu-open-dynamic-workflow-0.3.5.tgz":
+  version "0.3.5"
+  resolved "file:../travisliu-open-dynamic-workflow-0.3.5.tgz"
   integrity sha512-Sy0N0ajcyVyrEXjgaZlyqD9zIstQtkkJ53yosbEVlm1o6c/n89dxEVWZ8htakpd6877qhHEZLhToOFUgOtVKEQ==
   dependencies:
     ajv "^8.20.0"

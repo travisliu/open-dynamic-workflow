@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.5] - 2026-06-21
+
+### Added
+
+- **Loop DSL Primitive**: Introduced the stateful `loop(input)` primitive to the Workflow DSL for goal-oriented, repeated callback execution. Features robust round-by-round state transitions, failure mode options ("throw" or "settled"), deterministic sub-agent ID mapping, execution timeouts, persistent round artifact tracking, and rich visual status updates in pretty/JSON/JSONL reporters.
+
+- **Cursor Agent Integration**: Added the `cursor` provider adapter to support orchestrating tasks through the Cursor Agent CLI, featuring trust flags, custom modes and models, workspace targets, and graceful plain-text parsing fallback.
+
+- **Linting & Code Health**: Integrated ESLint 10.x with flat configuration (`eslint.config.js`) and resolved all lint warnings, unused variables, types, and imports across the entire codebase.
+
+- **Log Event Data Previews**: Extended the workflow log output to format and display optional event data payloads (such as quality gate results) with structured indentation.
+
+### Fixed
+- **Pretty Reporter Output**: Fixed formatting to ensure quality gate logs and other workflow logs with attached context display their event data payloads correctly in the pretty reporter.
+
+
 ## [0.3.0] - 2026-06-16
 
 ### Added
