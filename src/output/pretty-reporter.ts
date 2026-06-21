@@ -3,10 +3,10 @@ import type { EventEnvelope } from "./events.js";
 import type { WorkflowRunResult } from "../types/workflow.js";
 import { renderVerboseEvent } from "./verbose-formatter.js";
 import { PrettyViewBuilder } from "./pretty-view-builder.js";
-import { renderPrettyView } from "./pretty-renderer.js";
 import { resolveFailedSubpaths } from "./failed-artifacts.js";
 import type { PrettyExecutionNode } from "./pretty-view.js";
 import { formatDuration, getStatusMarker, formatPermission, formatStatusCounts } from "./pretty-format.js";
+import { createPreview } from "../tools/serialization.js";
 
 function renderNodeLine(node: PrettyExecutionNode, depth: number): string {
   const indent = "  ".repeat(depth + 1);
@@ -90,7 +90,7 @@ export class PrettyReporter implements Reporter {
         }
         this.stdout.write("\nExecution\n");
       }
-    } catch (err) {
+    } catch {
       // Best effort
     }
   }
@@ -102,7 +102,25 @@ export class PrettyReporter implements Reporter {
         const workflowId = payload.workflowInvocationId;
         const depth = workflowId ? this.builder.getWorkflowLogDepth(workflowId) : 0;
         const indent = "  ".repeat(depth + 1);
-        this.stdout.write(`${indent}• ${payload.message}\n`);
+        const lines: string[] = [`${indent}• ${payload.message}`];
+
+        if (payload.data !== undefined) {
+          const dataIndent = "  ".repeat(depth + 2);
+          const dataPreview = createPreview(payload.data);
+          const dataText = JSON.stringify(dataPreview, null, 2) ?? String(dataPreview);
+          const dataLines = dataText.split("\n");
+
+          if (dataLines.length === 1) {
+            lines.push(`${dataIndent}data: ${dataLines[0]}`);
+          } else {
+            lines.push(`${dataIndent}data:`);
+            for (const line of dataLines) {
+              lines.push(`${dataIndent}  ${line}`);
+            }
+          }
+        }
+
+        this.stdout.write(lines.join("\n") + "\n");
         return;
       }
 
@@ -125,7 +143,7 @@ export class PrettyReporter implements Reporter {
           this.stdout.write(verboseBlock);
         }
       }
-    } catch (err) {
+    } catch {
       // Best effort
     }
   }
@@ -142,7 +160,7 @@ export class PrettyReporter implements Reporter {
             view.failureRecords
           );
         }
-      } catch (err) {
+      } catch {
         // Fallback if resolver fails
       }
       

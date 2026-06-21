@@ -142,9 +142,12 @@ describe("PrettyReporter", () => {
 
     reporter.handle({
       type: "workflow.log",
-      payload: { workflowInvocationId: "wf-1", message: "Setup log" }
+      payload: { workflowInvocationId: "wf-1", message: "Setup log", data: { ok: false, summary: "failed" } }
     } as any);
 
     expect(getStdout()).toContain("    • Setup log\n");
+    expect(getStdout()).toContain("      data:\n");
+    expect(getStdout()).toContain('"ok": false');
+    expect(getStdout()).toContain('"summary": "failed"');
   });
 });
