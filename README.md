@@ -1,4 +1,17 @@
-# Open Dynamic Workflow
+<p align="center">
+  <img src="images/cover.png" alt="Open Dynamic Workflow Cover" />
+</p>
+
+<h1 align="center">Open Dynamic Workflow</h1>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/@travisliu/open-dynamic-workflow">
+    <img src="https://img.shields.io/npm/v/@travisliu/open-dynamic-workflow?logo=npm" alt="npm version" />
+  </a>
+  <a href="https://github.com/travisliu/open-dynamic-workflow/stargazers">
+    <img src="https://img.shields.io/github/stars/travisliu/open-dynamic-workflow?logo=github" alt="GitHub stars" />
+  </a>
+</p>
 
 Rename Notice: Renamed from `@prmflow/openflow` (binary: `openflow`) to `@travisliu/open-dynamic-workflow`
 
@@ -15,7 +28,7 @@ To get started quickly, you can describe the workflow you want in natural langua
 Prompt with skill:
 `/open-dynamic-workflow Run a workflow that uses Codex to review correctness and security, uses Gemini to review tests and operations, then uses Gemini to summarize the result.`
 
-![Open Dynamic Workflow](images/demo.png)
+![Dynamic Workflow DEMO](images/demo.png)
 
 ## Supported coding agents
 
