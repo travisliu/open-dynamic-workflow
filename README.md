@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="images/cover.png" alt="Open Dynamic Workflow Cover" />
+  <img src="images/cover.png" alt="Open Dynamic Workflow Cover" width="600" />
 </p>
 
 <h1 align="center">Open Dynamic Workflow</h1>
@@ -12,6 +12,8 @@
     <img src="https://img.shields.io/github/stars/travisliu/open-dynamic-workflow?logo=github" alt="GitHub stars" />
   </a>
 </p>
+
+<p align="center">&nbsp;</p>
 
 Rename Notice: Renamed from `@prmflow/openflow` (binary: `openflow`) to `@travisliu/open-dynamic-workflow`
 
