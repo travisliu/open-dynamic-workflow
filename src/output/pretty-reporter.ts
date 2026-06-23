@@ -8,6 +8,10 @@ import type { PrettyExecutionNode } from "./pretty-view.js";
 import { formatDuration, getStatusMarker, formatPermission, formatStatusCounts } from "./pretty-format.js";
 import { createPreview } from "../tools/serialization.js";
 
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat("en-US").format(value);
+}
+
 function renderNodeLine(node: PrettyExecutionNode, depth: number): string {
   const indent = "  ".repeat(depth + 1);
   const marker = getStatusMarker(node.status);
@@ -172,7 +176,14 @@ export class PrettyReporter implements Reporter {
       this.stdout.write(`  workflows: ${formatStatusCounts(view.summary.workflowCounts)}\n`);
       this.stdout.write(`  agents:    ${formatStatusCounts(view.summary.agentCounts)}\n`);
       this.stdout.write(`  loops:     ${formatStatusCounts(view.summary.loopCounts)}\n`);
-      this.stdout.write(`  duration:  ${totalDuration}\n\n`);
+      this.stdout.write(`  duration:  ${totalDuration}\n`);
+      if (result.limitSummary?.limits.maxAgentCalls !== undefined) {
+        const suffix = result.limitSummary.exceeded ? " exceeded" : "";
+        this.stdout.write(
+          `  limits:    agent calls ${formatNumber(result.limitSummary.agentCalls)}/${formatNumber(result.limitSummary.limits.maxAgentCalls)}${suffix}\n`
+        );
+      }
+      this.stdout.write("\n");
 
       this.stdout.write("Artifacts\n");
       if (view.summary.status === "succeeded" && view.artifacts.failedSubpaths.length === 0) {

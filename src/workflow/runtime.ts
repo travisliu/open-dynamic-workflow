@@ -25,6 +25,7 @@ import { cloneJsonValue, cloneJsonObject } from "./json.js";
 import { withDslExecutionScope, withToolTopLevelWindow } from "./scope.js";
 import type { ToolRegistry } from "../types/tool.js";
 import type { ToolExecutor } from "../tools/executor-types.js";
+import { RunLimitTracker } from "./run-limits.js";
 
 export interface Clock {
   now(): Date;
@@ -88,6 +89,9 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     });
 
     const registry = input.workflowRegistry || createRootWorkflowRegistry(input.parsedWorkflow);
+    const runLimitTracker = new RunLimitTracker({
+      maxAgentCalls: input.cli.maxAgentCalls ?? input.config.maxAgentCalls
+    });
 
     const runtime: RuntimeState = {
       artifactStore: deps.artifactStore,
@@ -121,7 +125,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       toolCallIds: new Set(),
       toolCounter: 0,
       loopCounter: 0,
-      loopSummaries: []
+      loopSummaries: [],
+      runLimitTracker
     };
 
     const invocationManager = new DefaultWorkflowInvocationManager({
@@ -218,7 +223,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
             deps.eventSink.emit("workflow.failed", {
               status: "failed",
               durationMs,
-              error: result.error!
+              error: result.error!,
+              limitSummary: result.limitSummary
             });
           }
           if (deps.artifactStore) {
@@ -238,7 +244,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
             deps.eventSink.emit("workflow.cancelled", {
               status: "cancelled",
               durationMs,
-              reason: reasonMsg || "Workflow cancelled"
+              reason: reasonMsg || "Workflow cancelled",
+              limitSummary: result.limitSummary
             });
           }
           if (deps.artifactStore) {
@@ -261,7 +268,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         deps.eventSink.emit("workflow.completed", {
           status: "succeeded",
           durationMs,
-          result: workflowResult
+          result: workflowResult,
+          limitSummary: result.limitSummary
         });
       }
       if (deps.artifactStore) {
@@ -308,7 +316,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           deps.eventSink.emit("workflow.cancelled", {
             status: "cancelled",
             durationMs,
-            reason: err.message || "Workflow cancelled"
+            reason: err.message || "Workflow cancelled",
+            limitSummary: result.limitSummary
           });
         }
         if (deps.artifactStore) {
@@ -323,7 +332,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         deps.eventSink.emit("workflow.failed", {
           status: "failed",
           durationMs,
-          error: result.error!
+          error: result.error!,
+          limitSummary: result.limitSummary
         });
       }
       if (deps.artifactStore) {
@@ -440,7 +450,8 @@ export function buildSucceededRunResult(
     durationMs,
     artifactsDir: runtime.artifactsDir,
     reportPath,
-    eventsPath
+    eventsPath,
+    limitSummary: runtime.runLimitTracker?.summary()
   };
 
   if (workflowResult !== undefined) {
@@ -479,6 +490,7 @@ export function buildFailedRunResult(
     artifactsDir: runtime.artifactsDir,
     reportPath,
     eventsPath,
+    limitSummary: runtime.runLimitTracker?.summary(),
     error: serialized
   };
 
@@ -518,6 +530,7 @@ export function buildCancelledRunResult(
     artifactsDir: runtime.artifactsDir,
     reportPath,
     eventsPath,
+    limitSummary: runtime.runLimitTracker?.summary(),
     error: errorPayload
   };
 

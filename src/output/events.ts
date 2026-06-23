@@ -1,6 +1,7 @@
 import type { AgentArtifacts } from "../types/artifacts.js";
 import type { SerializedError } from "../types/errors.js";
 import type { AgentPermissions } from "../types/agent.js";
+import type { WorkflowRunLimitSummary } from "../types/workflow.js";
 
 export type EventType =
   | "workflow.started"
@@ -86,18 +87,21 @@ export interface WorkflowResolvedPayload {
 export interface WorkflowCompletedPayload {
   status: "succeeded";
   durationMs: number;
+  limitSummary?: WorkflowRunLimitSummary | undefined;
 }
 
 export interface WorkflowFailedPayload {
   status: "failed";
   durationMs: number;
   error: SerializedError;
+  limitSummary?: WorkflowRunLimitSummary | undefined;
 }
 
 export interface WorkflowCancelledPayload {
   status: "cancelled";
   durationMs: number;
   reason?: string;
+  limitSummary?: WorkflowRunLimitSummary | undefined;
 }
 
 export interface PhaseStartedPayload {

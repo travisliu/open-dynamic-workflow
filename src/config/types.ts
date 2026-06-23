@@ -83,6 +83,7 @@ export interface OpenDynamicWorkflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
   timeoutMs: number;
+  maxAgentCalls?: number | undefined;
   defaultModel?: string | null;
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;

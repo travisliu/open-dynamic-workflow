@@ -116,6 +116,94 @@ export default async (ctx) => {
     }
   });
 
+  it("max-agent-calls prevents later live provider calls", async () => {
+    const workflowPath = path.join(TEMP_DIR, "workflows/max-agent-calls.workflow.ts");
+    const configPath = path.join(TEMP_DIR, "max-agent-calls.config.yaml");
+    const runsDir = path.join(TEMP_DIR, "max-agent-calls-runs");
+    const counterPath = path.join(TEMP_DIR, "max-agent-calls-counter.txt");
+    await writeConfig(configPath);
+    await fs.writeFile(workflowPath, `export const meta = { name: "max-agent-calls", description: "max agent calls test" };
+export default async (ctx) => {
+  await ctx.agent({ id: "a", prompt: "first" });
+  await ctx.agent({ id: "b", prompt: "second" });
+  return "done";
+};`, "utf8");
+    process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      runsDir,
+      "--max-agent-calls",
+      "1"
+    ]);
+
+    expect(result.error?.code).toBe("RUN_LIMIT_EXCEEDED");
+    expect(await readCounter(counterPath)).toBe("1");
+
+    const [runId] = await listRunDirs(runsDir);
+    const report = JSON.parse(await fs.readFile(path.join(runsDir, runId!, "report.json"), "utf8"));
+    expect(report.status).toBe("failed");
+    expect(report.agents.map((agent: any) => agent.id)).toEqual(["a"]);
+    expect(report.limitSummary).toMatchObject({
+      limits: { maxAgentCalls: 1 },
+      agentCalls: 1,
+      exceeded: true,
+      exceededBy: "maxAgentCalls"
+    });
+  });
+
+  it("does not count cache hits as live agent calls during resume", async () => {
+    const workflowPath = path.join(TEMP_DIR, "workflows/limited-resume.workflow.ts");
+    const configPath = path.join(TEMP_DIR, "limited-resume.config.yaml");
+    const runsDir = path.join(TEMP_DIR, "limited-resume-runs");
+    const counterPath = path.join(TEMP_DIR, "limited-resume-counter.txt");
+    await writeConfig(configPath);
+    await fs.writeFile(workflowPath, `export const meta = { name: "limited-resume", description: "limited resume test" };
+export default async (ctx) => {
+  await ctx.agent({ id: "a", prompt: "first" });
+  await ctx.agent({ id: "b", prompt: "second" });
+  return "done";
+};`, "utf8");
+    process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
+
+    expect((await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      runsDir,
+      "--max-agent-calls",
+      "2"
+    ])).error).toBeNull();
+    expect(await readCounter(counterPath)).toBe("2");
+    const [firstRunId] = await listRunDirs(runsDir);
+
+    expect((await runCli([
+      "resume",
+      firstRunId!,
+      "--out",
+      runsDir,
+      "--max-agent-calls",
+      "1"
+    ])).error).toBeNull();
+    expect(await readCounter(counterPath)).toBe("2");
+
+    const runIds = await listRunDirs(runsDir);
+    const secondRunId = runIds.find((id) => id !== firstRunId)!;
+    const report = JSON.parse(await fs.readFile(path.join(runsDir, secondRunId, "report.json"), "utf8"));
+    expect(report.agents.map((agent: any) => agent.cache?.hit)).toEqual([true, true]);
+    expect(report.limitSummary).toMatchObject({
+      limits: { maxAgentCalls: 1 },
+      agentCalls: 0,
+      exceeded: false
+    });
+  });
+
   it("uses longest unchanged prefix after the workflow script is edited", async () => {
     const workflowPath = path.join(TEMP_DIR, "workflows/edited.workflow.ts");
     const configPath = path.join(TEMP_DIR, "edited.config.yaml");

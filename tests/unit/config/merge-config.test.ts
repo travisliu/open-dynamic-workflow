@@ -19,6 +19,11 @@ describe("Merge Config", () => {
     expect(merged.timeoutMs).toBe(5000);
   });
 
+  it("CLI maxAgentCalls overrides config", () => {
+    const merged = mergeConfig(DEFAULT_CONFIG, { maxAgentCalls: 10 }, { maxAgentCalls: 3 });
+    expect(merged.maxAgentCalls).toBe(3);
+  });
+
   it("CLI report overrides config", () => {
     const merged = mergeConfig(DEFAULT_CONFIG, { reporting: { mode: "json", verbose: false } }, { report: "jsonl" });
     expect(merged.reporting.mode).toBe("jsonl");

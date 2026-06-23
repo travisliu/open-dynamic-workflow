@@ -116,4 +116,49 @@ describe("Run Command", () => {
       expect.anything()
     );
   });
+
+  it("CLI max-agent-calls option is passed into runtime input", async () => {
+    const runSpy = vi.fn().mockResolvedValue({
+      schemaVersion: "open-dynamic-workflow.report.v1",
+      runId: "test-run",
+      status: "succeeded",
+      durationMs: 10,
+      artifactsDir: "runs",
+      agents: []
+    } as WorkflowRunResult);
+    const mockRunner: RuntimeRunner = { run: runSpy };
+
+    await runCommand({
+      workflowFile: validFixturePath,
+      rawOptions: { maxAgentCalls: "3" },
+      deps: { runtimeRunner: mockRunner }
+    });
+
+    expect(runSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        config: expect.objectContaining({
+          maxAgentCalls: 3
+        }),
+        cli: expect.objectContaining({
+          maxAgentCalls: 3
+        })
+      }),
+      expect.anything()
+    );
+  });
+
+  it("invalid max-agent-calls option fails before runtime", async () => {
+    const runSpy = vi.fn();
+    const mockRunner: RuntimeRunner = { run: runSpy };
+
+    await expect(
+      runCommand({
+        workflowFile: validFixturePath,
+        rawOptions: { maxAgentCalls: "0" },
+        deps: { runtimeRunner: mockRunner }
+      })
+    ).rejects.toThrow(OpenDynamicWorkflowError);
+
+    expect(runSpy).not.toHaveBeenCalled();
+  });
 });

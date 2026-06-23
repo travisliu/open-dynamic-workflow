@@ -5,6 +5,7 @@ export interface ConfigCliOverrides {
   model?: string | undefined;
   concurrency?: number | undefined;
   timeoutMs?: number | undefined;
+  maxAgentCalls?: number | undefined;
   report?: "pretty" | "json" | "jsonl" | undefined;
   verbose?: boolean | undefined;
 }
@@ -62,6 +63,7 @@ export function mergeConfig(
   if (cli.model !== undefined) merged.defaultModel = cli.model;
   if (cli.concurrency !== undefined) merged.concurrency = cli.concurrency;
   if (cli.timeoutMs !== undefined) merged.timeoutMs = cli.timeoutMs;
+  if (cli.maxAgentCalls !== undefined) merged.maxAgentCalls = cli.maxAgentCalls;
   if (cli.report) merged.reporting.mode = cli.report;
   if (cli.verbose !== undefined) merged.reporting.verbose = cli.verbose;
 

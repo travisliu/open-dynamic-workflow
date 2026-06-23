@@ -288,7 +288,7 @@ Artifacts are always enabled so failed or partial runs remain debuggable.
 By default, Open Dynamic Workflow loads:
 
 ```text
-.openflow/config.yaml
+.open-dynamic-workflow/config.yaml
 ```
 
 Example:
@@ -297,6 +297,7 @@ Example:
 defaultProvider: codex
 concurrency: 4
 timeoutMs: 900000
+maxAgentCalls: 20
 
 providers:
   codex:
@@ -333,6 +334,8 @@ Configuration precedence:
 5. Built-in defaults.
 
 `--provider` sets the default provider. It does not override an explicit provider inside an `agent()` call.
+
+`maxAgentCalls` limits how many live provider agent calls a run may start. Resume cache hits do not count as new live calls. The CLI flag `--max-agent-calls` overrides the config value for that run.
 
 #### Safety & System Context:
 

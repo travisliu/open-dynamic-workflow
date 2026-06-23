@@ -26,6 +26,13 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
     );
   }
 
+  if (config.maxAgentCalls !== undefined && (!Number.isInteger(config.maxAgentCalls) || config.maxAgentCalls < 1)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'maxAgentCalls' must be a positive integer."
+    );
+  }
+
   // defaultModel validation
   if (config.defaultModel !== undefined && config.defaultModel !== null && typeof config.defaultModel !== "string") {
     throw new OpenDynamicWorkflowError(

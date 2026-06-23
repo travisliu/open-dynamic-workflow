@@ -47,6 +47,9 @@ export async function runWorkflowService(
   const timeoutMs = rawOptions.timeoutMs !== undefined
     ? parsePositiveInteger(rawOptions.timeoutMs, "--timeout-ms")
     : undefined;
+  const maxAgentCalls = rawOptions.maxAgentCalls !== undefined
+    ? parsePositiveInteger(rawOptions.maxAgentCalls, "--max-agent-calls")
+    : undefined;
   const reportMode = rawOptions.report !== undefined
     ? parseReportMode(rawOptions.report)
     : undefined;
@@ -71,6 +74,7 @@ export async function runWorkflowService(
   if (rawOptions.model !== undefined) cliOverrides.model = rawOptions.model;
   if (concurrency !== undefined) cliOverrides.concurrency = concurrency;
   if (timeoutMs !== undefined) cliOverrides.timeoutMs = timeoutMs;
+  if (maxAgentCalls !== undefined) cliOverrides.maxAgentCalls = maxAgentCalls;
   if (reportMode !== undefined) cliOverrides.report = reportMode;
   if (rawOptions.verbose !== undefined) cliOverrides.verbose = !!rawOptions.verbose;
 
@@ -219,6 +223,7 @@ export async function runWorkflowService(
       report: rawOptions.report,
       concurrency: rawOptions.concurrency,
       timeoutMs: rawOptions.timeoutMs,
+      maxAgentCalls: rawOptions.maxAgentCalls,
       resume: rawOptions.resume,
       noCache: noCache,
       failFast: !!rawOptions.failFast,
@@ -304,6 +309,7 @@ export async function runWorkflowService(
         report: config.reporting.mode,
         concurrency: config.concurrency,
         timeoutMs: config.timeoutMs,
+        maxAgentCalls: config.maxAgentCalls,
         resume: rawOptions.resume,
         noCache,
         dryRun: false,

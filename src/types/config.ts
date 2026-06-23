@@ -97,6 +97,7 @@ export interface OpenDynamicWorkflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
   timeoutMs: number;
+  maxAgentCalls?: number | undefined;
   defaultModel?: string | null;
   failFast?: boolean;
   providers: Record<string, ProviderConfig>;
@@ -125,6 +126,7 @@ export interface CliRunOptions {
   report?: ReporterMode;
   concurrency?: number;
   timeoutMs?: number;
+  maxAgentCalls?: number | undefined;
   resume?: string;
   noCache?: boolean;
   dryRun: boolean;
