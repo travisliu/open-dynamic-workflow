@@ -22,6 +22,9 @@ graph TD
 3.  **Merge CLI Options**: Overrides are applied from the command line (e.g. `--concurrency`, `--timeout-ms`, `--report`).
 4.  **Schema Validation**: The merged configuration object is validated. Any discrepancy raises an exit code 3 (`Workflow parse or validation error`).
 
+> [!NOTE]
+> When the default project configuration file (`.open-dynamic-workflow/config.yaml`) is missing, the CLI automatically falls back to built-in defaults and continues execution. However, if a setup-time failure (such as missing directories, missing shared agents, or unresolved child workflows) occurs in this uninitialized state, the CLI will attach an informational initialization hint to guide the user toward running the `init` command.
+
 ### Generating Configuration with `open-dynamic-workflow init`
 
 The `open-dynamic-workflow init` command generates a starter `.open-dynamic-workflow/config.yaml` with safe defaults and detected providers.

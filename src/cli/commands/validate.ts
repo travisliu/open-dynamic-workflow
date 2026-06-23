@@ -7,6 +7,7 @@ import { loadSharedAgentRegistry } from "../../shared-agents/load.js";
 import { loadToolRegistry } from "../../tools/load.js";
 import { printValidationSuccess } from "../print.js";
 import * as path from "node:path";
+import { detectProjectInitHintContext, attachHintToError } from "../../errors/project-init-hint.js";
 
 export interface ValidateCommandInput {
   workflowFile: string;
@@ -91,6 +92,20 @@ export async function validateWorkflowService(
 }
 
 export async function validateCommand(input: ValidateCommandInput): Promise<void> {
-  const result = await validateWorkflowService(input);
-  printValidationSuccess(result.workflowName, result.workflowFileRelative);
+  const rawOptions = input.rawOptions || {};
+  const cwd = rawOptions.cwd ?? process.cwd();
+  const resolvedCwd = path.resolve(cwd);
+  const hintContext = detectProjectInitHintContext({
+    cwd: resolvedCwd,
+    configPath: rawOptions.config,
+    invokedBinaryName: rawOptions.__invokedBinaryName,
+  });
+
+  try {
+    const result = await validateWorkflowService(input);
+    printValidationSuccess(result.workflowName, result.workflowFileRelative);
+  } catch (error) {
+    throw attachHintToError(error, hintContext);
+  }
 }
+

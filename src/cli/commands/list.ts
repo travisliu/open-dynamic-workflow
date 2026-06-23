@@ -7,6 +7,8 @@ import { mapListExitCode } from "../../errors/list-errors.js";
 import { OpenDynamicWorkflowError } from "../../errors/types.js";
 import { ErrorCode } from "../../errors/codes.js";
 import type { DiscoveryService, ListCliResourceType } from "../../discovery/types.js";
+import * as path from "node:path";
+import { detectProjectInitHintContext, attachHintToDiagnostic } from "../../errors/project-init-hint.js";
 
 export interface ListCommandInput {
   resourceType?: string;
@@ -45,6 +47,13 @@ export function validateListDirectoryFlags(cliResourceType: ListCliResourceType,
 export async function listCommand(input: ListCommandInput): Promise<void> {
   const rawOptions = input.rawOptions ?? {};
   const cwd = rawOptions.cwd ?? process.cwd();
+  const resolvedCwd = path.resolve(cwd);
+  const hintContext = detectProjectInitHintContext({
+    cwd: resolvedCwd,
+    configPath: rawOptions.config,
+    invokedBinaryName: rawOptions.__invokedBinaryName,
+  });
+
   const cliResourceType = parseListResourceType(input.resourceType);
   const reportMode = rawOptions.report ? parseReportMode(rawOptions.report) : undefined;
 
@@ -78,6 +87,14 @@ export async function listCommand(input: ListCommandInput): Promise<void> {
     strict: !!rawOptions.strict,
   });
 
+  const updatedWarnings = result.warnings.map(d => attachHintToDiagnostic(d, hintContext));
+  const updatedErrors = result.errors.map(d => attachHintToDiagnostic(d, hintContext));
+  const updatedResult = {
+    ...result,
+    warnings: updatedWarnings,
+    errors: updatedErrors,
+  };
+
   const reporter = createListReporter({
     mode: config.reporting.mode,
     streams: {
@@ -86,6 +103,7 @@ export async function listCommand(input: ListCommandInput): Promise<void> {
     },
     verbose: config.reporting.verbose,
   });
-  reporter.render(result);
-  process.exitCode = mapListExitCode(result, { strict: !!rawOptions.strict });
+  reporter.render(updatedResult);
+  process.exitCode = mapListExitCode(updatedResult, { strict: !!rawOptions.strict });
 }
+

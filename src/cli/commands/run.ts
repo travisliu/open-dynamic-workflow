@@ -14,6 +14,7 @@ import { loadSharedAgentRegistry } from "../../shared-agents/load.js";
 import { loadToolRegistry } from "../../tools/load.js";
 import { DefaultToolExecutor } from "../../tools/executor.js";
 import * as path from "node:path";
+import { detectProjectInitHintContext, attachHintToError } from "../../errors/project-init-hint.js";
 
 export interface RunCommandDeps {
   runtimeRunner: RuntimeRunner;
@@ -369,5 +370,19 @@ export async function runWorkflowService(
 }
 
 export async function runCommand(input: RunCommandInput): Promise<void> {
-  await runWorkflowService(input);
+  const rawOptions = input.rawOptions || {};
+  const cwd = rawOptions.cwd ?? process.cwd();
+  const resolvedCwd = path.resolve(cwd);
+  const hintContext = detectProjectInitHintContext({
+    cwd: resolvedCwd,
+    configPath: rawOptions.config,
+    invokedBinaryName: rawOptions.__invokedBinaryName,
+  });
+
+  try {
+    await runWorkflowService(input);
+  } catch (error) {
+    throw attachHintToError(error, hintContext);
+  }
 }
+

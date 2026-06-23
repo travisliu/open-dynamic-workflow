@@ -3,6 +3,7 @@ import { main } from "../../src/cli/index.js";
 import { vi } from "vitest";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
+import { renderCliError } from "../../src/cli/error-output.js";
 
 const TEMP_DIR = path.resolve("tests/temp-validate-by-name-integration");
 
@@ -34,8 +35,8 @@ async function runCli(args: string[]) {
     await main(["node", "open-dynamic-workflow", ...args]);
   } catch (err) {
     error = err;
-    if (err instanceof Error && stderrData.length === 0) {
-      stderrData.push(err.message);
+    if (stderrData.length === 0) {
+      renderCliError(err, { argv: ["node", "open-dynamic-workflow", ...args] });
     }
   } finally {
     stdoutSpy.mockRestore();
@@ -164,6 +165,67 @@ describe("Integration - validate workflow by name", () => {
 
     const items = await fs.readdir(TEST_TEMP_OUT);
     expect(items.length).toBe(0);
+  });
+
+  describe("initialization hints integration", () => {
+    it("Validate unresolved shared agent shows hint", async () => {
+      const workflowPath = path.join(TEMP_DIR, "missing-agent.workflow.js");
+      await fs.writeFile(
+        workflowPath,
+        `export const meta = {
+          name: "missing-agent",
+          description: "References a missing shared agent"
+        };
+        phase("init");
+        const result = await agent({ definition: "non-existent-agent" });
+        export default { result };`
+      );
+
+      const result = await runCli(["validate", workflowPath, "--cwd", TEMP_DIR]);
+
+      expect(result.error).toBeDefined();
+      expect(result.stderr).toContain("Shared agent 'non-existent-agent' was not found");
+      expect(result.stderr).toContain("Hint: This project may not be initialized yet");
+    });
+
+    it("Validate unresolved child workflow shows hint", async () => {
+      const workflowPath = path.join(TEMP_DIR, "missing-child.workflow.js");
+      await fs.writeFile(
+        workflowPath,
+        `export const meta = {
+          name: "missing-child",
+          description: "References a missing child workflow"
+        };
+        phase("init");
+        const result = await workflow({ name: "non-existent-workflow" });
+        export default { result };`
+      );
+
+      const result = await runCli(["validate", workflowPath, "--cwd", TEMP_DIR]);
+
+      expect(result.error).toBeDefined();
+      expect(result.stderr).toContain("Workflow 'non-existent-workflow' was not found in the registry");
+      expect(result.stderr).toContain("Hint: This project may not be initialized yet");
+    });
+
+    it("Explicit custom config suppresses hint", async () => {
+      const workflowPath = path.join(TEMP_DIR, "missing-agent.workflow.js");
+      await fs.writeFile(
+        workflowPath,
+        `export const meta = {
+          name: "missing-agent",
+          description: "References a missing shared agent"
+        };
+        phase("init");
+        const result = await agent({ definition: "non-existent-agent" });
+        export default { result };`
+      );
+
+      const result = await runCli(["validate", workflowPath, "--cwd", TEMP_DIR, "--config", "custom-missing.yaml"]);
+
+      expect(result.error).toBeDefined();
+      expect(result.stderr).not.toContain("Hint: This project may not be initialized yet");
+    });
   });
 
 });

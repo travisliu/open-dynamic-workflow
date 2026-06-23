@@ -171,5 +171,25 @@ describe("CLI package execution and installation", () => {
     const report = JSON.parse(jsonStdout.trim());
     expect(report.schemaVersion).toBe("open-dynamic-workflow.report.v1");
     expect(report.status).toBe("succeeded");
-  }, 30000);
+
+    // Preflight run --report json package execution test
+    const preflightCommand = `"${globalBinPath}" run non-existent-workflow --cwd "${TEMP_NPM_DIR}" --report json`;
+    let preflightError: any = null;
+    let preflightStdout = "";
+    try {
+      preflightStdout = execSync(preflightCommand, { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+    } catch (err: any) {
+      preflightError = err;
+      preflightStdout = err.stdout;
+    }
+    
+    expect(preflightError).not.toBeNull();
+    const parsedEnvelope = JSON.parse(preflightStdout.trim());
+    expect(parsedEnvelope.schemaVersion).toBe("open-dynamic-workflow.error.v1");
+    expect(parsedEnvelope.status).toBe("failed");
+    expect(parsedEnvelope.error.code).toBe("WORKFLOW_DISCOVERY_FAILED");
+    expect(parsedEnvelope.error.hint).toBeDefined();
+    expect(parsedEnvelope.error.hint.code).toBe("PROJECT_INIT_MISSING");
+    expect(parsedEnvelope.error.hint.command).toBe("open-dynamic-workflow init");
+  }, 45000);
 });

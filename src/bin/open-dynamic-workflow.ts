@@ -3,6 +3,7 @@
 import { main } from "../cli/index.js";
 import { exitCodeForError } from "../errors/exit-codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
+import { renderCliError } from "../cli/error-output.js";
 
 function objectCode(value: unknown): string | undefined {
   if (value && typeof value === "object" && "code" in value && typeof value.code === "string") {
@@ -45,10 +46,7 @@ main(process.argv).catch((error) => {
     return;
   }
 
-  if (!isCommanderUsageError(error)) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(message);
-  }
+  renderCliError(error, { argv: process.argv });
 
   process.exitCode = exitCodeForError(error);
 });

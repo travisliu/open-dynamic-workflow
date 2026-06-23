@@ -12,6 +12,7 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { getPackageVersion } from "./package-info.js";
 import { exitCodeForError } from "../errors/exit-codes.js";
+import { renderCliError } from "./error-output.js";
 
 
 function collectArgs(value: string, previous: string[]): string[] {
@@ -91,6 +92,7 @@ Examples:
 `
     )
     .action(async (resourceType, options) => {
+      options.__invokedBinaryName = displayName;
       await listCommand({ resourceType, rawOptions: options });
     });
 
@@ -123,6 +125,7 @@ Examples:
 `
     )
     .action(async (workflowFile, options) => {
+      options.__invokedBinaryName = displayName;
       await runCommand({ workflowFile, rawOptions: options });
     });
 
@@ -165,6 +168,7 @@ Examples:
       if (!target) {
         throw new OpenDynamicWorkflowError(ErrorCode.CLI_USAGE_ERROR, "Missing <workflow-name-or-file>");
       }
+      options.__invokedBinaryName = displayName;
       await validateCommand({ workflowFile: target, rawOptions: options });
     });
 
@@ -238,22 +242,20 @@ function isCommanderUsageError(error: unknown): boolean {
 }
 
 export async function runCli(args: string[]): Promise<void> {
+  const fullArgv = [
+    process.argv[0] ?? "node",
+    process.argv[1] ?? "open-dynamic-workflow",
+    ...args
+  ];
   try {
-    await main([
-      process.argv[0] ?? "node",
-      process.argv[1] ?? "open-dynamic-workflow",
-      ...args
-    ]);
+    await main(fullArgv);
   } catch (error) {
     if (isCommanderControlError(error)) {
       process.exitCode = 0;
       return;
     }
 
-    if (!isCommanderUsageError(error)) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(message);
-    }
+    renderCliError(error, { argv: fullArgv });
 
     process.exitCode = exitCodeForError(error);
   }

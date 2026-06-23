@@ -16,8 +16,82 @@ export class ListPrettyReporter implements ListReporter {
       this.renderAll(result);
     }
 
+    this.renderDiagnosticsAndHints(result);
+  }
+
+  private renderDiagnosticsAndHints(result: ListResult): void {
+    if (this.isUninitializedDefaultProject(result)) {
+      const allDiags = [...result.warnings, ...result.errors];
+      const initDiag = allDiags.find((d) => d.hint?.code === "PROJECT_INIT_MISSING");
+      const command = initDiag?.hint?.command ?? "odw init";
+
+      this.streams.stdout.write(`\nWarnings:\n`);
+      this.streams.stdout.write(`  - Project is not initialized.\n`);
+      this.streams.stdout.write(`    Missing config: .open-dynamic-workflow/config.yaml\n`);
+      this.streams.stdout.write(`    Missing directories:\n`);
+      this.streams.stdout.write(`      - workflows\n`);
+      this.streams.stdout.write(`      - .open-dynamic-workflow/agents\n`);
+      this.streams.stdout.write(`      - .open-dynamic-workflow/tools\n`);
+      this.streams.stdout.write(`\nNext step:\n`);
+      this.streams.stdout.write(`  Run \`${command}\` to initialize this project.\n`);
+      return;
+    }
+
     this.renderDiagnostics(result.warnings, "Warnings");
     this.renderDiagnostics(result.errors, "Errors");
+  }
+
+  private isUninitializedDefaultProject(result: ListResult): boolean {
+    const { resourceTypes, resources, warnings, errors } = result;
+
+    if (
+      resourceTypes.length !== 3 ||
+      !resourceTypes.includes("workflow") ||
+      !resourceTypes.includes("agent") ||
+      !resourceTypes.includes("tool")
+    ) {
+      return false;
+    }
+
+    if (resources.length !== 0) {
+      return false;
+    }
+
+    const allDiags = [...warnings, ...errors];
+    if (allDiags.length !== 3) {
+      return false;
+    }
+
+    const isDefaultWorkflowPath = (p: string) =>
+      p === "workflows" || p.replace(/\\/g, "/").endsWith("/workflows");
+    const isDefaultAgentPath = (p: string) =>
+      p === ".open-dynamic-workflow/agents" || p.replace(/\\/g, "/").endsWith("/.open-dynamic-workflow/agents");
+    const isDefaultToolPath = (p: string) =>
+      p === ".open-dynamic-workflow/tools" || p.replace(/\\/g, "/").endsWith("/.open-dynamic-workflow/tools");
+
+    const hasWorkflowDiag = allDiags.some(
+      (d) =>
+        d.resourceType === "workflow" &&
+        d.code === "LIST_DIRECTORY_NOT_FOUND" &&
+        isDefaultWorkflowPath(d.path) &&
+        d.hint?.code === "PROJECT_INIT_MISSING"
+    );
+    const hasAgentDiag = allDiags.some(
+      (d) =>
+        d.resourceType === "agent" &&
+        d.code === "LIST_DIRECTORY_NOT_FOUND" &&
+        isDefaultAgentPath(d.path) &&
+        d.hint?.code === "PROJECT_INIT_MISSING"
+    );
+    const hasToolDiag = allDiags.some(
+      (d) =>
+        d.resourceType === "tool" &&
+        d.code === "LIST_DIRECTORY_NOT_FOUND" &&
+        isDefaultToolPath(d.path) &&
+        d.hint?.code === "PROJECT_INIT_MISSING"
+    );
+
+    return hasWorkflowDiag && hasAgentDiag && hasToolDiag;
   }
 
   private renderTargeted(result: ListResult, type: ListResourceType): void {
@@ -115,6 +189,9 @@ export class ListPrettyReporter implements ListReporter {
     this.streams.stdout.write(`\n${title}:\n`);
     for (const d of diagnostics) {
       this.streams.stdout.write(`  - [${d.resourceType}] ${d.path}: ${d.message} (${d.code})\n`);
+      if (d.hint && d.hint.message) {
+        this.streams.stdout.write(`    Hint: ${d.hint.message}\n`);
+      }
     }
   }
 }

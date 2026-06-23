@@ -1,3 +1,5 @@
+import type { InitializationHint } from "../errors/project-init-hint.js";
+
 export type ListResourceType = "workflow" | "agent" | "tool";
 export type ListCliResourceType = "all" | ListResourceType;
 export type ListReportMode = "pretty" | "json" | "jsonl";
@@ -21,6 +23,7 @@ export interface ListDiagnostic {
   code: string;
   message: string;
   details?: Record<string, unknown>;
+  hint?: InitializationHint | undefined;
 }
 
 export interface ListedWorkflow {
