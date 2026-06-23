@@ -230,3 +230,22 @@ When executing `open-dynamic-workflow run` or `open-dynamic-workflow validate`, 
 Unlike workflows or shared agents, tool definitions are trusted application extensions. They may execute unrestricted JavaScript with host access (e.g., read/write files, execute shell commands, import packages, or perform network requests).
 However, tool definitions must be declared with `defineTool()` and have valid default exports. Duplicate or invalid tool definitions will cause a `TOOL_INVALID_DEFINITION` or `TOOL_DUPLICATE_DEFINITION` validation error.
 Individual `tool({ definition })` calls are checked statically during validation to ensure they reference a registered tool ID.
+
+---
+
+## Initialization Hints
+
+When the default project configuration file (`.open-dynamic-workflow/config.yaml`) is missing and a command fails or produces a diagnostic due to missing setup/resources, the CLI attaches an informational initialization hint:
+
+*   **List command**: If discovery directories are missing, `list` prints the diagnostics alongside the hint suggesting to run `init`. By default, `list` runs leniently and exits successfully; the hint is strictly informational. In strict mode (`--strict`), the command still exits with the strict non-zero exit code.
+*   **Validate / Run commands**: If setup fails before execution (preflight) because a shared agent or child workflow cannot be resolved, the CLI prints the setup error and the hint.
+*   **Output formatting details**:
+    *   For the `list` command:
+        *   In pretty mode, the hint is rendered inline on `stdout` indented under the matching diagnostic (prefixed with `    Hint: `).
+        *   In `json` and `jsonl` modes, the hint is preserved inside the emitted diagnostic objects (under the `hint` field) written to `stdout`.
+    *   For the `validate` and `run` commands:
+        *   In pretty mode, the error and the hint (prefixed with `Hint: `) are printed to `stderr`.
+        *   In `json` and `jsonl` modes, preflight setup failures write exactly one parseable JSON/JSONL error envelope containing `error.hint` to `stdout`, and no human-readable error messages are written to `stdout` or `stderr`.
+
+Initialization is optional: if no config file exists, the system automatically falls back to built-in defaults. Explicitly specifying a custom configuration path using `--config` suppresses the initialization hint unless that path resolves to the default project configuration path.
+

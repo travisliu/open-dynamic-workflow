@@ -158,4 +158,162 @@ describe("List Reporters", () => {
     expect(output).not.toContain("SECRET PROMPT");
     expect(output).not.toContain("SECRET CODE");
   });
+
+  describe("List Reporters Hint Support", () => {
+    const uninitializedResult: ListResult = {
+      schemaVersion: "open-dynamic-workflow.list.v1",
+      status: "failed",
+      resourceTypes: ["workflow", "agent", "tool"],
+      resources: [],
+      warnings: [
+        {
+          severity: "warning",
+          resourceType: "workflow",
+          path: "workflows",
+          code: "LIST_DIRECTORY_NOT_FOUND",
+          message: "Directory workflows not found",
+          hint: {
+            code: "PROJECT_INIT_MISSING",
+            message: "This project may not be initialized yet. Run `odw init` to create .open-dynamic-workflow/config.yaml and default project directories.",
+            command: "odw init",
+          },
+        },
+        {
+          severity: "warning",
+          resourceType: "agent",
+          path: ".open-dynamic-workflow/agents",
+          code: "LIST_DIRECTORY_NOT_FOUND",
+          message: "Directory .open-dynamic-workflow/agents not found",
+          hint: {
+            code: "PROJECT_INIT_MISSING",
+            message: "This project may not be initialized yet. Run `odw init` to create .open-dynamic-workflow/config.yaml and default project directories.",
+            command: "odw init",
+          },
+        },
+        {
+          severity: "warning",
+          resourceType: "tool",
+          path: ".open-dynamic-workflow/tools",
+          code: "LIST_DIRECTORY_NOT_FOUND",
+          message: "Directory .open-dynamic-workflow/tools not found",
+          hint: {
+            code: "PROJECT_INIT_MISSING",
+            message: "This project may not be initialized yet. Run `odw init` to create .open-dynamic-workflow/config.yaml and default project directories.",
+            command: "odw init",
+          },
+        },
+      ],
+      errors: [],
+      summary: {
+        discoveredCount: 0,
+        validCount: 0,
+        warningCount: 3,
+        errorCount: 0,
+        countsByType: {},
+      },
+    };
+
+    const hintResult: ListResult = {
+      schemaVersion: "open-dynamic-workflow.list.v1",
+      status: "failed",
+      resourceTypes: ["workflow"],
+      resources: [],
+      warnings: [
+        {
+          severity: "warning",
+          resourceType: "workflow",
+          path: "missing-workflow.js",
+          code: "LIST_DIRECTORY_NOT_FOUND",
+          message: "Directory workflows not found",
+          hint: {
+            code: "PROJECT_INIT_MISSING",
+            message: "This project may not be initialized yet. Run `odw init` to create .open-dynamic-workflow/config.yaml and default project directories.",
+            command: "odw init",
+          },
+        },
+      ],
+      errors: [
+        {
+          severity: "error",
+          resourceType: "agent",
+          path: "missing-agent.js",
+          code: "AGENT_DEFINITION_MISSING",
+          message: "Shared agent definition missing",
+          hint: {
+            code: "PROJECT_INIT_MISSING",
+            message: "This project may not be initialized yet. Run `odw init` to create .open-dynamic-workflow/config.yaml and default project directories.",
+            command: "odw init",
+          },
+        },
+      ],
+      summary: {
+        discoveredCount: 0,
+        validCount: 0,
+        warningCount: 1,
+        errorCount: 1,
+        countsByType: {},
+      },
+    };
+
+    it("pretty reporter: uninitialized default project pretty summary", async () => {
+      const reporter = createListReporter({ mode: "pretty", streams: { stdout, stderr } });
+      reporter.render(uninitializedResult);
+
+      expect(output).toContain("--- WORKFLOWS ---");
+      expect(output).toContain("No workflows found.");
+      expect(output).toContain("--- AGENTS ---");
+      expect(output).toContain("No agents found.");
+      expect(output).toContain("--- TOOLS ---");
+      expect(output).toContain("No tools found.");
+      expect(output).toContain("Warnings:\n  - Project is not initialized.\n    Missing config: .open-dynamic-workflow/config.yaml\n    Missing directories:\n      - workflows\n      - .open-dynamic-workflow/agents\n      - .open-dynamic-workflow/tools");
+      expect(output).toContain("Next step:\n  Run `odw init` to initialize this project.");
+
+      // assert raw per-directory diagnostics and repeated Hint: lines are not printed
+      expect(output).not.toContain("Directory workflows not found");
+      expect(output).not.toContain("LIST_DIRECTORY_NOT_FOUND");
+      expect(output).not.toContain("Hint: This project may not be initialized yet");
+    });
+
+    it("pretty reporter prints Hint: under the correct diagnostic and does not duplicate it", async () => {
+      const reporter = createListReporter({ mode: "pretty", streams: { stdout, stderr } });
+      reporter.render(hintResult);
+
+      expect(output).toContain("Directory workflows not found (LIST_DIRECTORY_NOT_FOUND)");
+      expect(output).toContain("    Hint: This project may not be initialized yet. Run `odw init` to create .open-dynamic-workflow/config.yaml and default project directories.");
+      expect(output).toContain("Shared agent definition missing (AGENT_DEFINITION_MISSING)");
+      
+      const matches = output.match(/Hint: This project may not be initialized yet/g);
+      expect(matches).toHaveLength(2);
+    });
+
+    it("JSON reporter preserves diagnostic.hint", async () => {
+      const reporter = createListReporter({ mode: "json", streams: { stdout, stderr } });
+      reporter.render(hintResult);
+
+      const parsed = JSON.parse(output);
+      expect(parsed.warnings[0].hint).toBeDefined();
+      expect(parsed.warnings[0].hint.code).toBe("PROJECT_INIT_MISSING");
+      expect(parsed.errors[0].hint).toBeDefined();
+      expect(parsed.errors[0].hint.code).toBe("PROJECT_INIT_MISSING");
+    });
+
+    it("JSONL reporter preserves hint on list.warning and list.error", async () => {
+      const reporter = createListReporter({ mode: "jsonl", streams: { stdout, stderr } });
+      reporter.render(hintResult);
+
+      const lines = output.trim().split("\n");
+      const warningLine = lines.find((l) => JSON.parse(l).type === "list.warning");
+      const errorLine = lines.find((l) => JSON.parse(l).type === "list.error");
+
+      expect(warningLine).toBeDefined();
+      const warningObj = JSON.parse(warningLine!);
+      expect(warningObj.warning.hint).toBeDefined();
+      expect(warningObj.warning.hint.code).toBe("PROJECT_INIT_MISSING");
+
+      expect(errorLine).toBeDefined();
+      const errorObj = JSON.parse(errorLine!);
+      expect(errorObj.error.hint).toBeDefined();
+      expect(errorObj.error.hint.code).toBe("PROJECT_INIT_MISSING");
+    });
+  });
 });

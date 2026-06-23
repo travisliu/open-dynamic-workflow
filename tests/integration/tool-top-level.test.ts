@@ -5,7 +5,7 @@ import { main } from "../../src/cli/index.js";
 import { vi } from "vitest";
 import { tmpdir } from "node:os";
 
-async function runCli(args: string[], cwd: string = process.cwd()) {
+async function runCli(args: string[], cwd?: string) {
   const stdoutData: string[] = [];
   const stderrData: string[] = [];
 
@@ -24,14 +24,14 @@ async function runCli(args: string[], cwd: string = process.cwd()) {
     stderrData.push(args.join(" ") + "\n");
   });
 
-  const originalCwd = process.cwd();
-  if (cwd !== originalCwd) {
-    process.chdir(cwd);
+  const finalArgs = [...args];
+  if (cwd) {
+    finalArgs.push("--cwd", cwd);
   }
 
   let error: any = null;
   try {
-    await main(["node", "open-dynamic-workflow", ...args]);
+    await main(["node", "open-dynamic-workflow", ...finalArgs]);
   } catch (err) {
     error = err;
   } finally {
@@ -39,9 +39,6 @@ async function runCli(args: string[], cwd: string = process.cwd()) {
     stderrSpy.mockRestore();
     logSpy.mockRestore();
     errorSpy.mockRestore();
-    if (cwd !== originalCwd) {
-      process.chdir(originalCwd);
-    }
   }
 
   return {

@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import path from "node:path";
+import fs from "node:fs/promises";
 import { main } from "../../src/cli/index.js";
 import { ExitCode, exitCodeForError } from "../../src/errors/exit-codes.js";
 
@@ -9,6 +10,7 @@ const MIXED_FIXTURES_DIR = path.resolve(process.cwd(), "tests/fixtures/listing/m
 const CUSTOM_FIXTURES_DIR = path.resolve(process.cwd(), "tests/fixtures/listing/custom-dirs");
 const EMPTY_FIXTURES_DIR = path.resolve(process.cwd(), "tests/fixtures/listing/empty");
 const DUPLICATE_FIXTURES_DIR = path.resolve(process.cwd(), "tests/fixtures/listing/duplicates");
+const HINT_TEMP_DIR = path.resolve(process.cwd(), "tests/temp-list-hint-integration");
 
 describe("list-command integration", () => {
   beforeEach(() => {
@@ -203,6 +205,81 @@ describe("list-command integration", () => {
     expect(warnings.some((w: any) => w.message.includes("Duplicate tool"))).toBe(true);
 
     spy.mockRestore();
+  });
+
+  describe("initialization hints integration", () => {
+    beforeEach(async () => {
+      await fs.rm(HINT_TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(HINT_TEMP_DIR, { recursive: true });
+    });
+
+    afterEach(async () => {
+      await fs.rm(HINT_TEMP_DIR, { recursive: true, force: true });
+    });
+
+    it("pretty output contains the summarized warning block and Next step", async () => {
+      let output = "";
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((msg: any) => {
+        output += msg;
+        return true;
+      });
+
+      await main(["node", "open-dynamic-workflow", "list", "--cwd", HINT_TEMP_DIR]);
+
+      expect(output).toContain("Warnings:\n  - Project is not initialized.\n    Missing config: .open-dynamic-workflow/config.yaml\n    Missing directories:\n      - workflows\n      - .open-dynamic-workflow/agents\n      - .open-dynamic-workflow/tools");
+      expect(output).toContain("Next step:\n  Run `open-dynamic-workflow init` to initialize this project.");
+      expect(process.exitCode).toBe(ExitCode.Success);
+
+      spy.mockRestore();
+    });
+
+    it("JSON output includes diagnostic.hint", async () => {
+      let output = "";
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((msg: any) => {
+        output += msg;
+        return true;
+      });
+
+      await main(["node", "open-dynamic-workflow", "list", "--cwd", HINT_TEMP_DIR, "--report", "json"]);
+
+      const parsed = JSON.parse(output);
+      const diagnostics = [...(parsed.warnings || []), ...(parsed.errors || [])];
+      const diagnosticWithHint = diagnostics.find((d) => d.hint?.code === "PROJECT_INIT_MISSING");
+      expect(diagnosticWithHint).toBeDefined();
+
+      spy.mockRestore();
+    });
+
+    it("JSONL output includes hint-bearing list.warning or list.error records", async () => {
+      let output = "";
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((msg: any) => {
+        output += msg;
+        return true;
+      });
+
+      await main(["node", "open-dynamic-workflow", "list", "--cwd", HINT_TEMP_DIR, "--report", "jsonl"]);
+
+      const lines = output.trim().split("\n");
+      const record = lines
+        .map((l) => JSON.parse(l))
+        .find((obj) => {
+          if (obj.type === "list.warning" && obj.warning?.hint?.code === "PROJECT_INIT_MISSING") {
+            return true;
+          }
+          if (obj.type === "list.error" && obj.error?.hint?.code === "PROJECT_INIT_MISSING") {
+            return true;
+          }
+          return false;
+        });
+      expect(record).toBeDefined();
+
+      spy.mockRestore();
+    });
+
+    it("list --strict still exits non-zero", async () => {
+      await main(["node", "open-dynamic-workflow", "list", "--cwd", HINT_TEMP_DIR, "--strict"]);
+      expect(process.exitCode).toBe(ExitCode.WorkflowInvalid);
+    });
   });
 });
 

@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { main } from "../../src/cli/index.js";
 import { vi } from "vitest";
+import { renderCliError } from "../../src/cli/error-output.js";
 
 const TEMP_DIR = path.resolve("tests/temp-run-by-name-integration");
 
@@ -35,8 +36,8 @@ async function runCli(args: string[]) {
     await main(["node", "open-dynamic-workflow", ...args]);
   } catch (err) {
     error = err;
-    if (err instanceof Error && stderrData.length === 0) {
-      stderrData.push(err.message);
+    if (stderrData.length === 0) {
+      renderCliError(err, { argv: ["node", "open-dynamic-workflow", ...args] });
     }
   } finally {
     stdoutSpy.mockRestore();
@@ -285,5 +286,80 @@ describe("Integration - run workflow by name", () => {
     
     expect(fileEvents.length).toBe(events.length);
     expect(fileEvents[0].type).toBe(events[0].type);
+  });
+
+  describe("initialization hints integration", () => {
+    it("runs pretty preflight failure and shows hint on stderr", async () => {
+      const workflowPath = path.join(TEMP_DIR, "missing-agent.workflow.js");
+      await fs.writeFile(
+        workflowPath,
+        `export const meta = {
+          name: "missing-agent",
+          description: "References a missing shared agent"
+        };
+        phase("init");
+        const result = await agent({ definition: "non-existent-agent" });
+        export default { result };`
+      );
+
+      const result = await runCli(["run", workflowPath, "--cwd", TEMP_DIR, "--out", TEMP_DIR]);
+
+      expect(result.error).toBeDefined();
+      expect(result.stderr).toContain("Shared agent 'non-existent-agent' was not found");
+      expect(result.stderr).toContain("Hint: This project may not be initialized yet");
+      expect(result.stdout).toBe("");
+    });
+
+    it("runs json report preflight failure and writes exactly one JSON envelope to stdout", async () => {
+      const workflowPath = path.join(TEMP_DIR, "missing-agent.workflow.js");
+      await fs.writeFile(
+        workflowPath,
+        `export const meta = {
+          name: "missing-agent",
+          description: "References a missing shared agent"
+        };
+        phase("init");
+        const result = await agent({ definition: "non-existent-agent" });
+        export default { result };`
+      );
+
+      const result = await runCli(["run", workflowPath, "--cwd", TEMP_DIR, "--out", TEMP_DIR, "--report", "json"]);
+
+      expect(result.error).toBeDefined();
+      expect(result.stderr).toBe("");
+      
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.schemaVersion).toBe("open-dynamic-workflow.error.v1");
+      expect(parsed.status).toBe("failed");
+      expect(parsed.error.code).toBe("WORKFLOW_VALIDATION_ERROR");
+      expect(parsed.error.hint).toBeDefined();
+      expect(parsed.error.hint.code).toBe("PROJECT_INIT_MISSING");
+    });
+
+    it("runs jsonl report preflight failure and writes exactly one JSONL record to stdout", async () => {
+      const workflowPath = path.join(TEMP_DIR, "missing-agent.workflow.js");
+      await fs.writeFile(
+        workflowPath,
+        `export const meta = {
+          name: "missing-agent",
+          description: "References a missing shared agent"
+        };
+        phase("init");
+        const result = await agent({ definition: "non-existent-agent" });
+        export default { result };`
+      );
+
+      const result = await runCli(["run", workflowPath, "--cwd", TEMP_DIR, "--out", TEMP_DIR, "--report", "jsonl"]);
+
+      expect(result.error).toBeDefined();
+      expect(result.stderr).toBe("");
+
+      const parsed = JSON.parse(result.stdout.trim());
+      expect(parsed.schemaVersion).toBe("open-dynamic-workflow.error.v1");
+      expect(parsed.type).toBe("cli.error");
+      expect(parsed.error.code).toBe("WORKFLOW_VALIDATION_ERROR");
+      expect(parsed.error.hint).toBeDefined();
+      expect(parsed.error.hint.code).toBe("PROJECT_INIT_MISSING");
+    });
   });
 });
