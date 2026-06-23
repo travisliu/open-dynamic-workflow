@@ -52,6 +52,7 @@ Generated configuration is guaranteed to pass schema validation.
 | `defaultProvider` | `string` | `"mock"` | Must be a key defined in `providers`. | Fallback provider used for agent calls if unspecified. |
 | `concurrency` | `integer` | `4` | Positive integer (>= 1). | Maximum parallel tasks executed concurrently by the scheduler. |
 | `timeoutMs` | `integer` | `900_000` | Positive integer (>= 1) in ms. | Global timeout for workflow execution. |
+| `maxAgentCalls` | `integer` | unset | Positive integer (>= 1). | Maximum live provider agent calls a run may start. Resume cache hits do not count as new live calls. |
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Global model override fallback for provider execution. |
 | `workflow.maxDepth` | `integer` | `8` | Positive integer (>= 1). | Maximum recursion/invocation depth for nested workflows. |
 | `workflow.maxLoopRounds` | `integer` | `20` | Positive integer (>= 1). | Global ceiling for `loop()` `maxRounds`; static and runtime validation reject loop options above this value. |

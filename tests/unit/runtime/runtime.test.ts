@@ -152,6 +152,43 @@ describe("DefaultRuntimeRunner", () => {
     expect(result.agents[0]!.id).toBe("agent-1");
   });
 
+  it("fails before scheduling agents beyond maxAgentCalls", async () => {
+    const runner = new DefaultRuntimeRunner();
+    const parsedWorkflow: ParsedWorkflow = {
+      meta: { name: "agent-limit", description: "run limit" },
+      body: `
+        await agent({ id: "agent-1", prompt: "first" });
+        await agent({ id: "agent-2", prompt: "second" });
+        export default "done";
+      `,
+      sourcePath: "workflow.js",
+      sourceText: "",
+      sourceHash: "123"
+    };
+
+    const eventSink = new FakeEventSink();
+    const result = await runner.run(
+      {
+        parsedWorkflow,
+        config: { ...defaultResolvedConfig, maxAgentCalls: 1 },
+        cli: defaultCliOptions
+      },
+      { agentExecutor: new FakeAgentExecutor(), eventSink, clock: mockClock, idGenerator: mockIdGenerator }
+    );
+
+    expect(result.status).toBe("failed");
+    expect(result.error?.code).toBe("RUN_LIMIT_EXCEEDED");
+    expect(result.agents.map(agent => agent.id)).toEqual(["agent-1"]);
+    expect(result.limitSummary).toMatchObject({
+      limits: { maxAgentCalls: 1 },
+      agentCalls: 1,
+      exceeded: true,
+      exceededBy: "maxAgentCalls"
+    });
+    const failedEvent = eventSink.events.find(event => event.type === "workflow.failed");
+    expect(failedEvent?.payload.limitSummary?.exceededBy).toBe("maxAgentCalls");
+  });
+
   it("handles parallel tasks with array input", async () => {
     const runner = new DefaultRuntimeRunner();
     const parsedWorkflow: ParsedWorkflow = {

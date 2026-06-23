@@ -87,6 +87,7 @@ open-dynamic-workflow run review --provider codex
 open-dynamic-workflow run review --provider mock
 open-dynamic-workflow run review --concurrency 2
 open-dynamic-workflow run review --timeout-ms 600000
+open-dynamic-workflow run review --max-agent-calls 20
 open-dynamic-workflow run review --report json
 open-dynamic-workflow run review --report jsonl
 open-dynamic-workflow run review --fail-fast

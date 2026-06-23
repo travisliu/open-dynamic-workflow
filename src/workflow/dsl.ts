@@ -293,6 +293,8 @@ export function createDsl(runtime: RuntimeState) {
       return cachedResult;
     }
 
+    runtime.runLimitTracker?.beforeAgentSchedule(normalizedId);
+
     const task: ScheduledTask<AgentResult> = {
       id: normalizedId,
       provider: normalizedProvider,

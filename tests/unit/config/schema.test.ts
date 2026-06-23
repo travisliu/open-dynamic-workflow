@@ -42,4 +42,23 @@ describe("Config Schema Validation", () => {
     };
     expect(() => validateConfig(config)).not.toThrow();
   });
+
+  it("fails if maxAgentCalls is not a positive integer", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      maxAgentCalls: 0
+    };
+
+    expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+    expect(() => validateConfig(config)).toThrow("Config value 'maxAgentCalls' must be a positive integer.");
+  });
+
+  it("passes if maxAgentCalls is a positive integer", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      maxAgentCalls: 5
+    };
+
+    expect(() => validateConfig(config)).not.toThrow();
+  });
 });

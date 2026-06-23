@@ -14,6 +14,7 @@ import type { JsonObject } from "../types/common.js";
 import type { ToolRegistry, ToolExecutionResult } from "../types/tool.js";
 import type { ToolExecutor } from "../tools/executor-types.js";
 import type { LoopSummary } from "../loop/types.js";
+import type { RunLimitTracker } from "./run-limits.js";
 
 export type { ParsedWorkflow, WorkflowMeta };
 
@@ -67,6 +68,7 @@ export interface RuntimeState {
   toolCounter?: number | undefined;
   loopCounter?: number | undefined;
   loopSummaries?: LoopSummary[] | undefined;
+  runLimitTracker?: RunLimitTracker | undefined;
 }
 
 export interface IdGenerator {

@@ -89,6 +89,16 @@ export interface WorkflowInvocationSummary {
   error?: SerializedError | undefined;
 }
 
+export interface WorkflowRunLimitSummary {
+  limits: {
+    maxAgentCalls?: number | undefined;
+  };
+  agentCalls: number;
+  exceeded: boolean;
+  exceededBy?: "maxAgentCalls" | undefined;
+  message?: string | undefined;
+}
+
 export interface WorkflowRuntimeContext {
   args: JsonObject;
   cwd: string;
@@ -156,6 +166,6 @@ export interface WorkflowRunResult {
   artifactsDir: string;
   reportPath: string;
   eventsPath: string;
+  limitSummary?: WorkflowRunLimitSummary | undefined;
   error?: SerializedError | undefined;
 }
-
