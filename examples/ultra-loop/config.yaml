@@ -1,0 +1,31 @@
+# Example configuration for validating and running the Ultra Loop workflows.
+defaultProvider: "mock"
+concurrency: 2
+timeoutMs: 900000
+
+providers:
+  codex:
+    command: "codex"
+    args: ["exec", "--json", "--ephemeral"]
+
+security:
+  allowShell: false
+  allowWorkflowImports: false
+  passEnv: []
+  redactEnv:
+    - "*_KEY"
+    - "*_TOKEN"
+    - "*_SECRET"
+    - "PASSWORD"
+
+reporting:
+  mode: "pretty"
+  verbose: false
+
+workflow:
+  discovery:
+    include:
+      - "./examples/ultra-loop/workflows/**/*.js"
+
+tools:
+  dir: "./examples/ultra-loop/tools"

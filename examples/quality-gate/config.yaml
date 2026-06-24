@@ -1,0 +1,43 @@
+defaultProvider: "codex"
+concurrency: 4
+timeoutMs: 900000
+failFast: false
+
+providers:
+  codex:
+    command: "codex"
+    args: ["exec", "--json", "--ephemeral"]
+
+security:
+  allowWorkflowImports: false
+  passEnv: []
+  redactEnv:
+    - "OPENAI_API_KEY"
+    - "GEMINI_API_KEY"
+    - "GOOGLE_API_KEY"
+    - "*_KEY"
+    - "*_TOKEN"
+    - "*_SECRET"
+    - "PASSWORD"
+
+reporting:
+  mode: "pretty"
+  verbose: false
+
+sharedAgents:
+  allowDynamicIds: false
+  dir: "./examples/quality-gate/agents"
+  maxDefinitions: 100
+  strictPromptTemplateVariables: true
+
+tools:
+  concurrency: 4
+  dir: "./examples/quality-gate/tools"
+  maxDefinitions: 100
+
+workflow:
+  discovery:
+    include:
+      - "./examples/quality-gate/workflows/**/*.js"
+  maxDepth: 8
+  maxLoopRounds: 20
