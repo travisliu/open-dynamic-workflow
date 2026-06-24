@@ -28,6 +28,35 @@ function isStaticValue(node: ts.Node): boolean {
   return false;
 }
 
+function hasStaticallyUnsafeJson(node: ts.Node): string | null {
+  if (ts.isFunctionExpression(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node) || ts.isClassExpression(node)) {
+    return "functions/classes are not JSON-safe";
+  }
+  if (ts.isIdentifier(node)) {
+    if (node.text === "undefined") {
+      return "undefined is not JSON-safe";
+    }
+    if (node.text === "Symbol") {
+      return "Symbol is not JSON-safe";
+    }
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (const elem of node.elements) {
+      const unsafe = hasStaticallyUnsafeJson(elem);
+      if (unsafe) return unsafe;
+    }
+  }
+  if (ts.isObjectLiteralExpression(node)) {
+    for (const prop of node.properties) {
+      if (ts.isPropertyAssignment(prop)) {
+        const unsafe = hasStaticallyUnsafeJson(prop.initializer);
+        if (unsafe) return unsafe;
+      }
+    }
+  }
+  return null;
+}
+
 function parseStaticProperties(node: ts.Node | undefined): any {
   if (!node) return undefined;
   if (ts.isStringLiteral(node)) {
@@ -96,6 +125,7 @@ export function validateWorkflow(
 ): WorkflowValidationIssue[] {
   const issues: WorkflowValidationIssue[] = [];
   const loopLabelsSeen = new Set<string>();
+  const loopRunFunctions = new Set<ts.Node>();
   const sourceFile = ts.createSourceFile(
     workflow.sourcePath,
     workflow.sourceText,
@@ -461,6 +491,11 @@ export function validateWorkflow(
 
     if (!argsExpr) {
       report(firstArg, `${callPrefix} is missing required 'args' property.`);
+    } else {
+      const unsafeReason = hasStaticallyUnsafeJson(argsExpr);
+      if (unsafeReason) {
+        report(argsExpr, `${callPrefix} 'args' contains non-JSON-safe values: ${unsafeReason}.`);
+      }
     }
   }
 
@@ -752,6 +787,7 @@ export function validateWorkflow(
           }
         }
 
+        loopRunFunctions.add(runInit);
         visit(runInit, true, functionDepth, true, localLoopContextNames);
       }
     }
@@ -847,6 +883,7 @@ export function validateWorkflow(
             report(init, `${callPrefix} permissions must be an object literal.`);
           }
         }
+
       }
     }
 
@@ -886,7 +923,7 @@ export function validateWorkflow(
     if (ts.isPropertyAccessExpression(node) && 
         ts.isIdentifier(node.expression) && 
         (contextParameterNames.has(node.expression.text) || (currentLoopCtxNames && currentLoopCtxNames.has(node.expression.text))) && 
-        node.name.text === "tool") {
+        (node.name.text === "tool" || node.name.text === "toolId")) {
       return true;
     }
 
@@ -894,7 +931,8 @@ export function validateWorkflow(
     if (ts.isElementAccessExpression(node) && 
         ts.isIdentifier(node.expression) && 
         (contextParameterNames.has(node.expression.text) || (currentLoopCtxNames && currentLoopCtxNames.has(node.expression.text))) && 
-        ts.isStringLiteral(node.argumentExpression) && node.argumentExpression.text === "tool") {
+        ts.isStringLiteral(node.argumentExpression) &&
+        (node.argumentExpression.text === "tool" || node.argumentExpression.text === "toolId")) {
       return true;
     }
 
@@ -919,12 +957,28 @@ export function validateWorkflow(
     return false;
   }
 
+  function isDirectLoopRunCall(node: ts.Node): boolean {
+    let current: ts.Node | undefined = node;
+    while (current) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current) ||
+        ts.isArrowFunction(current) ||
+        ts.isMethodDeclaration(current)
+      ) {
+        return loopRunFunctions.has(current);
+      }
+      current = current.parent;
+    }
+    return false;
+  }
+
 
   function checkBindingForToolAlias(name: ts.BindingName, initializer?: ts.Expression, currentLoopCtxNames?: ReadonlySet<string>) {
     if (ts.isObjectBindingPattern(name)) {
       for (const element of name.elements) {
         const propName = element.propertyName ? (ts.isIdentifier(element.propertyName) ? element.propertyName.text : undefined) : (ts.isIdentifier(element.name) ? element.name.text : undefined);
-        if (propName === "tool") {
+        if (propName === "tool" || propName === "toolId") {
           // If we have an initializer, check if it's the context.
           // If no initializer (like in parameter), we assume it's aliasing if the parameter looks like a context.
           if (!initializer || isLikelyWorkflowContext(initializer, currentLoopCtxNames)) {
@@ -1163,7 +1217,20 @@ export function validateWorkflow(
               validateLoopCall(node, true, obj.text, isForbiddenContext, functionDepth, isInsideParallel, isInsideLoopRun, isInsideMainWorkflow);
               return;
             } else if (prop.text === "tool") {
-              validateToolCall(node, true, nextForbiddenContext, obj.text);
+              const isDirectLoopTool =
+                nextInsideLoopRun &&
+                nextLoopContextNames.has(obj.text) &&
+                !isInsideParallel &&
+                isDirectLoopRunCall(node);
+              validateToolCall(node, true, nextForbiddenContext && !isDirectLoopTool, obj.text);
+            } else if (prop.text === "toolId" && nextLoopContextNames.has(obj.text)) {
+              if (node.arguments.length > 1) {
+                report(node, `${obj.text}.toolId() accepts at most one suffix argument.`);
+              }
+              const suffix = node.arguments[0];
+              if (suffix && ts.isStringLiteral(suffix) && !/^[A-Za-z0-9_-]+$/.test(suffix.text)) {
+                report(suffix, `${obj.text}.toolId() suffix may contain only alphanumeric characters, underscores, and hyphens.`);
+              }
             }
           }
           if (nextLoopContextNames.has(obj.text) || (nextInsideLoopRun && (obj.text === "ctx" || obj.text === "context"))) {
@@ -1181,7 +1248,7 @@ export function validateWorkflow(
           const propName = arg.text;
           const isContextParam = contextParameterNames.has(obj.text) || nextLoopContextNames.has(obj.text);
           if (isContextParam) {
-            if (["agent", "workflow", "tool"].includes(propName)) {
+            if (["agent", "workflow", "tool", "toolId"].includes(propName)) {
               report(node, `Computed access forms like ${obj.text}["${propName}"]() are not allowed. Use direct property access like ${obj.text}.${propName}() instead.`);
               if (propName === "agent") {
                 validateAgentCall(node, true, obj.text);

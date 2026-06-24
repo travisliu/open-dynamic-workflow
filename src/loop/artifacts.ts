@@ -89,6 +89,7 @@ export async function writeRoundArtifacts(
     nestedCalls?: {
       agents: string[];
       workflows: string[];
+      tools: string[];
     };
   }
 ): Promise<void> {

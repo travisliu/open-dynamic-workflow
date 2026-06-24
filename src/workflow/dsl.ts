@@ -24,10 +24,16 @@ import { executeSharedAgent } from "../shared-agents/execute.js";
 import { serializeError } from "../errors/serialize.js";
 import { cloneJsonValue } from "./json.js";
 import { getActiveWorkflowInvocation } from "./invocation-types.js";
-import { assertToolAllowed, withToolForbidden } from "./scope.js";
+import { assertLoopContextToolAllowed, assertToolAllowed, withToolForbidden } from "./scope.js";
 import { runLoop } from "../loop/run.js";
-import { getActiveLoopContext, recordLoopChildAgentId, type ActiveLoopContext } from "../loop/context.js";
+import {
+  getActiveLoopContext,
+  recordLoopChildAgentId,
+  recordLoopChildToolCallId,
+  type ActiveLoopContext
+} from "../loop/context.js";
 import { createLoopAgentId, normalizeLoopLabel } from "../loop/id.js";
+import { collectSecretValues } from "../security/env.js";
 import type { ToolCallInput, ToolExecutionResult, ToolSettledResult, ToolFailureMode } from "../types/tool.js";
 import type { PreparedToolCall } from "../tools/executor-types.js";
 import type { 
@@ -115,6 +121,12 @@ function nextToolCallId(runtime: RuntimeState, definitionId: string): string {
   runtime.toolCounter = counter;
   const suffix = definitionId.replace(/[^a-zA-Z0-9]/g, "-").toLowerCase();
   return `tool-${counter.toString().padStart(4, "0")}-${suffix}`;
+}
+
+interface ToolExecutionOrigin {
+  workflowInvocationId: string;
+  parentWorkflowInvocationId?: string | undefined;
+  loop?: ActiveLoopContext | undefined;
 }
 
 export function createDsl(runtime: RuntimeState) {
@@ -621,10 +633,11 @@ export function createDsl(runtime: RuntimeState) {
     }
   };
 
-  const runTool = async (input: ToolCallInput): Promise<unknown> => {
-    const scope = assertToolAllowed();
-
-    const activeLoop = getActiveLoopContext();
+  const executeToolCall = async (
+    input: ToolCallInput,
+    origin: ToolExecutionOrigin
+  ): Promise<unknown> => {
+    const activeLoop = origin.loop ?? getActiveLoopContext();
     if (activeLoop?.signal.aborted) {
       throw activeLoop.signal.reason;
     }
@@ -651,6 +664,9 @@ export function createDsl(runtime: RuntimeState) {
       toolCallId = nextToolCallId(runtime, normalizedInput.definition);
     }
     runtime.toolCallIds?.add(toolCallId);
+    if (origin.loop) {
+      recordLoopChildToolCallId(toolCallId);
+    }
 
     const activeInvocation = getActiveWorkflowInvocation();
     const failureMode = normalizedInput.failureMode || "throw";
@@ -681,11 +697,19 @@ export function createDsl(runtime: RuntimeState) {
         timeoutMs: normalizedInput.timeoutMs || definition.definition.defaultTimeoutMs,
         deadline: activeInvocation?.deadlineAt,
         metadata: normalizedInput.metadata ? (cloneJsonValue(normalizedInput.metadata, "tool metadata") as Record<string, unknown>) : undefined,
-        workflowInvocationId: scope.workflowInvocationId,
-        parentWorkflowInvocationId: scope.parentWorkflowInvocationId,
+        workflowInvocationId: origin.workflowInvocationId,
+        parentWorkflowInvocationId: origin.parentWorkflowInvocationId,
         queuedAt: new Date().toISOString(),
         artifactPath: `tools/${toolCallId}/output.json`,
-        invocationSignal
+        invocationSignal,
+        origin: origin.loop ? {
+          kind: "loop-round",
+          loopId: origin.loop.loopId,
+          loopLabel: origin.loop.label,
+          roundIndex: origin.loop.roundIndex,
+          roundNumber: origin.loop.roundNumber,
+          roundId: origin.loop.roundId
+        } : undefined
       };
 
       const isCacheable = !!definition.definition.cacheable;
@@ -724,8 +748,14 @@ export function createDsl(runtime: RuntimeState) {
             definitionId: definition.definition.id,
             failureMode,
             label: normalizedInput.label,
-            workflowInvocationId: scope.workflowInvocationId,
-            parentWorkflowInvocationId: scope.parentWorkflowInvocationId
+            workflowInvocationId: origin.workflowInvocationId,
+            parentWorkflowInvocationId: origin.parentWorkflowInvocationId,
+            origin: preparedCall.origin,
+            runId: runtime.runId,
+            args: preparedCall.args,
+            timeoutMs: preparedCall.timeoutMs,
+            metadata: preparedCall.metadata,
+            redactedSecrets: collectSecretValues(process.env, runtime.config?.security?.redactEnv)
           });
 
           runtime.eventSink?.emit("tool.cache_hit", {
@@ -736,7 +766,9 @@ export function createDsl(runtime: RuntimeState) {
             callId,
             previousRunId: runtime.callCache.previousRunId,
             previousToolCallId: cachedEntry.toolCallId,
-            artifactPath: cachedResult.artifactPath
+            artifactPath: cachedResult.artifactPath,
+            workflowInvocationId: preparedCall.workflowInvocationId,
+            ...(preparedCall.origin || {})
           });
 
           await recordToolCall({
@@ -758,6 +790,7 @@ export function createDsl(runtime: RuntimeState) {
               ok: cachedResult.ok,
               workflowInvocationId: cachedResult.workflowInvocationId,
               parentWorkflowInvocationId: cachedResult.parentWorkflowInvocationId,
+              origin: preparedCall.origin,
               durationMs: cachedResult.durationMs,
               artifactPath: cachedResult.artifactPath!,
               cache: cachedResult.cache
@@ -792,6 +825,44 @@ export function createDsl(runtime: RuntimeState) {
         const originalInvocationSignal = activeInvocation?.signal || runtime.abortController.signal;
         originalInvocationSignal.removeEventListener("abort", onAbort);
       }
+    }
+  };
+
+  const runTool = async (input: ToolCallInput): Promise<unknown> => {
+    const scope = assertToolAllowed();
+    return executeToolCall(input, {
+      workflowInvocationId: scope.workflowInvocationId,
+      parentWorkflowInvocationId: scope.parentWorkflowInvocationId
+    });
+  };
+
+  const runLoopTool = async (input: ToolCallInput): Promise<unknown> => {
+    const activeLoop = getActiveLoopContext();
+    if (!activeLoop) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.TOOL_INVALID_CONTEXT,
+        "ctx.tool() requires an active loop round."
+      );
+    }
+    assertLoopContextToolAllowed();
+    if (activeLoop.activeToolPromise) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.TOOL_INVALID_CONTEXT,
+        `ctx.tool() calls must run serially inside loop '${activeLoop.label}' round ${activeLoop.roundNumber}.`
+      );
+    }
+
+    const activeInvocation = getActiveWorkflowInvocation();
+    const promise = executeToolCall(input, {
+      workflowInvocationId: activeInvocation?.workflowInvocationId ?? activeLoop.workflowInvocationId ?? runtime.runId,
+      parentWorkflowInvocationId: activeInvocation?.parentWorkflowInvocationId,
+      loop: activeLoop
+    });
+    activeLoop.activeToolPromise = promise;
+    try {
+      return await promise;
+    } finally {
+      activeLoop.activeToolPromise = undefined;
     }
   };
 
@@ -902,6 +973,7 @@ export function createDsl(runtime: RuntimeState) {
         dsl: {
           agent: runAgentCall,
           workflow: workflowFunction,
+          tool: runLoopTool,
           log: logWorkflow
         }
       });

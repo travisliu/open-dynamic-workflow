@@ -1,4 +1,5 @@
 import type { SerializedError } from "../types/errors.js";
+import type { ToolCallInput, ToolSettledResult } from "../types/tool.js";
 
 export type LoopFailureMode = "throw" | "settled";
 export type LoopStatus = "succeeded" | "failed" | "cancelled" | "timed_out" | "max_rounds";
@@ -35,8 +36,18 @@ export interface LoopContext {
   signal: AbortSignal;
   agent: (input: any) => Promise<any>;
   workflow: (input: any) => Promise<any>;
+  tool<TOutput = unknown>(
+    input: ToolCallInput & { failureMode?: "throw" }
+  ): Promise<TOutput>;
+  tool<TOutput = unknown>(
+    input: ToolCallInput & { failureMode: "settled" }
+  ): Promise<ToolSettledResult<TOutput>>;
+  tool<TOutput = unknown>(
+    input: ToolCallInput
+  ): Promise<TOutput | ToolSettledResult<TOutput>>;
   log: (message: string, data?: any) => void;
   agentId: (suffix?: string) => string;
+  toolId: (suffix?: string) => string;
   sleep: (ms: number) => Promise<void>;
 }
 
@@ -90,6 +101,7 @@ export interface LoopRoundRecord<TState> {
   nestedCalls: {
     agents: string[];
     workflows: string[];
+    tools: string[];
   };
 }
 

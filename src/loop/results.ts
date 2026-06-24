@@ -38,6 +38,7 @@ export function createLoopRoundRecord<TState>(input: {
   nestedCalls: {
     agents: string[];
     workflows: string[];
+    tools: string[];
   };
 }): LoopRoundRecord<TState> {
   return {
@@ -51,6 +52,7 @@ export function createLoopRoundRecord<TState>(input: {
     nestedCalls: {
       agents: [...input.nestedCalls.agents],
       workflows: [...input.nestedCalls.workflows],
+      tools: [...input.nestedCalls.tools],
     },
   };
 }

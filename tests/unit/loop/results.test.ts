@@ -38,7 +38,8 @@ describe("Loop Result Helpers", () => {
         durationMs: 150,
         nestedCalls: {
           agents: ["agent-1"],
-          workflows: []
+          workflows: [],
+          tools: ["tool-1"]
         }
       });
 
@@ -51,7 +52,8 @@ describe("Loop Result Helpers", () => {
         durationMs: 150,
         nestedCalls: {
           agents: ["agent-1"],
-          workflows: []
+          workflows: [],
+          tools: ["tool-1"]
         }
       });
     });
@@ -77,7 +79,8 @@ describe("Loop Result Helpers", () => {
             durationMs: 100,
             nestedCalls: {
               agents: [],
-              workflows: []
+              workflows: [],
+              tools: []
             }
           })
         ],

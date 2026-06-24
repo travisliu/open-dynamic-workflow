@@ -491,16 +491,22 @@ interface LoopRoundContext {
 
   agent(input: AgentCallInput): Promise<AgentResult>;
   workflow<T = unknown>(input: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>>;
+  tool<T = unknown>(input: ToolCallInput & { failureMode?: "throw" }): Promise<T>;
+  tool<T = unknown>(input: ToolCallInput & { failureMode: "settled" }): Promise<ToolSettledResult<T>>;
+  tool<T = unknown>(input: ToolCallInput): Promise<T | ToolSettledResult<T>>;
   log(message: string, data?: unknown): void;
   agentId(suffix?: string): string;
+  toolId(suffix?: string): string;
   sleep(ms: number): Promise<void>;
 }
 ```
 
 > [!NOTE]
-> `ctx.tool()`, `ctx.parallel()`, `ctx.break()`, `runId`, `artifactsDir`, `roundId`, and `maxRounds` are **not** exposed on the loop context inside the round callback.
+> `ctx.parallel()`, `ctx.break()`, `runId`, `artifactsDir`, `roundId`, and `maxRounds` are **not** exposed on the loop context inside the round callback.
 >
 > If you provide an explicit `id` when calling `ctx.agent({ id: ... })`, it is preserved exactly. For deterministic, round-scoped IDs, use `ctx.agentId("suffix")` (e.g. `id: ctx.agentId("suffix")`).
+>
+> Use `ctx.tool()` for registered tools inside a round and `ctx.toolId("suffix")` for deterministic, path-safe round-scoped tool IDs. Global `tool()` remains invalid inside loop callbacks.
 
 ### Success and Failure Semantics
 
@@ -514,8 +520,9 @@ interface LoopRoundContext {
 
 ### Rules
 
-* `ctx.agent()` and `ctx.workflow()` are allowed inside rounds.
-* `tool()` and `ctx.tool()` are **forbidden** inside loop callbacks.
+* `ctx.agent()`, `ctx.workflow()`, and serial `ctx.tool()` calls are allowed inside rounds.
+* Global `tool()` is forbidden inside loop callbacks.
+* Tool execution inside parallel loop tasks is not supported.
 * `maxRounds` is required for every loop call. `workflow.maxLoopRounds` acts as a ceiling (default 20), not a default value.
 * Loop results are persisted in run artifacts.
 * Prefix-based cache reuse is supported; cache mismatch stops prefix reuse at the first diverging loop marker.
@@ -710,7 +717,8 @@ type ToolCallInput = {
 
 * Top-level workflow execution.
 * Top-level inside child workflows invoked via `workflow()`.
-* **Not allowed**: inside `parallel()`, inside pipeline stages (`pipeline()`), inside loop rounds (`loop()`), inside `defineAgent.run()`, or nested inside tool definitions.
+* Loop rounds may call tools only through `ctx.tool()`, preferably with `id: ctx.toolId("suffix")`.
+* **Not allowed**: inside `parallel()`, inside pipeline stages (`pipeline()`), as global `tool()` inside loop rounds, inside `defineAgent.run()`, or nested inside tool definitions.
 
 ---
 
@@ -1154,30 +1162,34 @@ const myTool = tool; // ❌ Aliasing tool() is not allowed.
 await myTool({ definition: "read-json", args: { path: "data.json" } });
 ```
 
-Bad: calling `tool()` inside a loop round.
+Bad: calling global `tool()` inside a loop round.
 
 ```ts
-const result = await loop({}, async (state, ctx) => {
-  const data = await ctx.tool({ definition: "read-json", args: { path: "input.json" } }); // ❌ ctx.tool() is not available in loop rounds.
-  return data;
+const result = await loop({
+  label: "bad-tool-loop",
+  initialState: {},
+  options: { maxRounds: 2 },
+  run: async (state) => {
+    await tool({ definition: "read-json", args: { path: "input.json" } }); // ❌
+    return { done: true, nextState: state };
+  }
 });
 ```
 
-Good: call `tool()` before the loop, or call a child workflow that performs top-level tool work.
+Good: call a registered tool serially through the loop context.
 
 ```ts
-const input = await tool({ definition: "read-json", args: { path: "input.json" } });
-
 const result = await loop({
-  label: "review-input-loop",
-  initialState: input,
+  label: "quality-gate-loop",
+  initialState: { passed: false },
   options: { maxRounds: 5 },
   run: async (state, ctx) => {
-    const review = await ctx.agent({
-      id: ctx.agentId("review"),
-      prompt: `Review this input:\n${JSON.stringify(state, null, 2)}`
+    const gate = await ctx.tool({
+      id: ctx.toolId("quality-gate"),
+      definition: "npm-quality-gate",
+      args: { cwd: "." }
     });
-    return { done: true, nextState: review };
+    return { done: gate.ok === true, nextState: { passed: gate.ok === true } };
   }
 });
 ```

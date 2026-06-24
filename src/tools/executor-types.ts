@@ -17,6 +17,14 @@ export interface PreparedToolCall {
   timeoutMs?: number | undefined;
   artifactPath: string;
   invocationSignal: AbortSignal;
+  origin?: {
+    kind: "loop-round";
+    loopId: string;
+    loopLabel: string;
+    roundIndex: number;
+    roundNumber: number;
+    roundId: string;
+  } | undefined;
 }
 
 export interface Clock {

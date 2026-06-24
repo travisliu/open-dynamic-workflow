@@ -15,7 +15,6 @@ examples/quality-gate/
 ├── tools/
 │   └── npm-quality-gate.js
 └── workflows/
-    ├── demo-quality-gate-round.js
     └── demo-quality-gate.js
 ```
 
@@ -35,7 +34,7 @@ odw run examples/quality-gate/workflows/demo-quality-gate.js \
   --config examples/quality-gate/config.yaml
 ```
 
-The workflow runs at most five rounds. Each round:
+The workflow runs at most five rounds. Each loop round directly:
 
 1. Runs the `npm-quality-gate` tool.
 2. Extracts structured test, lint, and build issues.

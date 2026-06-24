@@ -7,6 +7,7 @@ import type { ArtifactStore } from "../types/artifacts.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { getActiveLoopContext } from "../loop/context.js";
+import { serializeToolValue } from "../tools/serialization.js";
 
 export type CallCacheStatus =
   | "succeeded"
@@ -414,12 +415,24 @@ export async function materializeCachedToolResult(input: {
   label?: string | undefined;
   workflowInvocationId: string;
   parentWorkflowInvocationId?: string | undefined;
+  origin?: ToolExecutionResult["origin"];
+  runId?: string | undefined;
+  args?: unknown;
+  timeoutMs?: number | undefined;
+  metadata?: Record<string, unknown> | undefined;
+  redactedSecrets?: string[] | undefined;
 }): Promise<ToolExecutionResult> {
+  const startMat = Date.now();
   const previousResultPath = resolvePreviousRunPath(input.previousRunRoot, input.entry.resultPath);
   const output = JSON.parse(await fs.readFile(previousResultPath, "utf8"));
 
   const toolDir = `tools/${input.currentToolCallId}`;
   await input.store.writeJson(`${toolDir}/output.json`, output);
+
+  const secrets = input.redactedSecrets || [];
+  const serializedArgs = serializeToolValue(input.args ?? {}, "tool args", secrets);
+  await input.store.writeJson(`${toolDir}/input.json`, serializedArgs);
+
   await input.store.writeJson(`${toolDir}/cache-hit.json`, {
     sequence: input.entry.sequence,
     callId: input.entry.callId,
@@ -429,16 +442,23 @@ export async function materializeCachedToolResult(input: {
     definitionId: input.definitionId
   });
 
+  const cacheMaterializationDurationMs = Date.now() - startMat;
+  const now = new Date().toISOString();
+
   const success: ToolExecutionResult = {
     ok: true,
     status: "succeeded",
     toolCallId: input.currentToolCallId,
     definitionId: input.definitionId,
     output,
+    startedAt: now,
+    finishedAt: now,
+    queueDurationMs: 0,
     durationMs: 0,
     artifactPath: `${toolDir}/output.json`,
     workflowInvocationId: input.workflowInvocationId,
     parentWorkflowInvocationId: input.parentWorkflowInvocationId,
+    origin: input.origin,
     cache: {
       hit: true,
       callId: input.entry.callId,
@@ -447,6 +467,30 @@ export async function materializeCachedToolResult(input: {
     }
   };
 
+  const metadataRaw = removeUndefinedProperties({
+    schemaVersion: "open-dynamic-workflow.tool.v1",
+    runId: input.runId,
+    toolCallId: input.currentToolCallId,
+    definition: input.definitionId,
+    workflowInvocationId: input.workflowInvocationId,
+    parentWorkflowInvocationId: input.parentWorkflowInvocationId,
+    label: input.label,
+    effectiveTimeoutMs: input.timeoutMs,
+    metadata: input.metadata,
+    origin: input.origin,
+    status: "succeeded",
+    cache: success.cache,
+    queuedAt: now,
+    startedAt: now,
+    finishedAt: now,
+    queueDurationMs: 0,
+    executionDurationMs: 0,
+    durationMs: 0,
+    cacheMaterializationDurationMs
+  });
+
+  const serializedMetadata = serializeToolValue(metadataRaw, "tool metadata", secrets);
+  await input.store.writeJson(`${toolDir}/metadata.json`, serializedMetadata);
   await input.store.writeJson(`${toolDir}/tool-result.json`, success);
   return removeUndefinedProperties(success);
 }

@@ -1,6 +1,7 @@
 import { InvalidDslCallError } from "../workflow/errors.js";
 
 const ID_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
+const TOOL_ID_SUFFIX_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 /**
  * Creates a stable loop identifier.
@@ -30,6 +31,12 @@ export function createRoundId(loopId: string, roundNumber: number): string {
  * Input for createLoopAgentId.
  */
 export interface CreateLoopAgentIdInput {
+  label: string;
+  roundNumber: number;
+  suffix?: string;
+}
+
+export interface CreateLoopToolIdInput {
   label: string;
   roundNumber: number;
   suffix?: string;
@@ -79,4 +86,39 @@ export function createLoopAgentId(input: CreateLoopAgentIdInput): string {
   }
 
   return `${normalizedLabel}:${roundPart}`;
+}
+
+export function createLoopToolId(input: CreateLoopToolIdInput): string {
+  const normalizedLabel = Array.from(normalizeLoopLabel(input.label), char => {
+    return /^[a-z0-9-]$/.test(char)
+      ? char
+      : `_${char.codePointAt(0)!.toString(16)}_`;
+  }).join("");
+  if (!normalizedLabel) {
+    throw new InvalidDslCallError("createLoopToolId: label must produce a non-empty ID.");
+  }
+  if (!Number.isInteger(input.roundNumber) || input.roundNumber < 1) {
+    throw new InvalidDslCallError("createLoopToolId: roundNumber must be a positive integer.");
+  }
+
+  const suffix = input.suffix === undefined ? "tool" : input.suffix.trim();
+  if (!suffix) {
+    throw new InvalidDslCallError("createLoopToolId: suffix cannot be empty or whitespace-only.");
+  }
+  if (
+    suffix === "." ||
+    suffix === ".." ||
+    suffix.includes("/") ||
+    suffix.includes("\\") ||
+    suffix.includes("..")
+  ) {
+    throw new InvalidDslCallError("createLoopToolId: suffix cannot contain path traversal segments.");
+  }
+  if (!TOOL_ID_SUFFIX_PATTERN.test(suffix)) {
+    throw new InvalidDslCallError(
+      `createLoopToolId: suffix '${input.suffix}' contains invalid characters. Only alphanumeric, underscores, and hyphens are allowed.`
+    );
+  }
+
+  return `${normalizedLabel}-round-${input.roundNumber}-tool-${suffix}`;
 }

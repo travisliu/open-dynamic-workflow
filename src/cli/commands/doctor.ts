@@ -45,6 +45,16 @@ const defaultProviderHealthChecker: ProviderHealthChecker = {
   }
 };
 
+function formatToolRegistryError(err: unknown): string {
+  if (err instanceof OpenDynamicWorkflowError) {
+    return `${err.code}: ${err.message}`;
+  }
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
+}
+
 export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
@@ -100,7 +110,7 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
     const toolCount = toolRegistry.list().length;
     console.log(`✓ Tool registry loaded (${toolCount} tools)`);
   } catch (err: any) {
-    console.log(`✕ Tool registry failed to load: ${err.message}`);
+    console.log(`✕ Tool registry failed to load: ${formatToolRegistryError(err)}`);
   }
 
   const checker = input.deps?.providerHealthChecker ?? defaultProviderHealthChecker;

@@ -82,6 +82,8 @@ export interface AgentNode extends BaseNode {
 export interface ToolNode extends BaseNode {
   kind: "tool";
   label: string;
+  cached?: boolean;
+  artifactPath?: string;
 }
 
 export interface PipelineNode extends BaseNode {
@@ -92,6 +94,7 @@ export interface PipelineNode extends BaseNode {
 export interface LoopNode extends BaseNode {
   kind: "loop";
   label?: string;
+  children?: PrettyExecutionNode[];
   roundCount?: number;
   maxRounds?: number;
   accepted?: boolean;

@@ -255,16 +255,104 @@ describe("call cache", () => {
       currentToolCallId: "new-t",
       definitionId: "t-def",
       failureMode: "throw",
-      workflowInvocationId: "w1"
+      workflowInvocationId: "w1",
+      args: { testArg: "argVal" }
     });
 
     expect(result.ok).toBe(true);
     expect(result.output).toEqual({ out: "ok" });
     expect(result.artifactPath).toBe("tools/new-t/output.json");
     expect(writtenFiles["tools/new-t/output.json"]).toEqual({ out: "ok" });
+    expect(writtenFiles["tools/new-t/input.json"]).toEqual({ testArg: "argVal" });
     expect(writtenFiles["tools/new-t/cache-hit.json"]).toMatchObject({
       previousToolCallId: "old-t",
       previousRunId: "prev-run-id"
+    });
+    expect(writtenFiles["tools/new-t/metadata.json"]).toMatchObject({
+      schemaVersion: "open-dynamic-workflow.tool.v1",
+      toolCallId: "new-t",
+      definition: "t-def",
+      workflowInvocationId: "w1",
+      status: "succeeded",
+      queuedAt: expect.any(String),
+      startedAt: expect.any(String),
+      finishedAt: expect.any(String),
+      queueDurationMs: 0,
+      executionDurationMs: 0,
+      durationMs: 0,
+      cacheMaterializationDurationMs: expect.any(Number)
+    });
+  });
+
+  it("materializes cached tool results with loop origin, custom metadata, and args", async () => {
+    const prevRun = path.join(TEMP_DIR, "prev-tool-run-loop");
+    await fs.mkdir(path.join(prevRun, "tools/old-t"), { recursive: true });
+    await fs.writeFile(path.join(prevRun, "tools/old-t/output.json"), JSON.stringify({ out: "ok" }), "utf8");
+
+    let writtenFiles: Record<string, any> = {};
+    const store = {
+      writeJson: async (relativePath: string, data: any) => { writtenFiles[relativePath] = data; }
+    } as any;
+
+    const loopOrigin = {
+      kind: "loop-round" as const,
+      loopId: "my-loop",
+      loopLabel: "my-loop-label",
+      roundIndex: 2,
+      roundNumber: 3,
+      roundId: "r-3"
+    };
+
+    const result = await materializeCachedToolResult({
+      store,
+      previousRunRoot: prevRun,
+      previousRunId: "prev-run-id",
+      entry: {
+        kind: "tool",
+        sequence: 2,
+        fingerprint: "fp-loop",
+        status: "succeeded",
+        resultPath: "tools/old-t/output.json",
+        toolCallId: "old-t",
+        definitionId: "t-def"
+      },
+      currentToolCallId: "new-t-loop",
+      definitionId: "t-def",
+      failureMode: "throw",
+      workflowInvocationId: "w1",
+      parentWorkflowInvocationId: "parent-w1",
+      origin: loopOrigin,
+      runId: "current-run-id",
+      args: { inputVal: "hello-secret" },
+      timeoutMs: 5000,
+      metadata: { userMeta: "user-value-secret" },
+      redactedSecrets: ["secret"]
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.output).toEqual({ out: "ok" });
+    expect(result.origin).toEqual(loopOrigin);
+    expect(writtenFiles["tools/new-t-loop/input.json"]).toEqual({ inputVal: "hello-[REDACTED]" });
+    expect(writtenFiles["tools/new-t-loop/input.json"].inputVal).not.toContain("secret");
+    expect(writtenFiles["tools/new-t-loop/metadata.json"].metadata.userMeta).not.toContain("secret");
+    expect(writtenFiles["tools/new-t-loop/metadata.json"]).toMatchObject({
+      schemaVersion: "open-dynamic-workflow.tool.v1",
+      runId: "current-run-id",
+      toolCallId: "new-t-loop",
+      definition: "t-def",
+      workflowInvocationId: "w1",
+      parentWorkflowInvocationId: "parent-w1",
+      effectiveTimeoutMs: 5000,
+      metadata: { userMeta: "user-value-[REDACTED]" },
+      origin: loopOrigin,
+      status: "succeeded",
+      queuedAt: expect.any(String),
+      startedAt: expect.any(String),
+      finishedAt: expect.any(String),
+      queueDurationMs: 0,
+      executionDurationMs: 0,
+      durationMs: 0,
+      cacheMaterializationDurationMs: expect.any(Number)
     });
   });
 

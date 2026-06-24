@@ -81,6 +81,14 @@ export interface ToolExecutionResult<TOutput = unknown> {
   durationMs: number;
   workflowInvocationId: string;
   parentWorkflowInvocationId?: string | undefined;
+  origin?: {
+    kind: "loop-round";
+    loopId: string;
+    loopLabel: string;
+    roundIndex: number;
+    roundNumber: number;
+    roundId: string;
+  } | undefined;
   cache?: {
     hit: boolean;
     callId?: string | undefined;
@@ -122,6 +130,14 @@ export interface ToolSummary {
   ok: boolean;
   workflowInvocationId: string;
   parentWorkflowInvocationId?: string | undefined;
+  origin?: {
+    kind: "loop-round";
+    loopId: string;
+    loopLabel: string;
+    roundIndex: number;
+    roundNumber: number;
+    roundId: string;
+  } | undefined;
   queueDurationMs?: number | undefined;
   durationMs: number;
   artifactPath: string;

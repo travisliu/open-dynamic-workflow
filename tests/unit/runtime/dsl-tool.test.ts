@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDsl } from "../../../src/workflow/dsl.js";
-import { withDslExecutionScope, withToolForbidden } from "../../../src/workflow/scope.js";
+import {
+  assertLoopContextToolAllowed,
+  withDslExecutionScope,
+  withToolForbidden
+} from "../../../src/workflow/scope.js";
 import { ErrorCode } from "../../../src/errors/codes.js";
 import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
 import * as callCache from "../../../src/artifacts/call-cache.js";
+import { withActiveLoopContext } from "../../../src/loop/context.js";
 
 vi.mock("../../../src/artifacts/call-cache.js", async (importOriginal) => {
   const actual = await importOriginal<any>();
@@ -380,5 +385,87 @@ describe("DSL tool() runtime", () => {
     await expect(withDslExecutionScope(scope, () => 
       dsl.tool({ definition: "read-json", args: {} })
     )).rejects.toThrow(/tool\(\) is not allowed/);
+  });
+
+  it("allows ctx.tool() only in the direct loop-round runtime scope", () => {
+    const loopScope = {
+      runId: "test-run",
+      workflowInvocationId: "root",
+      location: "loop-round" as const,
+      toolAllowed: false,
+      topLevelWindow: false
+    };
+    const callbackScope = {
+      ...loopScope,
+      location: "asynchronous-callback" as const
+    };
+
+    expect(() => withDslExecutionScope(
+      loopScope,
+      () => assertLoopContextToolAllowed()
+    )).not.toThrow();
+
+    expect(() => withDslExecutionScope(
+      callbackScope,
+      () => assertLoopContextToolAllowed()
+    )).toThrow(/ctx\.tool\(\) is not allowed in asynchronous callback context/);
+  });
+
+  it("should throw TOOL_INVALID_CONTEXT if loop tool is called in parallel task context", async () => {
+    mockRuntime.artifactStore = {
+      writeJson: vi.fn().mockResolvedValue("path"),
+      getRunArtifacts: vi.fn().mockReturnValue({ rootDir: "/tmp" })
+    };
+    mockRuntime.loopCounter = 0;
+    mockRuntime.loopSummaries = [];
+    mockRuntime.config.workflow = { maxLoopRounds: 20 };
+
+    const dsl = createDsl(mockRuntime);
+
+    // Get the loop tool function via a minimal loop invocation
+    let loopToolFn: any;
+    await dsl.loop({
+      label: "get-tool-fn",
+      initialState: {},
+      options: { maxRounds: 1 },
+      run: async (state, loopCtx) => {
+        loopToolFn = loopCtx.tool;
+        return { done: true, nextState: state };
+      }
+    });
+
+    expect(loopToolFn).toBeDefined();
+
+    // Establish active loop context and run under parallel-task scope
+    const activeLoop = {
+      loopId: "test-loop",
+      label: "test-loop",
+      roundIndex: 0,
+      roundNumber: 1,
+      roundId: "test-loop:round-1",
+      childAgentIds: [],
+      childWorkflowInvocationIds: [],
+      signal: new AbortController().signal
+    };
+
+    const parallelScope = {
+      runId: "test-run",
+      workflowInvocationId: "root",
+      location: "parallel-task" as const,
+      toolAllowed: false,
+      topLevelWindow: false
+    };
+
+    await withActiveLoopContext(activeLoop, async () => {
+      await withDslExecutionScope(parallelScope, async () => {
+        await expect(loopToolFn({ definition: "read-json", args: {} })).rejects.toThrow(
+          expect.objectContaining({
+            code: ErrorCode.TOOL_INVALID_CONTEXT
+          })
+        );
+      });
+    });
+
+    expect(mockRuntime.toolExecutor.execute).not.toHaveBeenCalled();
   });
 });

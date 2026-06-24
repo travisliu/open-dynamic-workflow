@@ -43,7 +43,8 @@ function renderNodeLine(node: PrettyExecutionNode, depth: number): string {
       return `${indent}${marker} ${parts.join("  ")}`;
     }
     case "tool": {
-      return `${indent}${marker} ${node.label}${duration ? "  " + duration : ""}`;
+      const cachePart = node.cached ? " (cache)" : "";
+      return `${indent}${marker} ${node.label}${cachePart}${duration ? "  " + duration : ""}`;
     }
     case "pipeline": {
       const label = node.label ? `Pipeline ${node.label}` : "Pipeline";

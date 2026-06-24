@@ -69,6 +69,77 @@ describe("Loop Replay and Cache Helpers", () => {
       const marker4 = buildLoopRoundReplayMarker({ ...baseArgs, status: "failed" });
       expect(marker1).not.toBe(marker4);
     });
+
+    it("changes when nested call order changes", () => {
+      const baseArgs = {
+        loopId: "loop-1",
+        label: "loop-label",
+        roundIndex: 0,
+        roundNumber: 1,
+        stateBeforeHash: "state-before-hash"
+      };
+
+      const toolThenAgent = buildLoopRoundReplayMarker({
+        ...baseArgs,
+        nestedCallSequence: ["tool-a", "agent-b"]
+      });
+      const agentThenTool = buildLoopRoundReplayMarker({
+        ...baseArgs,
+        nestedCallSequence: ["agent-b", "tool-a"]
+      });
+
+      expect(toolThenAgent).not.toBe(agentThenTool);
+    });
+
+    it("normalizes generated child workflow invocation IDs", () => {
+      const baseArgs = {
+        loopId: "loop-1",
+        label: "loop-label",
+        roundIndex: 0,
+        roundNumber: 1,
+        stateBeforeHash: "state-before-hash"
+      };
+
+      const firstRun = buildLoopRoundReplayMarker({
+        ...baseArgs,
+        nestedCallSequence: [
+          "loop-1:loop-label:round-1:generated-id-a"
+        ]
+      });
+      const secondRun = buildLoopRoundReplayMarker({
+        ...baseArgs,
+        nestedCallSequence: [
+          "loop-1:loop-label:round-1:generated-id-b"
+        ]
+      });
+
+      expect(firstRun).toBe(secondRun);
+    });
+
+    it("is identical to the legacy fingerprint behavior for agent/workflow-only rounds", () => {
+      const baseArgs = {
+        loopId: "loop-1",
+        label: "loop-label",
+        roundIndex: 0,
+        roundNumber: 1,
+        nestedCallSequence: ["agent-1", "loop-1:loop-label:round-1:generated-id-a"],
+        stateBeforeHash: "state-before-hash"
+      };
+
+      const marker = buildLoopRoundReplayMarker(baseArgs);
+
+      const expectedLegacyHash = stableHashJson({
+        kind: "loop-round",
+        loopId: "loop-1",
+        label: "loop-label",
+        roundIndex: 0,
+        roundNumber: 1,
+        nestedCallSequence: ["agent-1", "loop-1:loop-label:round-1:workflow-1"],
+        stateBeforeHash: "state-before-hash"
+      });
+
+      expect(marker).toBe(expectedLegacyHash);
+    });
   });
 
 

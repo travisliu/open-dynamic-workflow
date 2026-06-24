@@ -1,8 +1,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { LoopContext } from "./types.js";
-import { createLoopAgentId } from "./id.js";
+import { createLoopAgentId, createLoopToolId } from "./id.js";
 import type { AgentCallInput, AgentResult } from "../types/agent.js";
 import type { WorkflowCallInput, WorkflowSettledResult } from "../types/workflow.js";
+import type { ToolCallInput } from "../types/tool.js";
 
 /**
  * Internal state for the active loop round.
@@ -15,6 +16,8 @@ export interface ActiveLoopContext {
   roundId: string;
   childAgentIds: string[];
   childWorkflowInvocationIds: string[];
+  childToolCallIds?: string[];
+  activeToolPromise?: Promise<any> | undefined;
   signal: AbortSignal;
   parentLoopId?: string;
   workflowInvocationId?: string;
@@ -63,6 +66,16 @@ export function recordLoopChildWorkflowInvocationId(workflowInvocationId: string
   }
 }
 
+export function recordLoopChildToolCallId(toolCallId: string): void {
+  const context = getActiveLoopContext();
+  if (context) {
+    context.childToolCallIds ??= [];
+    if (!context.childToolCallIds.includes(toolCallId)) {
+      context.childToolCallIds.push(toolCallId);
+    }
+  }
+}
+
 /**
  * Input for creating a loop round context.
  */
@@ -77,6 +90,7 @@ export interface CreateLoopRoundContextInput {
   dsl: {
     agent: (input: AgentCallInput) => Promise<AgentResult>;
     workflow: (input: WorkflowCallInput) => Promise<any>;
+    tool: (input: ToolCallInput) => Promise<any>;
     log: (message: string, data?: any) => void;
   };
 }
@@ -128,16 +142,18 @@ export function createLoopRoundContext(
           });
         }
       }
-      recordLoopChildAgentId(agentId);
       return dsl.agent({ ...agentInput, id: agentId });
     },
 
     workflow: async <T = unknown>(workflowInput: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>> => {
-      const result = await dsl.workflow(workflowInput);
-      if (result && typeof result === "object" && "workflowInvocationId" in result) {
-        recordLoopChildWorkflowInvocationId(result.workflowInvocationId as string);
+      return dsl.workflow(workflowInput);
+    },
+
+    tool: async (toolInput: ToolCallInput): Promise<any> => {
+      if (input.signal.aborted) {
+        throw input.signal.reason || new Error("Loop round aborted");
       }
-      return result;
+      return dsl.tool(toolInput);
     },
 
     log: (message: string, data?: any): void => {
@@ -155,6 +171,14 @@ export function createLoopRoundContext(
 
     agentId: (suffix?: string): string => {
       return createLoopAgentId({
+        label,
+        roundNumber,
+        ...(suffix !== undefined ? { suffix } : {}),
+      });
+    },
+
+    toolId: (suffix?: string): string => {
+      return createLoopToolId({
         label,
         roundNumber,
         ...(suffix !== undefined ? { suffix } : {}),

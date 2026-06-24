@@ -102,6 +102,23 @@ export function assertToolAllowed(): DslExecutionScope {
   return scope;
 }
 
+export function assertLoopContextToolAllowed(): void {
+  const scope = getDslExecutionScope();
+  if (!scope) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.INTERNAL_ERROR,
+      "No active DSL execution scope found."
+    );
+  }
+
+  if (scope.location !== "loop-round") {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.TOOL_INVALID_CONTEXT,
+      `ctx.tool() is not allowed in ${scope.location.replace(/-/g, " ")} context.`
+    );
+  }
+}
+
 export function deriveChildWorkflowToolScope(
   parentScope: DslExecutionScope | undefined,
   childInvocation: WorkflowInvocationContext

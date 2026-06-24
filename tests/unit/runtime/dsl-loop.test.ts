@@ -36,6 +36,7 @@ describe("DSL loop()", () => {
       dsl: expect.objectContaining({
         agent: expect.any(Function),
         workflow: expect.any(Function),
+        tool: expect.any(Function),
         log: expect.any(Function)
       })
     }));

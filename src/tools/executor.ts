@@ -73,6 +73,7 @@ export class DefaultToolExecutor implements ToolExecutor {
         durationMs: 0,
         workflowInvocationId: call.workflowInvocationId,
         parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+        origin: call.origin,
         artifactPath: call.artifactPath
       };
     }
@@ -93,6 +94,7 @@ export class DefaultToolExecutor implements ToolExecutor {
     if (call.parentWorkflowInvocationId !== undefined) fullMetadata.parentWorkflowInvocationId = call.parentWorkflowInvocationId;
     if (call.timeoutMs !== undefined) fullMetadata.effectiveTimeoutMs = call.timeoutMs;
     if (call.metadata !== undefined) fullMetadata.metadata = call.metadata;
+    if (call.origin !== undefined) fullMetadata.origin = call.origin;
 
     let serializedMetadata: any;
     try {
@@ -111,6 +113,7 @@ export class DefaultToolExecutor implements ToolExecutor {
         durationMs: 0,
         workflowInvocationId: call.workflowInvocationId,
         parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+        origin: call.origin,
         artifactPath: call.artifactPath
       };
     }
@@ -133,6 +136,7 @@ export class DefaultToolExecutor implements ToolExecutor {
         durationMs: 0,
         workflowInvocationId: call.workflowInvocationId,
         parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+        origin: call.origin,
         artifactPath: call.artifactPath
       };
     }
@@ -207,7 +211,8 @@ export class DefaultToolExecutor implements ToolExecutor {
           this.emit("workflow.log", {
             message: `[tool:${toolCallId}] ${redactText(message, secrets)}`,
             data: redactAndBoundValue(data, { secrets }),
-            toolCallId
+            toolCallId,
+            ...(call.origin || {})
           });
         }
       };
@@ -315,6 +320,7 @@ export class DefaultToolExecutor implements ToolExecutor {
         durationMs: totalDurationMs,
         workflowInvocationId: call.workflowInvocationId,
         parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+        origin: call.origin,
         artifactPath: call.artifactPath
       };
 
@@ -330,6 +336,7 @@ export class DefaultToolExecutor implements ToolExecutor {
           ok: true,
           workflowInvocationId: call.workflowInvocationId,
           parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+          origin: call.origin,
           queueDurationMs,
           durationMs: totalDurationMs,
           artifactPath: call.artifactPath
@@ -452,6 +459,7 @@ export class DefaultToolExecutor implements ToolExecutor {
         ok: false,
         workflowInvocationId: call.workflowInvocationId,
         parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+        origin: call.origin,
         queueDurationMs: timings?.queueDurationMs,
         durationMs,
         artifactPath: call.artifactPath,
@@ -489,6 +497,7 @@ export class DefaultToolExecutor implements ToolExecutor {
       durationMs,
       workflowInvocationId: call.workflowInvocationId,
       parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+      origin: call.origin,
       artifactPath: call.artifactPath
     };
   }
@@ -505,6 +514,7 @@ export class DefaultToolExecutor implements ToolExecutor {
       label: call.label,
       workflowInvocationId: call.workflowInvocationId,
       parentWorkflowInvocationId: call.parentWorkflowInvocationId,
+      ...(call.origin || {}),
       artifactPath: call.artifactPath,
       metadata: redactAndBoundValue(call.metadata || {}, { secrets }),
       ...extra

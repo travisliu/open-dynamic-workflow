@@ -334,6 +334,14 @@ export interface ToolCacheHitPayload {
   previousRunId?: string;
   previousToolCallId: string;
   artifactPath: string;
+  workflowInvocationId?: string;
+  parentWorkflowInvocationId?: string;
+  kind?: "loop-round";
+  loopId?: string;
+  loopLabel?: string;
+  roundIndex?: number;
+  roundNumber?: number;
+  roundId?: string;
 }
 
 export function isEventEnvelope(value: unknown): value is EventEnvelope {

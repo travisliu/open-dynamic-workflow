@@ -72,6 +72,9 @@ export class PrettyViewBuilder {
         const nextDepth = node.isRoot ? currentDepth : currentDepth + 1;
         const depth = this.findNodeDepth(node.children, targetId, nextDepth);
         if (depth !== null) return depth;
+      } else if (node.kind === "loop") {
+        const depth = this.findNodeDepth(node.children ?? [], targetId, currentDepth + 1);
+        if (depth !== null) return depth;
       }
     }
     return null;
@@ -220,7 +223,17 @@ export class PrettyViewBuilder {
         };
         if (payload.artifactPath) (node as any).artifactPath = payload.artifactPath;
         this.nodesById.set(node.id, node);
-        this.attachToParent(workflowId, node);
+        if (payload.loopId) {
+          const loop = this.nodesById.get(payload.loopId);
+          if (loop?.kind === "loop") {
+            loop.children ??= [];
+            loop.children.push(node);
+          } else {
+            this.attachToParent(workflowId, node);
+          }
+        } else {
+          this.attachToParent(workflowId, node);
+        }
         return node.id;
       }
 
@@ -238,6 +251,40 @@ export class PrettyViewBuilder {
           if (payload.error) (node as any).error = payload.error;
         }
         return payload.toolInvocationId || payload.toolCallId;
+      }
+
+      case "tool.cache_hit": {
+        const id = payload.toolCallId;
+        let node = this.nodesById.get(id) as ToolNode;
+        if (!node) {
+          node = {
+            id,
+            kind: "tool",
+            label: payload.label ?? payload.definition,
+            status: "succeeded",
+            cached: true,
+          };
+          if (payload.artifactPath) node.artifactPath = payload.artifactPath;
+          this.nodesById.set(id, node);
+
+          const workflowId = payload.workflowInvocationId ?? this.getActiveWorkflowId();
+          if (payload.loopId) {
+            const loop = this.nodesById.get(payload.loopId);
+            if (loop?.kind === "loop") {
+              loop.children ??= [];
+              loop.children.push(node);
+            } else {
+              this.attachToParent(workflowId, node);
+            }
+          } else {
+            this.attachToParent(workflowId, node);
+          }
+        } else {
+          node.status = "succeeded";
+          node.cached = true;
+          if (payload.artifactPath) node.artifactPath = payload.artifactPath;
+        }
+        return id;
       }
 
       case "pipeline.started": {
@@ -278,6 +325,7 @@ export class PrettyViewBuilder {
           status: "running",
           maxRounds: payload.maxRounds,
           roundCount: 0,
+          children: [],
         };
         if (payload.artifactPath) node.artifactPath = payload.artifactPath;
         this.nodesById.set(node.id, node);

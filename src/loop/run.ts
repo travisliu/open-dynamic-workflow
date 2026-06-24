@@ -49,6 +49,7 @@ import type { SerializedError } from "../types/errors.js";
 import type { RuntimeState } from "../workflow/types.js";
 import type { AgentCallInput, AgentResult } from "../types/agent.js";
 import type { WorkflowCallInput } from "../types/workflow.js";
+import type { ToolCallInput } from "../types/tool.js";
 
 /**
  * Input for runLoop.
@@ -60,6 +61,7 @@ export interface RunLoopInput<TState = unknown> {
   dsl: {
     agent: (input: AgentCallInput) => Promise<AgentResult>;
     workflow: (input: WorkflowCallInput) => Promise<any>;
+    tool: (input: ToolCallInput) => Promise<any>;
     log: (message: string, data?: unknown) => void;
   };
   _stateType?: TState;
@@ -324,6 +326,7 @@ export async function runLoop<TState = unknown>(
         roundId,
         childAgentIds: [],
         childWorkflowInvocationIds: [],
+        childToolCallIds: [],
         signal: loopSignal,
         workflowInvocationId,
       };
@@ -403,6 +406,14 @@ export async function runLoop<TState = unknown>(
         }
       }
 
+      if (activeRoundContext.activeToolPromise) {
+        try {
+          await activeRoundContext.activeToolPromise;
+        } catch {
+          // Preserve the original tool result/error ownership. Draining must not create an unhandled rejection or replace the round callback's primary error.
+        }
+      }
+
       const roundFinishedAt = getIsoTimestamp();
       const roundDurationMs = getDurationMs(roundStartedAt, roundFinishedAt);
 
@@ -428,6 +439,7 @@ export async function runLoop<TState = unknown>(
           nestedCalls: {
             agents: activeRoundContext.childAgentIds,
             workflows: activeRoundContext.childWorkflowInvocationIds,
+            tools: activeRoundContext.childToolCallIds ?? [],
           },
         });
         rounds.push(roundRecord);
@@ -438,6 +450,7 @@ export async function runLoop<TState = unknown>(
           nestedCalls: {
             agents: activeRoundContext.childAgentIds,
             workflows: activeRoundContext.childWorkflowInvocationIds,
+            tools: activeRoundContext.childToolCallIds ?? [],
           },
         });
 
@@ -450,6 +463,7 @@ export async function runLoop<TState = unknown>(
           nestedCallSequence: [
             ...activeRoundContext.childAgentIds,
             ...activeRoundContext.childWorkflowInvocationIds,
+            ...(activeRoundContext.childToolCallIds ?? []),
           ],
           stateBeforeHash: stableHashJson(inputStateSnapshot),
           status: roundStatus,
@@ -515,6 +529,7 @@ export async function runLoop<TState = unknown>(
           nestedCalls: {
             agents: activeRoundContext.childAgentIds,
             workflows: activeRoundContext.childWorkflowInvocationIds,
+            tools: activeRoundContext.childToolCallIds ?? [],
           },
         });
         rounds.push(roundRecord);
@@ -525,6 +540,7 @@ export async function runLoop<TState = unknown>(
           nestedCalls: {
             agents: activeRoundContext.childAgentIds,
             workflows: activeRoundContext.childWorkflowInvocationIds,
+            tools: activeRoundContext.childToolCallIds ?? [],
           },
         });
 
@@ -536,6 +552,7 @@ export async function runLoop<TState = unknown>(
           nestedCallSequence: [
             ...activeRoundContext.childAgentIds,
             ...activeRoundContext.childWorkflowInvocationIds,
+            ...(activeRoundContext.childToolCallIds ?? []),
           ],
           stateBeforeHash: stableHashJson(inputStateSnapshot),
           status: "failed",
@@ -589,6 +606,7 @@ export async function runLoop<TState = unknown>(
         nestedCalls: {
           agents: activeRoundContext.childAgentIds,
           workflows: activeRoundContext.childWorkflowInvocationIds,
+          tools: activeRoundContext.childToolCallIds ?? [],
         },
       });
       rounds.push(roundRecord);
@@ -600,6 +618,7 @@ export async function runLoop<TState = unknown>(
         nestedCalls: {
           agents: activeRoundContext.childAgentIds,
           workflows: activeRoundContext.childWorkflowInvocationIds,
+          tools: activeRoundContext.childToolCallIds ?? [],
         },
       });
 
@@ -611,6 +630,7 @@ export async function runLoop<TState = unknown>(
         nestedCallSequence: [
           ...activeRoundContext.childAgentIds,
           ...activeRoundContext.childWorkflowInvocationIds,
+          ...(activeRoundContext.childToolCallIds ?? []),
         ],
         stateBeforeHash: stableHashJson(inputStateSnapshot),
         stateAfterHash: stableHashJson(nextStateCloned),

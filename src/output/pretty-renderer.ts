@@ -64,7 +64,7 @@ function renderExecutionNodes(nodes: PrettyExecutionNode[], depth: number, lines
     switch (node.kind) {
       case "phase": {
         lines.push(`${indent}→ ${node.name}`);
-        renderExecutionNodes(node.children, depth + 1, lines);
+        renderExecutionNodes(node.children ?? [], depth + 1, lines);
         break;
       }
       case "workflow": {
@@ -93,7 +93,8 @@ function renderExecutionNodes(nodes: PrettyExecutionNode[], depth: number, lines
         break;
       }
       case "tool": {
-        lines.push(`${indent}${marker} ${node.label}${duration ? "  " + duration : ""}`);
+        const cachePart = node.cached ? " (cache)" : "";
+        lines.push(`${indent}${marker} ${node.label}${cachePart}${duration ? "  " + duration : ""}`);
         break;
       }
       case "pipeline": {
@@ -113,6 +114,7 @@ function renderExecutionNodes(nodes: PrettyExecutionNode[], depth: number, lines
           parts.push(duration);
         }
         lines.push(`${indent}${marker} ${parts.join("  ")}`);
+        renderExecutionNodes(node.children ?? [], depth + 1, lines);
         break;
       }
     }

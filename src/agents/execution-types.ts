@@ -20,4 +20,3 @@ export interface AgentExecutionInput {
 export interface AgentExecutor {
   execute(input: AgentExecutionInput): Promise<AgentResult>;
 }
-

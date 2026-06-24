@@ -213,7 +213,7 @@ describe("Tool Composition Validation", () => {
     expect(issues.some(i => i.message.includes("flow.tool() is not allowed in this context"))).toBe(true);
   });
 
-  it("rejects tool() inside loop() round callback", () => {
+  it("allows ctx.tool() and ctx.toolId() inside loop() round callback", () => {
     const parsed = createParsed(`
       export default async function(ctx) {
         await ctx.loop({
@@ -221,14 +221,122 @@ describe("Tool Composition Validation", () => {
           initialState: { count: 0 },
           options: { maxRounds: 2 },
           run: async (state, loopCtx) => {
-            await loopCtx.tool({ definition: "test-tool", args: {} });
+            await loopCtx.tool({
+              id: loopCtx.toolId("quality-gate"),
+              definition: "test-tool",
+              args: {}
+            });
             return { done: true, nextState: state };
           }
         });
       }
     `);
+    const issues = validateWorkflow(parsed, { ...options, knownToolIds: new Set(["test-tool"]) });
+    expect(issues).toHaveLength(0);
+  });
+
+  it("rejects global tool() inside loop() round callback", () => {
+    const parsed = createParsed(`
+      await loop({
+        label: "tool-forbidden-loop",
+        initialState: { count: 0 },
+        options: { maxRounds: 2 },
+        run: async (state, loopCtx) => {
+          await tool({ definition: "test-tool", args: {} });
+          return { done: true, nextState: state };
+        }
+      });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("tool() is not allowed in this context"))).toBe(true);
+  });
+
+  it("rejects ctx.tool() inside a nested loop helper", () => {
+    const parsed = createParsed(`
+      await loop({
+        label: "nested-helper-loop",
+        initialState: {},
+        options: { maxRounds: 1 },
+        run: async (state, loopCtx) => {
+          const helper = async () => loopCtx.tool({
+            definition: "test-tool",
+            args: {}
+          });
+          await helper();
+          return { done: true, nextState: state };
+        }
+      });
+    `);
+    const issues = validateWorkflow(parsed, { ...options, knownToolIds: new Set(["test-tool"]) });
+    expect(issues.some(i => i.message.includes("loopCtx.tool() is not allowed in this context"))).toBe(true);
+  });
+
+  it("rejects aliasing ctx.toolId() inside a loop round", () => {
+    const parsed = createParsed(`
+      await loop({
+        label: "tool-id-alias-loop",
+        initialState: {},
+        options: { maxRounds: 1 },
+        run: async (state, loopCtx) => {
+          const makeToolId = loopCtx.toolId;
+          return { done: true, nextState: state };
+        }
+      });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("Aliasing tool() is not allowed"))).toBe(true);
+  });
+
+  it("rejects loopCtx.tool() inside global parallel() task thunk in loop callback", () => {
+    const parsed = createParsed(`
+      await loop({
+        label: "parallel-in-loop",
+        initialState: {},
+        options: { maxRounds: 1 },
+        run: async (state, loopCtx) => {
+          await parallel([
+            async () => {
+              await loopCtx.tool({ definition: "test-tool", args: {} });
+            }
+          ]);
+          return { done: true, nextState: state };
+        }
+      });
+    `);
     const issues = validateWorkflow(parsed, options);
     expect(issues.some(i => i.message.includes("is not allowed in this context"))).toBe(true);
-    expect(issues.some(i => i.message.includes("loop round"))).toBe(true);
+  });
+
+  it("rejects tool call with missing literal tool definition", () => {
+    const parsed = createParsed(`
+      await tool({ args: {} });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("is missing required 'definition' property"))).toBe(true);
+  });
+
+  it("rejects tool call with non-string-literal tool definition", () => {
+    const parsed = createParsed(`
+      const myDef = "test-tool";
+      await tool({ definition: myDef, args: {} });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("Tool definition must be a string literal"))).toBe(true);
+  });
+
+  it("rejects tool call with non-JSON-safe args where static detection is possible", () => {
+    const parsed = createParsed(`
+      await tool({
+        definition: "test-tool",
+        args: {
+          myFunc: () => { console.log("unsafe"); },
+          nested: {
+            unsafeVal: undefined
+          }
+        }
+      });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("contains non-JSON-safe values"))).toBe(true);
   });
 });

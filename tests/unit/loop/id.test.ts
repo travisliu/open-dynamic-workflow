@@ -3,7 +3,7 @@ import {
   createLoopId,
   createRoundId,
   createLoopAgentId,
-  normalizeLoopLabel
+  createLoopToolId
 } from "../../../src/loop/id.js";
 import { InvalidDslCallError } from "../../../src/workflow/errors.js";
 
@@ -84,6 +84,27 @@ describe("Loop ID Helpers", () => {
           suffix
         })).toThrow(InvalidDslCallError);
       }
+    });
+  });
+
+  describe("createLoopToolId", () => {
+    it("creates deterministic path-safe tool IDs", () => {
+      expect(createLoopToolId({
+        label: "bounded-repair-loop",
+        roundNumber: 2,
+        suffix: "quality-gate"
+      })).toBe("bounded-repair-loop-round-2-tool-quality-gate");
+    });
+
+    it("does not collide for distinct normalized loop labels", () => {
+      const labels = ["quality.gate", "quality:gate", "quality-gate", "quality_2e_gate"];
+      const ids = labels.map(label => createLoopToolId({
+        label,
+        roundNumber: 1,
+        suffix: "check"
+      }));
+
+      expect(new Set(ids).size).toBe(labels.length);
     });
   });
 });

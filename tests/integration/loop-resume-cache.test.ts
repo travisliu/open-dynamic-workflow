@@ -5,7 +5,7 @@ import { main } from "../../src/cli/index.js";
 
 const TEMP_DIR = path.resolve("tests/temp-loop-resume-cache");
 
-async function runCli(args: string[]) {
+async function runCli(args: string[], cwd?: string) {
   const stdoutData: string[] = [];
   const stderrData: string[] = [];
 
@@ -18,9 +18,14 @@ async function runCli(args: string[]) {
     return true;
   });
 
+  const finalArgs = [...args];
+  if (cwd) {
+    finalArgs.push("--cwd", cwd);
+  }
+
   let error: any = null;
   try {
-    await main(["node", "open-dynamic-workflow", ...args]);
+    await main(["node", "open-dynamic-workflow", ...finalArgs]);
   } catch (err) {
     error = err;
   } finally {
@@ -352,5 +357,177 @@ describe("Loop Resume/Cache Integration", () => {
     const cacheHits = events.filter(e => e.type === "agent.cache_hit");
     expect(cacheHits).toHaveLength(0);
   });
-});
 
+  it("resumes an unchanged non-tool loop from a prior-style cache index and confirms cache hits", async () => {
+    const { stableHashJson } = await import("../../src/loop/replay.js");
+    const workflowPath = path.resolve("tests/fixtures/workflows/loop-resume-cache.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/mock.config.yaml");
+
+    // 1. Run once
+    const result1 = await runCli([
+      "run",
+      workflowPath,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--report", "json"
+    ]);
+
+    expect(result1.error).toBeNull();
+    const parsed1 = JSON.parse(result1.stdout);
+    const runId1 = parsed1.runId;
+    const runDir1 = path.join(TEMP_DIR, runId1);
+
+    // 2. Read the cache index
+    const cacheIndexPath = path.join(runDir1, "cache-index.json");
+    const cacheIndex = JSON.parse(await fs.readFile(cacheIndexPath, "utf8"));
+
+    // Find the loop-round entry
+    const roundEntry = cacheIndex.entries.find((e: any) => e.sequence === 3);
+    expect(roundEntry).toBeDefined();
+
+    const expectedLegacyFingerprint = stableHashJson({
+      kind: "loop-round",
+      loopId: "resume-loop",
+      label: "resume-loop",
+      roundIndex: 0,
+      roundNumber: 1,
+      nestedCallSequence: ["resume-loop:round-1:resume"],
+      stateBeforeHash: stableHashJson({ count: 0 }),
+      stateAfterHash: stableHashJson({ count: 1 }),
+      status: "completed"
+    });
+
+    expect(roundEntry.fingerprint).toBe(expectedLegacyFingerprint);
+
+    // 3. Resume and assert cache hits
+    const result2 = await runCli([
+      "run",
+      workflowPath,
+      "--config", configPath,
+      "--out", TEMP_DIR,
+      "--resume", runId1,
+      "--report", "jsonl"
+    ]);
+
+    expect(result2.error).toBeNull();
+    const lines = result2.stdout.split("\n").filter(l => l.trim());
+    const events = lines.map(l => JSON.parse(l));
+    const cacheHits = events.filter(e => e.type === "agent.cache_hit");
+    expect(cacheHits.length).toBeGreaterThan(0);
+  });
+
+  it("resumes loop tool from cache, redacting secret-bearing tool metadata according to security.redactEnv", async () => {
+    process.env.MY_TEST_TOKEN = "super-secret-arg-val";
+    process.env.MY_TEST_SECRET = "my-secret-metadata-val";
+
+    try {
+      const tempProjDir = path.join(TEMP_DIR, "proj-redact");
+      const toolsDir = path.join(tempProjDir, ".open-dynamic-workflow/tools");
+      const workflowDir = path.join(tempProjDir, "workflows");
+      const outDir = path.join(tempProjDir, "out");
+
+      await fs.mkdir(toolsDir, { recursive: true });
+      await fs.mkdir(workflowDir, { recursive: true });
+      await fs.mkdir(outDir, { recursive: true });
+
+      // 1. Create a cacheable tool
+      const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
+      await fs.writeFile(path.join(toolsDir, "cache-tool.ts"), `
+        import { defineTool } from "${srcToolsPath}";
+        export default defineTool({
+          id: "cache-tool",
+          description: "cache-tool description",
+          inputSchema: { type: "object", properties: { val: { type: "string" } } },
+          cacheable: true,
+          run: (input) => ({ reply: input.val })
+        });
+      `);
+
+      // 2. Create the workflow calling this tool inside a loop
+      const wfPath = path.join(workflowDir, "loop-tool.workflow.ts");
+      await fs.writeFile(wfPath, `
+        export const meta = { name: "loop-tool-wf", description: "desc" };
+        export default async ({ loop }) => await loop({
+          label: "loop-label",
+          initialState: { count: 0 },
+          options: { maxRounds: 1 },
+          run: async (state, ctx) => {
+            await ctx.tool({
+              id: ctx.toolId("cache-tool"),
+              definition: "cache-tool",
+              args: { val: "super-secret-arg-val" },
+              metadata: { customField: "my-secret-metadata-val" }
+            });
+            return { done: true, nextState: state };
+          }
+        });
+      `);
+
+      // 3. Create a config containing security.redactEnv for these secrets
+      const configPath = path.join(tempProjDir, "config.yaml");
+      await fs.writeFile(configPath, `
+defaultProvider: mock
+concurrency: 1
+timeoutMs: 30000
+security:
+  passEnv: []
+  redactEnv:
+    - MY_TEST_TOKEN
+    - MY_TEST_SECRET
+`);
+
+      // 4. First run (live execution)
+      const result1 = await runCli([
+        "run",
+        wfPath,
+        "--config", configPath,
+        "--out", outDir,
+        "--report", "json"
+      ], tempProjDir);
+
+      expect(result1.error).toBeNull();
+      const parsed1 = JSON.parse(result1.stdout);
+      const runId1 = parsed1.runId;
+      expect(runId1).toBeDefined();
+
+      const runDir1 = path.join(outDir, runId1);
+
+      // Check first run artifacts for redaction
+      const toolCallDir1 = path.join(runDir1, "tools/loop-label-round-1-tool-cache-tool");
+      const input1 = JSON.parse(await fs.readFile(path.join(toolCallDir1, "input.json"), "utf8"));
+      const meta1 = JSON.parse(await fs.readFile(path.join(toolCallDir1, "metadata.json"), "utf8"));
+
+      expect(input1.val).toBe("[REDACTED]");
+      expect(meta1.metadata.customField).toBe("[REDACTED]");
+
+      // 5. Second run: resume from first run
+      const result2 = await runCli([
+        "run",
+        wfPath,
+        "--config", configPath,
+        "--out", outDir,
+        "--resume", runId1,
+        "--report", "jsonl"
+      ], tempProjDir);
+
+      expect(result2.error).toBeNull();
+
+      // Find the resumed run's output dir
+      const runs = await fs.readdir(outDir);
+      const runId2 = runs.find(r => r !== runId1);
+      expect(runId2).toBeDefined();
+      const runDir2 = path.join(outDir, runId2!);
+
+      // Check resumed run artifacts for redaction
+      const toolCallDir2 = path.join(runDir2, "tools/loop-label-round-1-tool-cache-tool");
+      const input2 = JSON.parse(await fs.readFile(path.join(toolCallDir2, "input.json"), "utf8"));
+      const meta2 = JSON.parse(await fs.readFile(path.join(toolCallDir2, "metadata.json"), "utf8"));
+
+      expect(input2.val).toBe("[REDACTED]");
+      expect(meta2.metadata.customField).toBe("[REDACTED]");
+    } finally {
+      delete process.env.MY_TEST_TOKEN;
+      delete process.env.MY_TEST_SECRET;
+    }
+  });
+});
