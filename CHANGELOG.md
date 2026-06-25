@@ -2,7 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-06-25
+
+### Added
+
+- **Agent Thinking Effort (`thinkingEffort`)**: Added support for configuring reasoning/thinking effort levels on agent calls. Users can set the `thinkingEffort` parameter directly in `agent()` DSL calls or set a default via the `defaultThinkingEffort` configuration. Supports mappings and validations for `codex` (via `-c model_reasoning_effort`), `pi` (via `--thinking`), and `opencode` (via `--variant`) providers, adhering to resolution precedence rules.
+- **Tool DSL Execution in Loops**: Added support for executing deterministic tools inside loop round callbacks via the loop round context. The loop round context now exposes `ctx.tool(input)` and `ctx.toolId(suffix)` which bypass the global tool restriction inside loop rounds. Uses deterministic tool ID generation to ensure proper integration with execution resume and cache replay.
+- **Max Agent Calls Limit**: Added a run limit safety guardrail to prevent infinite agent call loops. The limit is configurable via `--max-agent-calls` CLI option (on `run`/`resume`) and `maxAgentCalls` project configuration. Exceeding the limit halts execution with a `RUN_LIMIT_EXCEEDED` code.
+- **Project Configuration Hints**: Added CLI initialization hints (`PROJECT_INIT_MISSING`) when `.open-dynamic-workflow/config.yaml` is missing, showing commands to bootstrap directories and configuration depending on the resolved CLI executable name (`odw` or `open-dynamic-workflow`).
+- **Durable Ultra-Loop Example**: Added a comprehensive workflow example (`ultra-loop`) showcasing evidence-gated loop execution, checkpoint saving, steering, and quality reviews in a self-contained directory.
+
+### Changed & Improved
+
+- **GitHub Actions CI Workflow**: Added CI configuration `.github/workflows/ci.yml` running linting, typechecking, building, and unit tests on Node versions 20.x and 22.x.
+- **Test Infrastructure Stability**: Fixed filesystem mocks for `readdir` and `stat` in CLI test suites and increased vitest package execution test timeouts to 60s to ensure reliable CI runs.
+- **Git Config**: Updated gitignore configuration to ignore the `plans` directory instead of `docs`.
+
 ## [0.3.5] - 2026-06-21
+
 
 ### Added
 
