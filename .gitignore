@@ -7,5 +7,5 @@ coverage/
 .DS_Store
 .antigravitycli/
 GEMINI.md
-docs/
+plans/
 openflow/node_modules/
