@@ -22,7 +22,7 @@ describe("CLI package execution and installation", () => {
     const packOutput = execSync("npm pack", { cwd: WORKSPACE_DIR, encoding: "utf8" }).trim();
     const tarballName = packOutput.split("\n").pop() || `travisliu-open-dynamic-workflow-${PACKAGE_VERSION}.tgz`;
     packedTarballPath = path.resolve(WORKSPACE_DIR, tarballName);
-  });
+  }, 60000);
 
   afterAll(async () => {
     // Clean up temporary npm prefix

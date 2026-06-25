@@ -116,6 +116,23 @@ vi.mock("node:fs", async (importOriginal) => {
   return {
     ...actual,
     existsSync: vi.fn().mockReturnValue(true),
+    promises: {
+      ...actual.promises,
+      stat: vi.fn().mockImplementation(async (p: any) => {
+        if (p.toString().includes("workflows") || p.toString().includes("agents") || p.toString().includes("tools")) {
+          return {
+            isDirectory: () => true,
+          } as any;
+        }
+        return actual.promises.stat(p);
+      }),
+      readdir: vi.fn().mockImplementation(async (p: any) => {
+        if (p.toString().includes("workflows") || p.toString().includes("agents") || p.toString().includes("tools")) {
+          return [];
+        }
+        return actual.promises.readdir(p);
+      }),
+    },
   };
 });
 
