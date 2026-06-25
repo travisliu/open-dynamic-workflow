@@ -1,4 +1,6 @@
 import type { JsonObject, ProviderName, ReporterMode } from "./common.js";
+import type { ThinkingEffort } from "./thinking-effort.js";
+
 
 export interface ProviderModelArgConfig {
   flag: string;
@@ -43,6 +45,7 @@ export interface ProviderConfig {
   noSkills?: boolean;
   noPromptTemplates?: boolean;
   noThemes?: boolean;
+  defaultThinkingEffort?: ThinkingEffort | undefined;
 }
 
 export interface MockProviderConfig {
@@ -132,4 +135,5 @@ export interface CliRunOptions {
   dryRun: boolean;
   failFast: boolean;
   verbose: boolean;
+  thinkingEffort?: ThinkingEffort | undefined;
 }

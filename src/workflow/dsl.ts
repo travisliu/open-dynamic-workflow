@@ -3,6 +3,9 @@ import type { ScheduledTask, ScheduleOptions } from "../types/scheduler.js";
 import type { AgentExecutionInput } from "../agents/execution-types.js";
 import type { RuntimeState } from "./types.js";
 import { resolveAgentModel } from "../agents/resolve-model.js";
+import { isThinkingEffort } from "../types/thinking-effort.js";
+import { resolveThinkingEffort } from "../agents/resolve-thinking-effort.js";
+
 import { InvalidDslCallError } from "./errors.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
@@ -198,6 +201,15 @@ export function createDsl(runtime: RuntimeState) {
       }
     }
 
+    if (input.thinkingEffort !== undefined) {
+      if (!isThinkingEffort(input.thinkingEffort)) {
+        throw new InvalidDslCallError(
+          `agent() thinkingEffort must be one of: "off", "minimal", "low", "medium", "high", "xhigh".`
+        );
+      }
+    }
+
+
     const resolvedPermissions: AgentPermissions = input.permissions
       ? { mode: "dangerously-full-access" }
       : { mode: "default" };
@@ -250,6 +262,13 @@ export function createDsl(runtime: RuntimeState) {
       globalDefaultModel: runtime.config.defaultModel
     });
 
+    const resolvedThinking = resolveThinkingEffort({
+      agentThinkingEffort: input.thinkingEffort,
+      cliThinkingEffort: runtime.cli?.thinkingEffort,
+      providerDefaultThinkingEffort: runtime.config.providers?.[normalizedProvider]?.defaultThinkingEffort
+    });
+
+
     const sequence = (runtime.callSequence ?? 0) + 1;
     runtime.callSequence = sequence;
     const callId = resolveCallId(input, normalizedId);
@@ -259,8 +278,10 @@ export function createDsl(runtime: RuntimeState) {
       model: resolved.model,
       timeoutMs: normalizedTimeoutMs,
       cwd: normalizedCwd,
-      providerConfig: runtime.config.providers?.[normalizedProvider]
+      providerConfig: runtime.config.providers?.[normalizedProvider],
+      thinkingEffort: resolvedThinking.thinkingEffort
     });
+
 
     const cachedEntry = findPrefixCacheHit({
       cache: runtime.callCache,
@@ -315,8 +336,11 @@ export function createDsl(runtime: RuntimeState) {
       metadata: {
         ...input.metadata,
         ...originMetadata,
-        modelResolutionSource: resolved.source
+        modelResolutionSource: resolved.source,
+        thinkingEffortResolutionSource: resolvedThinking.source,
+        ...(resolvedThinking.thinkingEffort !== undefined ? { thinkingEffort: resolvedThinking.thinkingEffort } : {})
       },
+
       run: async (schedulerSignal: AbortSignal) => {
         let finalSignal = schedulerSignal;
         let onAbort: (() => void) | undefined;
@@ -370,13 +394,17 @@ export function createDsl(runtime: RuntimeState) {
           metadata: {
             ...input.metadata,
             ...originMetadata,
-            modelResolutionSource: resolved.source
+            modelResolutionSource: resolved.source,
+            thinkingEffortResolutionSource: resolvedThinking.source,
+            ...(resolvedThinking.thinkingEffort !== undefined ? { thinkingEffort: resolvedThinking.thinkingEffort } : {})
           }
         };
         if (input.label !== undefined) execInput.label = input.label;
         if (resolved.model !== undefined) execInput.model = resolved.model;
         if (input.schema !== undefined) execInput.schema = input.schema;
         if (input.structuredOutput !== undefined) execInput.structuredOutput = input.structuredOutput;
+        if (resolvedThinking.thinkingEffort !== undefined) execInput.thinkingEffort = resolvedThinking.thinkingEffort;
+
 
         try {
           return await runtime.agentExecutor.execute(execInput);

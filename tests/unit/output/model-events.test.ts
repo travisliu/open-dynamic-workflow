@@ -15,6 +15,14 @@ vi.mock("../../../src/agents/registry.js", () => {
   };
 });
 
+vi.mock("../../../src/agents/process-runner.js", () => ({
+  runProcess: vi.fn().mockResolvedValue({
+    exitCode: 0,
+    timedOut: false,
+    cancelled: false
+  })
+}));
+
 describe("Model Events, Reports, and Artifacts", () => {
   it("pretty reporter prints provider/model when model is present in final layout", () => {
     let stdoutData = "";
@@ -117,13 +125,15 @@ describe("Model Events, Reports, and Artifacts", () => {
 
     const result = await executor.execute({
       id: "agent-test-run",
-      provider: "mock",
+      provider: "codex",
       prompt: "hello",
       model: "custom-resolved-model",
+      thinkingEffort: "medium",
       timeoutMs: 10000,
       cwd: "/root",
       metadata: {
-        modelResolutionSource: "cli"
+        modelResolutionSource: "cli",
+        thinkingEffortResolutionSource: "agent"
       },
       permissions: { mode: "default" },
       signal: new AbortController().signal
@@ -135,10 +145,12 @@ describe("Model Events, Reports, and Artifacts", () => {
     const metadata = writtenFiles.get("agents/agent-test-run/metadata.json");
     expect(metadata).toEqual({
       modelResolutionSource: "cli",
+      thinkingEffortResolutionSource: "agent",
       model: "custom-resolved-model",
       resolutionSource: "cli",
       structuredOutputTransport: undefined,
-      permissions: { mode: "default" }
+      permissions: { mode: "default" },
+      thinkingEffort: "medium"
     });
   });
 });

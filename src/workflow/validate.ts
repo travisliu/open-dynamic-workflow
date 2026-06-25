@@ -4,6 +4,8 @@ import { resolve } from "node:path";
 import type { SharedAgentRegistry } from "../shared-agents/registry.js";
 import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
+import { isThinkingEffort, THINKING_EFFORT_VALUES } from "../types/index.js";
+
 import type { ParsedWorkflow, WorkflowValidationIssue } from "./types.js";
 import type { WorkflowRegistry } from "./registry.js";
 import { isPathLikeWorkflowName } from "./workflow-call.js";
@@ -882,10 +884,29 @@ export function validateWorkflow(
           ) {
             report(init, `${callPrefix} permissions must be an object literal.`);
           }
+        } else if (propName === "thinkingEffort" && ts.isPropertyAssignment(prop)) {
+          const init = prop.initializer;
+          if (ts.isStringLiteral(init)) {
+            const val = init.text;
+            if (!isThinkingEffort(val)) {
+              report(init, `${callPrefix} thinkingEffort must be one of: ${THINKING_EFFORT_VALUES.join(", ")}.`);
+            }
+          } else if (
+            ts.isNumericLiteral(init) ||
+            ts.isBigIntLiteral(init) ||
+            ts.isObjectLiteralExpression(init) ||
+            ts.isArrayLiteralExpression(init) ||
+            init.kind === ts.SyntaxKind.TrueKeyword ||
+            init.kind === ts.SyntaxKind.FalseKeyword ||
+            init.kind === ts.SyntaxKind.NullKeyword
+          ) {
+            report(init, `${callPrefix} thinkingEffort must be a string literal.`);
+          }
         }
 
       }
     }
+
 
     if (definitionProp) {
       const definitionArg = ts.isPropertyAssignment(definitionProp) ? definitionProp.initializer : undefined;

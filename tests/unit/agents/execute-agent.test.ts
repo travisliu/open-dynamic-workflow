@@ -754,4 +754,236 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     expect(metadataJson).not.toHaveProperty("secret");
     expect(metadataJson.model).toBe("mock-model"); // model is added by executor after sanitization
   });
+
+  it("verifies a resolved thinkingEffort reaches the adapter buildCommand in AgentRunInput", async () => {
+    let capturedRunInput: any = null;
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps) => {
+      const registry = new registryModule.ProviderRegistry();
+      registry.register({
+        name: "codex",
+        checkHealth: async () => ({ provider: "codex", available: true }),
+        lookupResponse: () => ({ stdout: "success", exitCode: 0 }),
+        buildCommand: async (input) => {
+          capturedRunInput = input;
+          return { command: "node", args: ["-e", "process.exit(0)"] };
+        },
+        parseResult: async () => ({ text: "success" })
+      });
+      return registry;
+    });
+
+    try {
+      const config: any = {
+        defaultProvider: "codex",
+        providers: { codex: {} }
+      };
+      const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+      const runId = "test-run-thinking-effort-runinput";
+      const runOutDir = path.join(TEST_OUT_DIR, runId);
+      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+      const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+      const result = await executor.execute({
+        id: "thinking-agent",
+        label: "Thinking Agent",
+        provider: "codex",
+        prompt: "test prompt",
+        model: "mock-model",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        thinkingEffort: "high"
+      });
+
+      expect(result.ok).toBe(true);
+      expect(capturedRunInput).not.toBeNull();
+      expect(capturedRunInput.thinkingEffort).toBe("high");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("verifies unsupported provider effort fails before process execution and returns THINKING_EFFORT_NOT_SUPPORTED", async () => {
+    let buildCommandCalled = 0;
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps) => {
+      const registry = new registryModule.ProviderRegistry();
+      registry.register({
+        name: "unsupported-prov",
+        checkHealth: async () => ({ provider: "unsupported-prov" as any, available: true }),
+        lookupResponse: () => ({ stdout: "success", exitCode: 0 }),
+        buildCommand: async () => {
+          buildCommandCalled++;
+          return { command: "unsupported-prov", args: [] };
+        },
+        parseResult: async () => ({ text: "success" })
+      });
+      return registry;
+    });
+
+    try {
+      const config: any = {
+        defaultProvider: "unsupported-prov",
+        providers: { "unsupported-prov": {} }
+      };
+      const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+      const runId = "test-run-unsupported-provider-effort";
+      const runOutDir = path.join(TEST_OUT_DIR, runId);
+      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+      const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+      const result = await executor.execute({
+        id: "unsupported-agent",
+        label: "Unsupported Agent",
+        provider: "unsupported-prov" as any,
+        prompt: "test prompt",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        thinkingEffort: "high"
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe("failed");
+      expect(result.error.code).toBe(ErrorCode.THINKING_EFFORT_NOT_SUPPORTED);
+      expect(buildCommandCalled).toBe(0);
+
+      // Verify artifacts exist and are parseable
+      const agentDir = path.join(runOutDir, "agents/unsupported-agent");
+      const metadata = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
+      const rawResult = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
+      expect(metadata.thinkingEffort).toBe("high");
+      expect(rawResult.ok).toBe(false);
+      expect(rawResult.error.code).toBe(ErrorCode.THINKING_EFFORT_NOT_SUPPORTED);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("verifies unsupported Codex value preserves THINKING_EFFORT_VALUE_UNSUPPORTED", async () => {
+    let buildCommandCalled = 0;
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps) => {
+      const registry = new registryModule.ProviderRegistry();
+      registry.register({
+        name: "codex",
+        checkHealth: async () => ({ provider: "codex" as any, available: true }),
+        lookupResponse: () => ({ stdout: "success", exitCode: 0 }),
+        buildCommand: async () => {
+          buildCommandCalled++;
+          return { command: "codex", args: [] };
+        },
+        parseResult: async () => ({ text: "success" })
+      });
+      return registry;
+    });
+
+    try {
+      const config: any = {
+        defaultProvider: "codex",
+        providers: { codex: {} }
+      };
+      const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+      const runId = "test-run-unsupported-codex-value";
+      const runOutDir = path.join(TEST_OUT_DIR, runId);
+      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+      const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+      const result = await executor.execute({
+        id: "unsupported-codex-agent",
+        label: "Unsupported Codex Agent",
+        provider: "codex",
+        prompt: "test prompt",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        thinkingEffort: "xhigh" // Codex does not support xhigh
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe("failed");
+      expect(result.error.code).toBe(ErrorCode.THINKING_EFFORT_VALUE_UNSUPPORTED);
+      expect(buildCommandCalled).toBe(0);
+
+      // Verify artifacts exist and are parseable
+      const agentDir = path.join(runOutDir, "agents/unsupported-codex-agent");
+      const metadata = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
+      const rawResult = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
+      expect(metadata.thinkingEffort).toBe("xhigh");
+      expect(rawResult.ok).toBe(false);
+      expect(rawResult.error.code).toBe(ErrorCode.THINKING_EFFORT_VALUE_UNSUPPORTED);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("verifies resolved effort and explicit opencodeVariant metadata fails with THINKING_EFFORT_CONFLICT", async () => {
+    let buildCommandCalled = 0;
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps) => {
+      const registry = new registryModule.ProviderRegistry();
+      registry.register({
+        name: "opencode",
+        checkHealth: async () => ({ provider: "opencode" as any, available: true }),
+        lookupResponse: () => ({ stdout: "success", exitCode: 0 }),
+        buildCommand: async (input) => {
+          buildCommandCalled++;
+          const explicitVariant = input.metadata?.opencodeVariant;
+          if (input.thinkingEffort !== undefined && explicitVariant !== undefined) {
+            throw new OpenDynamicWorkflowError(
+              ErrorCode.THINKING_EFFORT_CONFLICT,
+              "OpenCode received both thinkingEffort and metadata.opencodeVariant. Use thinkingEffort or opencodeVariant, not both."
+            );
+          }
+          return { command: "opencode", args: [] };
+        },
+        parseResult: async () => ({ text: "success" })
+      });
+      return registry;
+    });
+
+    try {
+      const config: any = {
+        defaultProvider: "opencode",
+        providers: { opencode: {} }
+      };
+      const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+      const runId = "test-run-opencode-conflict";
+      const runOutDir = path.join(TEST_OUT_DIR, runId);
+      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+      const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+      const result = await executor.execute({
+        id: "opencode-conflict-agent",
+        label: "OpenCode Conflict Agent",
+        provider: "opencode",
+        prompt: "test prompt",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        thinkingEffort: "low",
+        metadata: { opencodeVariant: "high" }
+      });
+
+      expect(result.ok).toBe(false);
+      expect(result.status).toBe("failed");
+      expect(result.error.code).toBe(ErrorCode.THINKING_EFFORT_CONFLICT);
+      expect(buildCommandCalled).toBe(1);
+
+      // Verify artifacts exist and are parseable
+      const agentDir = path.join(runOutDir, "agents/opencode-conflict-agent");
+      const metadata = JSON.parse(await fs.readFile(path.join(agentDir, "metadata.json"), "utf8"));
+      const rawResult = JSON.parse(await fs.readFile(path.join(agentDir, "raw-result.json"), "utf8"));
+      expect(metadata.thinkingEffort).toBe("low");
+      expect(rawResult.ok).toBe(false);
+      expect(rawResult.error.code).toBe(ErrorCode.THINKING_EFFORT_CONFLICT);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

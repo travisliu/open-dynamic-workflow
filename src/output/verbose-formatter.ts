@@ -36,6 +36,9 @@ export function formatVerboseCommand(payload: AgentVerboseCommandPayload, sequen
   }
   lines.push(`  Provider: ${payload.provider}${payload.model ? `/${payload.model}` : ""}`);
   lines.push(`  CWD: ${payload.cwd}`);
+  if (payload.thinkingEffort) {
+    lines.push(`  Thinking effort: ${payload.thinkingEffort}`);
+  }
 
   if (payload.command) {
     const cmd = payload.command;

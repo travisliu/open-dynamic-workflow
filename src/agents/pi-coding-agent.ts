@@ -14,6 +14,7 @@ import { extractJson } from "../structured/extract-json.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { assertThinkingEffortSupported } from "./thinking-effort-support.js";
 
 export type PiExecutionMode = "json" | "print";
 export type PiApprovalMode = "approve" | "no-approve" | "omit";
@@ -121,7 +122,10 @@ export class PiCodingAgentAdapter implements AgentAdapter {
     const model = input.model ?? this.config.defaultModel ?? undefined;
     appendModelArg(args, model, this.config.modelArg, defaultModelFlag);
 
-    if (this.config.thinking) {
+    if (input.thinkingEffort !== undefined) {
+      assertThinkingEffortSupported("pi", input.thinkingEffort);
+      args.push("--thinking", input.thinkingEffort);
+    } else if (this.config.thinking) {
       args.push("--thinking", this.config.thinking);
     }
     if (this.config.systemPrompt) {

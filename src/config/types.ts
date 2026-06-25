@@ -1,6 +1,9 @@
 export type ProviderName = "codex" | "gemini" | "mock" | "copilot" | "opencode" | "antigravity" | "pi" | string;
 export type ReporterMode = "pretty" | "json" | "jsonl";
 
+import type { ThinkingEffort } from "../types/thinking-effort.js";
+
+
 export interface ProviderModelArgConfig {
   flag: string;
 }
@@ -44,6 +47,7 @@ export interface ProviderConfig {
   noSkills?: boolean;
   noPromptTemplates?: boolean;
   noThemes?: boolean;
+  defaultThinkingEffort?: ThinkingEffort;
 }
 
 export interface SecurityConfig {

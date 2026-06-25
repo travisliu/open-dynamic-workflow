@@ -58,6 +58,28 @@ describe("call cache", () => {
     expect(changed).not.toBe(first);
   });
 
+  it("computes agent fingerprints including resolved thinking effort", () => {
+    const base = {
+      call: { id: "a", prompt: "hello" },
+      provider: "codex",
+      model: "m1",
+      timeoutMs: 1000,
+      cwd: "/repo",
+      providerConfig: { args: ["exec"], command: "codex" },
+      thinkingEffort: "medium" as const
+    };
+
+    const first = computeAgentFingerprint(base);
+    const identical = computeAgentFingerprint({ ...base });
+    const differentEffort = computeAgentFingerprint({ ...base, thinkingEffort: "high" as const });
+    const undefinedEffort = computeAgentFingerprint({ ...base, thinkingEffort: undefined });
+
+    expect(identical).toBe(first);
+    expect(differentEffort).not.toBe(first);
+    expect(undefinedEffort).not.toBe(first);
+  });
+
+
   it("computes stable tool fingerprints and changes when tool-relevant inputs change", () => {
     const base = {
       definitionId: "t1",

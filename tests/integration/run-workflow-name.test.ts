@@ -362,4 +362,30 @@ describe("Integration - run workflow by name", () => {
       expect(parsed.error.hint.code).toBe("PROJECT_INIT_MISSING");
     });
   });
+
+  it("runs a workflow using a supported provider and propagates CLI thinking-effort option to run-input.json", async () => {
+    const result = await runCli([
+      "run",
+      "opencode-test",
+      "--config",
+      "tests/fixtures/config/run-by-name.config.yaml",
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "pretty",
+      "--thinking-effort",
+      "high"
+    ]);
+
+    expect(result.error).toBeNull();
+
+    const runs = await fs.readdir(TEMP_DIR);
+    const runId = runs[0]!;
+    const runDir = path.join(TEMP_DIR, runId);
+
+    // Verify run-input.json contains thinkingEffort in rawOptions
+    const runInputPath = path.join(runDir, "run-input.json");
+    const runInput = JSON.parse(await fs.readFile(runInputPath, "utf8"));
+    expect(runInput.rawOptions.thinkingEffort).toBe("high");
+  });
 });

@@ -630,4 +630,163 @@ describe("DSL: agent()", () => {
       expect(runtime.scheduler.schedule).toHaveBeenCalledTimes(2);
     });
   });
+
+  describe("agent() thinkingEffort resolution and validation", () => {
+    it("rejects invalid dynamic effort values at runtime", async () => {
+      const runtime = makeRuntimeState();
+      const dsl = createDsl(runtime);
+
+      await expect(dsl.agent({
+        prompt: "hello",
+        thinkingEffort: "ultra-high" as any
+      })).rejects.toThrow("agent() thinkingEffort must be one of");
+    });
+
+    it("verifies per-agent wins over CLI and provider default", async () => {
+      const executor = { execute: vi.fn().mockResolvedValue(makeSuccessResult("agent-1")) };
+      const scheduler = makeExecutingScheduler();
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any,
+        cli: {
+          thinkingEffort: "low"
+        } as any,
+        config: {
+          defaultProvider: "mock",
+          concurrency: 1,
+          timeoutMs: 30000,
+          providers: {
+            mock: {
+              command: "mock",
+              defaultModel: null,
+              defaultThinkingEffort: "medium"
+            }
+          },
+          security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+          reporting: { mode: "pretty", verbose: false },
+          cwd: "/workspace",
+          outDir: "/workspace/.open-dynamic-workflow/runs",
+          cliArgs: {}
+        }
+      });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        prompt: "hello",
+        thinkingEffort: "high"
+      });
+
+      expect(executor.execute).toHaveBeenCalledTimes(1);
+      const execInput = executor.execute.mock.calls[0]![0];
+      expect(execInput.thinkingEffort).toBe("high");
+      expect(execInput.metadata?.thinkingEffortResolutionSource).toBe("agent");
+    });
+
+    it("verifies CLI wins over provider default when agent effort is omitted", async () => {
+      const executor = { execute: vi.fn().mockResolvedValue(makeSuccessResult("agent-1")) };
+      const scheduler = makeExecutingScheduler();
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any,
+        cli: {
+          thinkingEffort: "low"
+        } as any,
+        config: {
+          defaultProvider: "mock",
+          concurrency: 1,
+          timeoutMs: 30000,
+          providers: {
+            mock: {
+              command: "mock",
+              defaultModel: null,
+              defaultThinkingEffort: "medium"
+            }
+          },
+          security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+          reporting: { mode: "pretty", verbose: false },
+          cwd: "/workspace",
+          outDir: "/workspace/.open-dynamic-workflow/runs",
+          cliArgs: {}
+        }
+      });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        prompt: "hello"
+      });
+
+      expect(executor.execute).toHaveBeenCalledTimes(1);
+      const execInput = executor.execute.mock.calls[0]![0];
+      expect(execInput.thinkingEffort).toBe("low");
+      expect(execInput.metadata?.thinkingEffortResolutionSource).toBe("cli");
+    });
+
+    it("verifies provider default is used when higher levels are omitted", async () => {
+      const executor = { execute: vi.fn().mockResolvedValue(makeSuccessResult("agent-1")) };
+      const scheduler = makeExecutingScheduler();
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any,
+        cli: {} as any,
+        config: {
+          defaultProvider: "mock",
+          concurrency: 1,
+          timeoutMs: 30000,
+          providers: {
+            mock: {
+              command: "mock",
+              defaultModel: null,
+              defaultThinkingEffort: "medium"
+            }
+          },
+          security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+          reporting: { mode: "pretty", verbose: false },
+          cwd: "/workspace",
+          outDir: "/workspace/.open-dynamic-workflow/runs",
+          cliArgs: {}
+        }
+      });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        prompt: "hello"
+      });
+
+      expect(executor.execute).toHaveBeenCalledTimes(1);
+      const execInput = executor.execute.mock.calls[0]![0];
+      expect(execInput.thinkingEffort).toBe("medium");
+      expect(execInput.metadata?.thinkingEffortResolutionSource).toBe("provider-default");
+    });
+
+    it("verifies omission leaves thinkingEffort undefined and source provider-cli-default", async () => {
+      const executor = { execute: vi.fn().mockResolvedValue(makeSuccessResult("agent-1")) };
+      const scheduler = makeExecutingScheduler();
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any,
+        cli: {} as any,
+        config: {
+          defaultProvider: "mock",
+          concurrency: 1,
+          timeoutMs: 30000,
+          providers: {},
+          security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+          reporting: { mode: "pretty", verbose: false },
+          cwd: "/workspace",
+          outDir: "/workspace/.open-dynamic-workflow/runs",
+          cliArgs: {}
+        }
+      });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        prompt: "hello"
+      });
+
+      expect(executor.execute).toHaveBeenCalledTimes(1);
+      const execInput = executor.execute.mock.calls[0]![0];
+      expect(execInput.thinkingEffort).toBeUndefined();
+      expect(execInput.metadata?.thinkingEffortResolutionSource).toBe("provider-cli-default");
+    });
+  });
 });

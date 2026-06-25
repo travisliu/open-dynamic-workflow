@@ -17,6 +17,8 @@ export function sanitizeMetadata(metadata?: Record<string, any>): Record<string,
     "stageIndex",
     "stageName",
     "modelResolutionSource",
+    "thinkingEffort",
+    "thinkingEffortResolutionSource",
   ]);
 
   const MAX_STRING_LENGTH = 256;

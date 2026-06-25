@@ -1,6 +1,8 @@
 import type { AgentResult, AgentPermissions } from "../types/agent.js";
 import type { JsonSchema, ProviderName } from "../types/common.js";
 import type { StructuredOutputConfig } from "../types/agent.js";
+import type { ThinkingEffort } from "../types/thinking-effort.js";
+
 
 export interface AgentExecutionInput {
   id: string;
@@ -15,6 +17,7 @@ export interface AgentExecutionInput {
   permissions: AgentPermissions;
   metadata?: Record<string, unknown>;
   signal: AbortSignal;
+  thinkingEffort?: ThinkingEffort;
 }
 
 export interface AgentExecutor {

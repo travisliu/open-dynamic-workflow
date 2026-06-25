@@ -11,6 +11,12 @@ providers:
       review-auth:
         json:
           findings: []
+  opencode:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+    format: json
+
 
 workflow:
   discovery:
@@ -31,3 +37,6 @@ sharedAgents:
   maxDefinitions: 100
   allowDynamicIds: false
   strictPromptTemplateVariables: true
+
+tools:
+  dir: tests/fixtures/non-existent-tools

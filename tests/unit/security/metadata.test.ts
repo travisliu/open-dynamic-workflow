@@ -12,6 +12,8 @@ describe("sanitizeMetadata", () => {
       stageIndex: 1,
       stageName: "Stage 1",
       modelResolutionSource: "config",
+      thinkingEffort: "high",
+      thinkingEffortResolutionSource: "agent",
     };
     expect(sanitizeMetadata(metadata)).toEqual(metadata);
   });
@@ -21,6 +23,7 @@ describe("sanitizeMetadata", () => {
       sharedAgentId: "agent-1",
       secret: "pass123",
       other: "value",
+      opencodeVariant: "high",
     };
     const sanitized = sanitizeMetadata(metadata);
     expect(sanitized).toEqual({
@@ -28,6 +31,7 @@ describe("sanitizeMetadata", () => {
     });
     expect(sanitized).not.toHaveProperty("secret");
     expect(sanitized).not.toHaveProperty("other");
+    expect(sanitized).not.toHaveProperty("opencodeVariant");
   });
 
   it("should cap string length", () => {

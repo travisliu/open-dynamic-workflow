@@ -341,6 +341,108 @@ describe("OpenCodeCliAdapter", () => {
       expect(cmd.args).not.toContain("--dangerously-skip-permissions");
       expect(cmd.env).not.toHaveProperty("OPENCODE_CONFIG_CONTENT");
     });
+
+    it("maps thinkingEffort to --variant, mapping off to none", async () => {
+      const mappings = [
+        { effort: "off", expected: "none" },
+        { effort: "minimal", expected: "minimal" },
+        { effort: "low", expected: "low" },
+        { effort: "medium", expected: "medium" },
+        { effort: "high", expected: "high" },
+        { effort: "xhigh", expected: "xhigh" }
+      ] as const;
+
+      for (const { effort, expected } of mappings) {
+        const adapter = new OpenCodeCliAdapter();
+        const input: AgentRunInput = {
+          id: "run-1",
+          provider: "opencode",
+          prompt: "test",
+          cwd: "/repo",
+          timeoutMs: 1000,
+          env: {},
+          permissions: { mode: "default" },
+          thinkingEffort: effort
+        };
+
+        const cmd = await adapter.buildCommand(input);
+        expect(cmd.args).toContain("--variant");
+        expect(cmd.args[cmd.args.indexOf("--variant") + 1]).toBe(expected);
+      }
+    });
+
+    it("respects variantFlag customization", async () => {
+      const adapter = new OpenCodeCliAdapter({ variantFlag: "-v" });
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "opencode",
+        prompt: "test",
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" },
+        thinkingEffort: "high"
+      };
+
+      const cmd = await adapter.buildCommand(input);
+      expect(cmd.args).toContain("-v");
+      expect(cmd.args[cmd.args.indexOf("-v") + 1]).toBe("high");
+    });
+
+    it("resolved effort overrides defaultVariant", async () => {
+      const adapter = new OpenCodeCliAdapter({ defaultVariant: "low" });
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "opencode",
+        prompt: "test",
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" },
+        thinkingEffort: "high"
+      };
+
+      const cmd = await adapter.buildCommand(input);
+      expect(cmd.args).toContain("--variant");
+      expect(cmd.args[cmd.args.indexOf("--variant") + 1]).toBe("high");
+      expect(cmd.args).not.toContain("low");
+    });
+
+    it("throws THINKING_EFFORT_CONFLICT when both thinkingEffort and metadata.opencodeVariant are set", async () => {
+      const adapter = new OpenCodeCliAdapter();
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "opencode",
+        prompt: "test",
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" },
+        thinkingEffort: "high",
+        metadata: { opencodeVariant: "low" }
+      };
+
+      await expect(adapter.buildCommand(input)).rejects.toThrow();
+    });
+
+    it("keeps legacy metadata/default variant behavior unchanged when thinkingEffort is absent", async () => {
+      const adapter = new OpenCodeCliAdapter({ defaultVariant: "low" });
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "opencode",
+        prompt: "test",
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" },
+        metadata: { opencodeVariant: "high" }
+      };
+
+      const cmd = await adapter.buildCommand(input);
+      expect(cmd.args).toContain("--variant");
+      expect(cmd.args[cmd.args.indexOf("--variant") + 1]).toBe("high");
+      expect(cmd.args).not.toContain("low");
+    });
   });
 
   describe("parseResult", () => {

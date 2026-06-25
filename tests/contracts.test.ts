@@ -3,6 +3,18 @@ import { OpenCodeCliAdapter } from "../src/agents/opencode-cli.js";
 import { AntigravityCliAdapter } from "../src/agents/antigravity-cli.js";
 import { PiCodingAgentAdapter } from "../src/agents/pi-coding-agent.js";
 import type { AgentResult } from "../src/types/index.js";
+import {
+  THINKING_EFFORT_VALUES,
+  isThinkingEffort
+} from "../src/types/index.js";
+import type {
+  DirectAgentCallInput,
+  DefinitionAgentCallInput,
+  ProviderConfig,
+  AgentExecutionInput,
+  AgentRunInput
+} from "../src/types/index.js";
+
 
 describe("Agent adapters v2 contracts", () => {
   it("70. public adapter exports are available", () => {
@@ -90,5 +102,75 @@ describe("Phase 0 contracts", () => {
       }
     };
     expect(result.ok).toBe(true);
+  });
+});
+
+describe("Thinking Effort public contracts", () => {
+  it("defines the expected six-value constant and type guard", () => {
+    expect(THINKING_EFFORT_VALUES).toEqual([
+      "off",
+      "minimal",
+      "low",
+      "medium",
+      "high",
+      "xhigh"
+    ]);
+
+    expect(isThinkingEffort("off")).toBe(true);
+    expect(isThinkingEffort("minimal")).toBe(true);
+    expect(isThinkingEffort("low")).toBe(true);
+    expect(isThinkingEffort("medium")).toBe(true);
+    expect(isThinkingEffort("high")).toBe(true);
+    expect(isThinkingEffort("xhigh")).toBe(true);
+
+    expect(isThinkingEffort("invalid")).toBe(false);
+    expect(isThinkingEffort(null)).toBe(false);
+    expect(isThinkingEffort(undefined)).toBe(false);
+    expect(isThinkingEffort(123)).toBe(false);
+  });
+
+  it("has thinkingEffort properties on input and execution contracts", () => {
+    // Compile-time check verification via type assignments
+    const directCall: DirectAgentCallInput = {
+      prompt: "test",
+      thinkingEffort: "high"
+    };
+    expect(directCall.thinkingEffort).toBe("high");
+
+    const defCall: DefinitionAgentCallInput = {
+      definition: "agent-definition",
+      thinkingEffort: "low"
+    };
+    expect(defCall.thinkingEffort).toBe("low");
+
+    const providerConfig: ProviderConfig = {
+      command: "test-cmd",
+      defaultThinkingEffort: "medium"
+    };
+    expect(providerConfig.defaultThinkingEffort).toBe("medium");
+
+    const executionInput: AgentExecutionInput = {
+      id: "agent-1",
+      provider: "mock",
+      prompt: "test",
+      timeoutMs: 1000,
+      cwd: "/root",
+      permissions: { mode: "default" },
+      signal: new AbortController().signal,
+      thinkingEffort: "minimal"
+    };
+    expect(executionInput.thinkingEffort).toBe("minimal");
+
+    const runInput: AgentRunInput = {
+      id: "agent-1",
+      provider: "mock",
+      prompt: "test",
+      timeoutMs: 1000,
+      cwd: "/root",
+      env: {},
+      permissions: { mode: "default" },
+      thinkingEffort: "off"
+    };
+    expect(runInput.thinkingEffort).toBe("off");
   });
 });

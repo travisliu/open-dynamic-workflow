@@ -389,4 +389,63 @@ describe("DefaultAgentExecutor Verbose Logging", () => {
     // The command event emitted EARLIER should NOT have validationErrorPath
     expect(commandEvent.payload.artifacts.validationErrorPath).toBeUndefined();
   });
+
+  it("includes resolved thinkingEffort in agent.verbose.command payload when defined and omits it when undefined", async () => {
+    config.providers.mock.responses["thinking-verbose-agent"] = {
+      text: "Success",
+      exitCode: 0
+    };
+    const registryMock = vi.spyOn(registryModule, "createDefaultProviderRegistry");
+    registryMock.mockReturnValue({
+      get: () => ({
+        name: "codex",
+        checkHealth: async () => ({ provider: "codex" as any, available: true }),
+        lookupResponse: () => ({ stdout: "success", exitCode: 0 }),
+        buildCommand: async () => ({ command: "node", args: ["-e", "process.exit(0)"] }),
+        parseResult: async () => ({ text: "success" })
+      }),
+      has: () => true,
+      register: () => {}
+    } as any);
+
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store as any, eventBus });
+
+    await executor.execute({
+      id: "thinking-verbose-agent",
+      label: "Thinking Verbose Agent",
+      provider: "codex" as any,
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: "/test/cwd",
+      permissions: { mode: "default" },
+      signal: new AbortController().signal,
+      thinkingEffort: "high"
+    });
+
+    const commandEvent = events.find(e => e.type === "agent.verbose.command");
+    expect(commandEvent).toBeDefined();
+    expect(commandEvent.payload.thinkingEffort).toBe("high");
+
+    events.length = 0; // Clear events array
+
+    await executor.execute({
+      id: "thinking-verbose-agent-omit",
+      label: "Thinking Verbose Agent Omit",
+      provider: "codex" as any,
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: "/test/cwd",
+      permissions: { mode: "default" },
+      signal: new AbortController().signal,
+      thinkingEffort: undefined
+    });
+
+    const commandEventOmit = events.find(e => e.type === "agent.verbose.command");
+    expect(commandEventOmit).toBeDefined();
+    expect(commandEventOmit.payload).not.toHaveProperty("thinkingEffort");
+
+    registryMock.mockRestore();
+  });
 });

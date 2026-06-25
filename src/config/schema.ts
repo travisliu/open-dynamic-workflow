@@ -1,6 +1,8 @@
 import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import type { OpenDynamicWorkflowConfig } from "./types.js";
+import { isThinkingEffort, THINKING_EFFORT_VALUES } from "../types/index.js";
+
 
 export function validateConfig(config: OpenDynamicWorkflowConfig): void {
   if (typeof config !== "object" || config === null) {
@@ -240,7 +242,17 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
         );
       }
     }
+
+    if (provider.defaultThinkingEffort !== undefined) {
+      if (!isThinkingEffort(provider.defaultThinkingEffort)) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Provider '${name}' defaultThinkingEffort must be one of: ${THINKING_EFFORT_VALUES.join(", ")}.`
+        );
+      }
+    }
   }
+
 
   // defaultProvider validation
   if (typeof config.defaultProvider !== "string" || !(config.defaultProvider in config.providers)) {

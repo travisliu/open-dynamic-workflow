@@ -81,6 +81,7 @@ A dictionary mapping provider names to provider config objects.
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Fallback model override for this provider. |
 | `modelArg` | `object \| false`| `undefined` | Must be `false` or object containing `{ flag: string }`. | Dictates how the model option is passed to the provider binary. |
 | `promptMode` | `string` | `undefined` | Must be `"stdin"` or `"arg"`. | `"stdin"` writes prompts to the process stdin. `"arg"` appends it as a final command line argument. |
+| `defaultThinkingEffort` | `string` | `undefined` | `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`. | Default thinking effort level for this provider if not overridden by the script or CLI option. There is no global default. |
 
 #### Built-in Provider Defaults
 
@@ -172,6 +173,28 @@ providers:
     workspaceFlag: false
     dangerouslySkipPermissionsFlag: "--force"
 ```
+
+### Thinking Effort Configuration
+
+You can configure a default thinking effort level per provider using the `defaultThinkingEffort` configuration option. This is an execution preference and does not guarantee identical reasoning depth across different providers. Note that there is no global `defaultThinkingEffort` option; it must be configured per provider.
+
+Example config snippet:
+```yaml
+providers:
+  codex:
+    command: "codex"
+    defaultThinkingEffort: low
+  pi:
+    command: "pi"
+    defaultThinkingEffort: medium
+  opencode:
+    command: "opencode"
+    defaultThinkingEffort: high
+```
+
+#### Provider Legacy & Compatibility Behaviors:
+- **Pi Legacy `thinking` Option**: Pi supports a legacy, provider-specific `thinking` setting in the provider config (which maps to Pi's specific `--thinking` flag). If `defaultThinkingEffort` is not specified and no thinking effort is resolved from the agent script or CLI, the legacy `thinking` option is used as a fallback.
+- **OpenCode Variant Override**: OpenCode supports a `defaultVariant` option. If a first-class `defaultThinkingEffort` is resolved, it overrides the `defaultVariant`. However, specifying an explicit `opencodeVariant` in agent metadata while also resolving a thinking effort results in a validation conflict.
 
 #### Adapter-specific provider keys
 

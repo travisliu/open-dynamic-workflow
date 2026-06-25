@@ -2,6 +2,9 @@ import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import type { ListCliResourceType } from "../discovery/types.js";
 import type { InitCliOptions, InitReportMode } from "./init/types.js";
+import type { ThinkingEffort } from "../types/index.js";
+import { isThinkingEffort, THINKING_EFFORT_VALUES } from "../types/index.js";
+
 
 export type CommandName = "run" | "validate" | "doctor" | "list" | "init";
 export type ReportMode = "pretty" | "json" | "jsonl";
@@ -21,6 +24,7 @@ export interface RunCliOptions {
   dryRun: boolean;
   failFast: boolean;
   verbose: boolean;
+  thinkingEffort?: ThinkingEffort;
 }
 
 export interface ValidateCliOptions {
@@ -101,6 +105,17 @@ export function parseListResourceType(value?: string): ListCliResourceType {
     `Invalid list resource type: '${value}'. Must be one of: workflows, agents, tools.`
   );
 }
+
+export function parseThinkingEffort(value: unknown): ThinkingEffort {
+  if (!isThinkingEffort(value)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      `Invalid option value for '--thinking-effort': '${value}'. Must be one of: ${THINKING_EFFORT_VALUES.join(", ")}.`
+    );
+  }
+  return value;
+}
+
 
 export function parseInitOptions(raw: any): InitCliOptions {
   const options: InitCliOptions = {

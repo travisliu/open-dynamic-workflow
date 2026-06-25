@@ -106,6 +106,58 @@ if (args.subcase === "03.01") {
     prompt: "Return schema-invalid JSON",
     schema: { type: "object", properties: { ok: { const: true } }, required: ["ok"] }
   });
+} else if (args.subcase === "03.16") {
+  result = await agent({
+    id: "codex-thinking",
+    provider: "codex",
+    prompt: "Test codex thinking",
+    thinkingEffort: "high"
+  });
+} else if (args.subcase === "03.17") {
+  result = await agent({
+    id: "pi-thinking",
+    provider: "pi",
+    prompt: "Test pi thinking",
+    thinkingEffort: "medium"
+  });
+} else if (args.subcase === "03.18") {
+  result = await agent({
+    id: "opencode-thinking",
+    provider: "opencode",
+    prompt: "Test opencode thinking",
+    thinkingEffort: "low"
+  });
+} else if (args.subcase === "03.19") {
+  result = await agent({
+    id: "opencode-thinking-off",
+    provider: "opencode",
+    prompt: "Test opencode thinking off",
+    thinkingEffort: "off"
+  });
+} else if (args.subcase === "03.20") {
+  result = await agent({
+    id: "gemini-thinking-unsupported",
+    provider: "gemini",
+    prompt: "Test gemini thinking unsupported",
+    thinkingEffort: "high"
+  });
+} else if (args.subcase === "03.21") {
+  result = await agent({
+    id: "codex-thinking-unsupported",
+    provider: "codex",
+    prompt: "Test codex thinking unsupported",
+    thinkingEffort: "off"
+  });
+} else if (args.subcase === "03.22") {
+  result = await agent({
+    id: "opencode-thinking-conflict",
+    provider: "opencode",
+    prompt: "Test opencode thinking conflict",
+    thinkingEffort: "high",
+    metadata: {
+      opencodeVariant: "low"
+    }
+  });
 }
 
 export default { result };

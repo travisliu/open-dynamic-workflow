@@ -2,6 +2,8 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentCallInput, AgentPermissions, AgentResult, AgentSuccessResult } from "../types/agent.js";
+import type { ThinkingEffort } from "../types/thinking-effort.js";
+
 import type { ToolExecutionResult, ToolFailureMode } from "../types/tool.js";
 import type { ArtifactStore } from "../types/artifacts.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
@@ -105,6 +107,7 @@ export function computeAgentFingerprint(input: {
   timeoutMs: number;
   cwd: string;
   providerConfig?: unknown;
+  thinkingEffort?: ThinkingEffort | undefined;
 }): string {
   return crypto
     .createHash("sha256")
@@ -117,10 +120,12 @@ export function computeAgentFingerprint(input: {
       timeoutMs: input.timeoutMs,
       cwd: input.cwd,
       metadata: input.call.metadata,
-      providerConfig: input.providerConfig
+      providerConfig: input.providerConfig,
+      thinkingEffort: input.thinkingEffort
     }))
     .digest("hex");
 }
+
 
 export function computeToolFingerprint(input: {
   definitionId: string;

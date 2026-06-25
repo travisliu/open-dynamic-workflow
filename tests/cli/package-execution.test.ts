@@ -192,4 +192,17 @@ describe("CLI package execution and installation", () => {
     expect(parsedEnvelope.error.hint.code).toBe("PROJECT_INIT_MISSING");
     expect(parsedEnvelope.error.hint.command).toBe("open-dynamic-workflow init");
   }, 45000);
+
+  it("displays --thinking-effort option in npx . run --help and rejects --reasoning-effort", () => {
+    const runHelpStdout = execSync("npx . run --help", { cwd: WORKSPACE_DIR, encoding: "utf8" });
+    expect(runHelpStdout).toContain("--thinking-effort <effort>");
+
+    let errorResult: any = null;
+    try {
+      execSync("npx . run my-workflow --reasoning-effort high", { cwd: WORKSPACE_DIR, encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] });
+    } catch (err: any) {
+      errorResult = err;
+    }
+    expect(errorResult).not.toBeNull();
+  });
 });

@@ -92,6 +92,7 @@ type DirectAgentCallInput = {
   cwd?: string;
   permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
+  thinkingEffort?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 };
 
 type DefinitionAgentCallInput = {
@@ -109,6 +110,7 @@ type DefinitionAgentCallInput = {
   cwd?: string;
   permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
+  thinkingEffort?: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
   [key: string]: any; // Custom variables required by the shared agent
 };
 ```
@@ -128,6 +130,7 @@ type DefinitionAgentCallInput = {
 | `cwd`             |       No | Working directory for the provider call.                                       |
 | `permissions`     |       No | Permission mode for this agent call. Omit for default sandboxed behaviour.    |
 | `metadata`        |       No | Descriptive metadata for reports or artifacts.                                 |
+| `thinkingEffort`  |       No | Thinking effort for this call: `off`, `minimal`, `low`, `medium`, `high`, or `xhigh`. |
 
 ### Structured output
 
@@ -219,6 +222,36 @@ const result = await agent({
   prompt: "Refactor src/auth.ts to use the new token interface. Apply changes directly."
 });
 ```
+
+### Thinking Effort
+
+The `thinkingEffort` field controls the level of internal reasoning or thinking effort requested from the supporting provider model. This is an execution preference and does not guarantee identical reasoning depth across different providers.
+
+#### Allowed values
+* `"off"`
+* `"minimal"`
+* `"low"`
+* `"medium"`
+* `"high"`
+* `"xhigh"`
+
+#### Support Matrix
+Not all providers support reasoning or thinking effort, and those that do may only support a subset of the six values. Unsupported providers or unsupported values cause the agent call to fail immediately with a runtime error instead of silently ignoring the setting.
+
+* **Codex**: Supports `"minimal"`, `"low"`, `"medium"`, and `"high"`. Calling Codex with `"off"` or `"xhigh"` will fail.
+* **Pi**: Supports all six values: `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, and `"xhigh"`.
+* **OpenCode**: Supports all six values: `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, and `"xhigh"`.
+* **Other providers (e.g. Gemini, Copilot, Antigravity, Cursor)**: Do not support thinking effort. Any non-undefined `thinkingEffort` value (including `"off"`) for these providers will cause an immediate execution failure.
+
+#### Precedence
+Thinking effort is resolved according to the following precedence from strongest to weakest:
+1. Per-agent `thinkingEffort` setting in the workflow DSL.
+2. CLI option `--thinking-effort <value>` during execution.
+3. Selected provider's `defaultThinkingEffort` configuration in the workflow config file.
+4. Provider CLI default.
+
+#### OpenCode variant conflict
+OpenCode has an optional `metadata.opencodeVariant` parameter. Specifying both an explicit `metadata.opencodeVariant` and a resolved `thinkingEffort` value is a conflict and will fail the agent call.
 
 ---
 

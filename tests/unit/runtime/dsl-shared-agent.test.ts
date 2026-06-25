@@ -231,4 +231,42 @@ describe("DSL shared-agent calls", () => {
       expect(runtime.scheduler.schedule).not.toHaveBeenCalled();
     });
   });
+
+  it("shared-agent specifies thinkingEffort and propagates to executor", async () => {
+    const registry = new SharedAgentRegistry();
+    registry.register({
+      id: "thinking-shared-agent",
+      sourcePath: "thinking.agent.js",
+      definition: {
+        id: "thinking-shared-agent",
+        description: "Test thinking effort inside shared agent",
+        run: async (context, runtime) => {
+          return await runtime.agent({ prompt: "Hello", provider: "mock", thinkingEffort: "high" });
+        }
+      },
+      validatedAt: new Date().toISOString()
+    });
+
+    const executor = { execute: vi.fn().mockResolvedValue({ ok: true, status: "succeeded" } as AgentResult) };
+    const scheduler = {
+      schedule: vi.fn(async (task: any) => {
+        return task.run(new AbortController().signal);
+      }),
+      abort: vi.fn(),
+      drain: vi.fn()
+    };
+
+    const runtime = createMockRuntime(registry);
+    runtime.scheduler = scheduler as any;
+    runtime.agentExecutor = executor as any;
+    const dsl = createDsl(runtime);
+
+    const result = await dsl.agent({ definition: "thinking-shared-agent" });
+    expect(result.ok).toBe(true);
+
+    expect(executor.execute).toHaveBeenCalledTimes(1);
+    const execInput = executor.execute.mock.calls[0]![0];
+    expect(execInput.thinkingEffort).toBe("high");
+    expect(execInput.metadata?.thinkingEffortResolutionSource).toBe("agent");
+  });
 });

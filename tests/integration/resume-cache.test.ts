@@ -973,4 +973,172 @@ export default async (ctx) => {
     expect(result.error).toMatchObject({ code: "CLI_USAGE_ERROR" });
     expect(result.error.message).toContain("run-input.json");
   });
+
+  describe("resume cache thinking effort behavior", () => {
+    it("unchanged resolved effort yields an eligible cache hit", async () => {
+      const workflowPath = path.join(TEMP_DIR, "workflows/thinking-hit.ts");
+      const configPath = path.join(TEMP_DIR, "config.yaml");
+      const runsDir = path.join(TEMP_DIR, "runs");
+      const counterPath = path.join(TEMP_DIR, "counter.txt");
+      await writeConfig(configPath);
+      const content = `export const meta = { name: "thinking-hit", description: "thinking cache test" };
+export default async (ctx) => {
+  const a = await ctx.agent({ id: "a", prompt: "first", thinkingEffort: "medium" });
+  return [a.text];
+};`;
+      await fs.writeFile(workflowPath, content, "utf8");
+      process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
+
+      expect((await runCli(["run", workflowPath, "--config", configPath, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("1");
+      const [firstRunId] = await listRunDirs(runsDir);
+
+      expect((await runCli(["resume", firstRunId!, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("1");
+
+      const runIds = await listRunDirs(runsDir);
+      const secondRunId = runIds.find((id) => id !== firstRunId)!;
+      const report = JSON.parse(await fs.readFile(path.join(runsDir, secondRunId, "report.json"), "utf8"));
+      expect(report.agents[0].cache?.hit).toBe(true);
+    });
+
+    it("changing only per-agent effort yields a miss", async () => {
+      const workflowPath = path.join(TEMP_DIR, "workflows/thinking-miss-agent.ts");
+      const configPath = path.join(TEMP_DIR, "config.yaml");
+      const runsDir = path.join(TEMP_DIR, "runs");
+      const counterPath = path.join(TEMP_DIR, "counter.txt");
+      await writeConfig(configPath);
+      await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-agent", description: "test" };
+export default async (ctx) => {
+  const a = await ctx.agent({ id: "a", prompt: "first", thinkingEffort: "medium" });
+  return [a.text];
+};`, "utf8");
+      process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
+
+      expect((await runCli(["run", workflowPath, "--config", configPath, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("1");
+      const [firstRunId] = await listRunDirs(runsDir);
+
+      // Change per-agent effort in the workflow file
+      await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-agent", description: "test" };
+export default async (ctx) => {
+  const a = await ctx.agent({ id: "a", prompt: "first", thinkingEffort: "high" });
+  return [a.text];
+};`, "utf8");
+
+      expect((await runCli(["resume", firstRunId!, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("2"); // Incremented due to cache miss
+
+      const runIds = await listRunDirs(runsDir);
+      const secondRunId = runIds.find((id) => id !== firstRunId)!;
+      const report = JSON.parse(await fs.readFile(path.join(runsDir, secondRunId, "report.json"), "utf8"));
+      expect(report.agents[0].cache?.hit || false).toBe(false);
+    });
+
+    it("run --resume with a new --thinking-effort value yields a miss", async () => {
+      const workflowPath = path.join(TEMP_DIR, "workflows/thinking-miss-cli.ts");
+      const configPath = path.join(TEMP_DIR, "config.yaml");
+      const runsDir = path.join(TEMP_DIR, "runs");
+      const counterPath = path.join(TEMP_DIR, "counter.txt");
+      await writeConfig(configPath);
+      await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-cli", description: "test" };
+export default async (ctx) => {
+  const a = await ctx.agent({ id: "a", prompt: "first" });
+  return [a.text];
+};`, "utf8");
+      process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
+
+      expect((await runCli(["run", workflowPath, "--config", configPath, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("1");
+      const [firstRunId] = await listRunDirs(runsDir);
+
+      // Resume by running the workflow again with different CLI thinking effort
+      expect((await runCli(["run", workflowPath, "--config", configPath, "--out", runsDir, "--resume", firstRunId!, "--thinking-effort", "low"])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("2"); // Incremented due to cache miss
+
+      const runIds = await listRunDirs(runsDir);
+      const secondRunId = runIds.find((id) => id !== firstRunId)!;
+      const report = JSON.parse(await fs.readFile(path.join(runsDir, secondRunId, "report.json"), "utf8"));
+      expect(report.agents[0].cache?.hit || false).toBe(false);
+    });
+
+    it("changing only the selected provider's defaultThinkingEffort in the referenced config yields a miss", async () => {
+      const workflowPath = path.join(TEMP_DIR, "workflows/thinking-miss-config.ts");
+      const configPath = path.join(TEMP_DIR, "config.yaml");
+      const runsDir = path.join(TEMP_DIR, "runs");
+      const counterPath = path.join(TEMP_DIR, "counter.txt");
+      // First run with no provider default thinking effort
+      await writeConfig(configPath);
+      await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-config", description: "test" };
+export default async (ctx) => {
+  const a = await ctx.agent({ id: "a", prompt: "first" });
+  return [a.text];
+};`, "utf8");
+      process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
+
+      expect((await runCli(["run", workflowPath, "--config", configPath, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("1");
+      const [firstRunId] = await listRunDirs(runsDir);
+
+      // Change provider's defaultThinkingEffort in the config
+      await fs.writeFile(configPath, `
+defaultProvider: codex
+concurrency: 1
+providers:
+  codex:
+    command: node
+    args:
+      - ${JSON.stringify(FAKE_PROVIDER)}
+    defaultModel: null
+    defaultThinkingEffort: medium
+security:
+  passEnv:
+    - OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER
+    - OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_JSON
+    - OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_INVALID_JSON
+    - OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_FAIL_ON
+    - OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_EXIT_CODE
+workflow:
+  discovery:
+    include:
+      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+`, "utf8");
+
+      expect((await runCli(["resume", firstRunId!, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("2"); // Incremented due to cache miss
+
+      const runIds = await listRunDirs(runsDir);
+      const secondRunId = runIds.find((id) => id !== firstRunId)!;
+      const report = JSON.parse(await fs.readFile(path.join(runsDir, secondRunId, "report.json"), "utf8"));
+      expect(report.agents[0].cache?.hit || false).toBe(false);
+    });
+
+    it("for the standalone resume path, verify the stored CLI effort is replayed and can still hit", async () => {
+      const workflowPath = path.join(TEMP_DIR, "workflows/thinking-replay.ts");
+      const configPath = path.join(TEMP_DIR, "config.yaml");
+      const runsDir = path.join(TEMP_DIR, "runs");
+      const counterPath = path.join(TEMP_DIR, "counter.txt");
+      await writeConfig(configPath);
+      await fs.writeFile(workflowPath, `export const meta = { name: "thinking-replay", description: "test" };
+export default async (ctx) => {
+  const a = await ctx.agent({ id: "a", prompt: "first" });
+  return [a.text];
+};`, "utf8");
+      process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
+
+      // Run with CLI thinking effort option
+      expect((await runCli(["run", workflowPath, "--config", configPath, "--out", runsDir, "--thinking-effort", "low"])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("1");
+      const [firstRunId] = await listRunDirs(runsDir);
+
+      // Replay standalone resume (which should read stored CLI effort: "low" and match the fingerprint)
+      expect((await runCli(["resume", firstRunId!, "--out", runsDir])).error).toBeNull();
+      expect(await readCounter(counterPath)).toBe("1"); // Cache hit, not incremented
+
+      const runIds = await listRunDirs(runsDir);
+      const secondRunId = runIds.find((id) => id !== firstRunId)!;
+      const report = JSON.parse(await fs.readFile(path.join(runsDir, secondRunId, "report.json"), "utf8"));
+      expect(report.agents[0].cache?.hit).toBe(true);
+    });
+  });
 });

@@ -20,6 +20,7 @@ import {
   redactSerializedError
 } from "../security/env.js";
 import { sanitizeMetadata } from "../security/metadata.js";
+import { assertThinkingEffortSupported } from "./thinking-effort-support.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 
 const MAX_IN_MEMORY_LOG_SIZE = 1024 * 1024; // 1MB limit for in-memory results
@@ -68,6 +69,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       provider: input.provider,
       model: input.model,
       cwd: input.cwd,
+      thinkingEffort: input.thinkingEffort,
       command: details.commandInput
         ? redactProviderCommand(details.commandInput, details.secretValues)
         : undefined,
@@ -103,13 +105,17 @@ export class DefaultAgentExecutor implements AgentExecutor {
     }
 
     // Write metadata.json
-    const metadataJson = {
+    const metadataJson: Record<string, any> = {
       ...sanitizedMetadata,
       model: input.model,
       resolutionSource: sanitizedMetadata.modelResolutionSource || "provider-default",
       structuredOutputTransport: input.schema ? input.structuredOutput?.transport ?? "auto" : undefined,
-      permissions: resolvedPerms
+      permissions: resolvedPerms,
+      thinkingEffortResolutionSource: sanitizedMetadata.thinkingEffortResolutionSource || "provider-cli-default"
     };
+    if (input.thinkingEffort !== undefined) {
+      metadataJson.thinkingEffort = input.thinkingEffort;
+    }
     await this.artifactStore.writeJson(`agents/${input.id}/metadata.json`, metadataJson);
 
     // Write permissions.json
@@ -159,7 +165,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
       cwd: input.cwd,
       env: {},
       permissions: resolvedPerms,
-      metadata: sanitizedMetadata
+      metadata: input.metadata,
+      thinkingEffort: input.thinkingEffort
     };
 
     const appendToLogs = async (stream: "stdout" | "stderr", chunk: string, redactor: StreamRedactor) => {
@@ -182,6 +189,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
     let executionResult: { exitCode: number | null; timedOut: boolean; cancelled: boolean };
     let commandInput: ProviderCommand | undefined;
     try {
+      assertThinkingEffortSupported(input.provider, input.thinkingEffort);
       commandInput = await adapter.buildCommand(runInput);
 
       const resolvedPrompt = resolveStructuredOutputPrompt({

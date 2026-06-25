@@ -77,7 +77,22 @@ open-dynamic-workflow run <workflow-name-or-file>
 Use `open-dynamic-workflow list workflows` to see runnable names and their resolved paths.
 
 ### Common options
-...
+
+| Option | Description |
+| :--- | :--- |
+| `--provider <name>` | Override the default provider. |
+| `--model <name>` | Override the default model. |
+| `--concurrency <num>` | Limit maximum parallel agent calls (integer >= 1). |
+| `--timeout-ms <num>` | Timeout in milliseconds for workflow execution. |
+| `--max-agent-calls <num>` | Limit the maximum number of live provider calls allowed. |
+| `--report <pretty\|json\|jsonl>` | Output formatting mode for stdout. |
+| `--fail-fast` | Abort immediately on the first agent/task failure. |
+| `--resume <run-id>` | Resume a previous run using cache replay. |
+| `--config <path>` | Path to the YAML configuration file. |
+| `--cwd <path>` | Current working directory to resolve workflows and configurations. |
+| `--out <path>` | Output directory for artifacts and reports. |
+| `--thinking-effort <effort>` | Override the thinking effort level for all eligible agent calls. Must be one of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. This is an execution preference and does not guarantee identical reasoning depth across different providers. Per-agent `thinkingEffort` values defined in the workflow script override this CLI value. If this resolves to a value unsupported by the selected provider, execution will fail. |
+
 ### Examples
 
 ```bash
@@ -92,6 +107,7 @@ open-dynamic-workflow run review --report json
 open-dynamic-workflow run review --report jsonl
 open-dynamic-workflow run review --fail-fast
 open-dynamic-workflow run review --resume <previous-run-id>
+open-dynamic-workflow run review --thinking-effort high
 ```
 
 ---

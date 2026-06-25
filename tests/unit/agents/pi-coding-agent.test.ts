@@ -197,6 +197,61 @@ describe("PiCodingAgentAdapter", () => {
       expect(cmd.args).not.toContain("--mode");
       expect(cmd.args).not.toContain("json");
     });
+
+    it("supports all six thinking effort values on input", async () => {
+      const values = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
+      for (const val of values) {
+        const adapter = new PiCodingAgentAdapter();
+        const input: AgentRunInput = {
+          ...defaultInput,
+          thinkingEffort: val
+        };
+
+        const cmd = await adapter.buildCommand(input);
+        expect(cmd.args).toContain("--thinking");
+        expect(cmd.args[cmd.args.indexOf("--thinking") + 1]).toBe(val);
+        const thinkingIndices = cmd.args.reduce((acc, el, i) => (el === "--thinking" ? [...acc, i] : acc), [] as number[]);
+        expect(thinkingIndices.length).toBe(1);
+      }
+    });
+
+    it("resolved thinkingEffort input overrides config.thinking", async () => {
+      const adapter = new PiCodingAgentAdapter({ thinking: "medium" });
+      const input: AgentRunInput = {
+        ...defaultInput,
+        thinkingEffort: "high"
+      };
+
+      const cmd = await adapter.buildCommand(input);
+      expect(cmd.args).toContain("--thinking");
+      expect(cmd.args[cmd.args.indexOf("--thinking") + 1]).toBe("high");
+      const thinkingIndices = cmd.args.reduce((acc, el, i) => (el === "--thinking" ? [...acc, i] : acc), [] as number[]);
+      expect(thinkingIndices.length).toBe(1);
+    });
+
+    it("legacy config.thinking is used when input.thinkingEffort is undefined", async () => {
+      const adapter = new PiCodingAgentAdapter({ thinking: "medium" });
+      const input: AgentRunInput = {
+        ...defaultInput,
+        thinkingEffort: undefined
+      };
+
+      const cmd = await adapter.buildCommand(input);
+      expect(cmd.args).toContain("--thinking");
+      expect(cmd.args[cmd.args.indexOf("--thinking") + 1]).toBe("medium");
+      const thinkingIndices = cmd.args.reduce((acc, el, i) => (el === "--thinking" ? [...acc, i] : acc), [] as number[]);
+      expect(thinkingIndices.length).toBe(1);
+    });
+
+    it("throws error for unsupported thinking effort value", async () => {
+      const adapter = new PiCodingAgentAdapter();
+      const input: AgentRunInput = {
+        ...defaultInput,
+        thinkingEffort: "invalid-val" as any
+      };
+
+      await expect(adapter.buildCommand(input)).rejects.toThrow();
+    });
   });
 
   describe("parseResult", () => {

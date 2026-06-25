@@ -13,6 +13,7 @@ import { appendModelArg } from "./model-args.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { assertThinkingEffortSupported } from "./thinking-effort-support.js";
 
 export interface CodexProviderConfig extends ProviderConfig {
   promptMode?: "stdin" | "arg";
@@ -85,6 +86,11 @@ export class CodexExecAdapter implements AgentAdapter {
 
     const model = input.model ?? this.config.defaultModel ?? undefined;
     appendModelArg(args, model, this.config.modelArg, "--model");
+
+    if (input.thinkingEffort !== undefined) {
+      assertThinkingEffortSupported("codex", input.thinkingEffort);
+      args.push("-c", `model_reasoning_effort="${input.thinkingEffort}"`);
+    }
 
     const promptMode = this.config.promptMode ?? "stdin";
     let stdin: string | undefined = undefined;

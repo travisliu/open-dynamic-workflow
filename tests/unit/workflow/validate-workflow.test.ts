@@ -258,6 +258,87 @@ describe("Validate Workflow Restrictions", () => {
     expect(issues).toHaveLength(0);
   });
 
+  it("accepts agent() with all six valid thinkingEffort literals", () => {
+    const validEfforts = ["off", "minimal", "low", "medium", "high", "xhigh"];
+    for (const effort of validEfforts) {
+      const parsed = createParsed(`
+        await agent({ prompt: "hello", thinkingEffort: "${effort}" });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues).toHaveLength(0);
+    }
+  });
+
+  it("flags agent() with invalid thinkingEffort string literal", () => {
+    const parsed = createParsed(`
+      await agent({ prompt: "hello", thinkingEffort: "ultra-high" });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("thinkingEffort must be one of: off, minimal, low, medium, high, xhigh"))).toBe(true);
+  });
+
+  it("flags agent() with obvious non-string thinkingEffort literals", () => {
+    const parsed = createParsed(`
+      await agent({ prompt: "hello", thinkingEffort: true });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.includes("thinkingEffort must be a string literal"))).toBe(true);
+  });
+
+  it("accepts agent() with dynamic thinkingEffort expression", () => {
+    const parsed = createParsed(`
+      const effort = "medium";
+      await agent({ prompt: "hello", thinkingEffort: effort });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues).toHaveLength(0);
+  });
+
+  it("TE-010: validates thinkingEffort across different call forms: top-level, pipeline stage, loop context, and shared-agent runtime", () => {
+    // 1. Top-level agent()
+    const topLevelParsed = createParsed(`
+      await agent({ prompt: "hello", thinkingEffort: "high" });
+    `);
+    expect(validateWorkflow(topLevelParsed, options)).toHaveLength(0);
+
+    // 2. ctx.agent() in a pipeline stage
+    const pipelineParsed = createParsed(`
+      await pipeline([], [{
+        name: "test-stage",
+        run: async (item, ctx) => {
+          await ctx.agent({ prompt: "hello", thinkingEffort: "low" });
+        }
+      }]);
+    `);
+    expect(validateWorkflow(pipelineParsed, options)).toHaveLength(0);
+
+    // 3. loop-context agent call
+    const loopParsed = createParsed(`
+      await loop({
+        label: "test-loop",
+        initialState: {},
+        options: { maxRounds: 5 },
+        run: async (state, ctx) => {
+          await ctx.agent({ prompt: "hello", thinkingEffort: "minimal" });
+          return { done: true, nextState: state };
+        }
+      });
+    `);
+    expect(validateWorkflow(loopParsed, options)).toHaveLength(0);
+
+    // 4. shared-agent runtime.agent() (in defineAgent)
+    const sharedAgentParsed = createParsed(`
+      export default defineAgent({
+        id: "my-shared-agent",
+        run: async (runtime, input) => {
+          await runtime.agent({ prompt: input.prompt, thinkingEffort: "xhigh" });
+        }
+      });
+    `);
+    expect(validateWorkflow(sharedAgentParsed, options)).toHaveLength(0);
+  });
+
+
   it("accepts ctx.agent() with dynamic prompt variable", () => {
     const parsed = createParsed(`
       await pipeline([], [{

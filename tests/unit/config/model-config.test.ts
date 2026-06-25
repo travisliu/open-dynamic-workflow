@@ -124,6 +124,64 @@ describe("Model Config Validation", () => {
     expect(() => validateConfig(config)).not.toThrow();
   });
 
+  it("accepts all six valid defaultThinkingEffort values across Codex, Pi, OpenCode, and custom provider entries", () => {
+    const validValues = ["off", "minimal", "low", "medium", "high", "xhigh"];
+    const providersToTest = ["codex", "pi", "opencode", "customProvider"];
+    
+    for (const providerName of providersToTest) {
+      for (const val of validValues) {
+        const config = getValidBaseConfig();
+        config.providers[providerName] = {
+          command: "dummy-command",
+          defaultThinkingEffort: val
+        };
+        expect(() => validateConfig(config)).not.toThrow();
+      }
+    }
+  });
+
+  it("rejects invalid defaultThinkingEffort values and asserts error code, provider name, and allowed values list", () => {
+    const invalidValues = [
+      "  ",                  // whitespace-only
+      ["low"],                // array
+      { effort: "low" },      // object
+      null,                   // null
+      "",                     // empty string
+      "LOW",                  // wrong case
+      "unknown-value",        // unknown string
+      123,                    // number
+      true,                   // boolean true
+      false                   // boolean false
+    ] as any[];
+
+    const providerNames = ["codex", "pi", "opencode", "mock", "customProvider"];
+    const allSixValues = ["off", "minimal", "low", "medium", "high", "xhigh"];
+
+    for (const providerName of providerNames) {
+      for (const val of invalidValues) {
+        const config = getValidBaseConfig();
+        config.providers[providerName] = {
+          command: "dummy-command",
+          defaultThinkingEffort: val
+        };
+
+        let thrownError: any = null;
+        try {
+          validateConfig(config);
+        } catch (err: any) {
+          thrownError = err;
+        }
+
+        expect(thrownError).not.toBeNull();
+        expect(thrownError.code).toBe("CONFIG_VALIDATION_ERROR");
+        expect(thrownError.message).toContain(`Provider '${providerName}'`);
+        for (const allowedVal of allSixValues) {
+          expect(thrownError.message).toContain(allowedVal);
+        }
+      }
+    }
+  });
+
   // Keep existing generic tests
   it("accepts valid minimal config", () => {
     const config = getValidBaseConfig();

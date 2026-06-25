@@ -21,6 +21,11 @@ providers:
       - --approval-mode
       - plan
     promptMode: stdin
+  codex:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+    promptMode: stdin
   opencode:
     command: node
     args:
@@ -57,3 +62,6 @@ security:
 reporting:
   mode: pretty
   verbose: false
+
+tools:
+  dir: tests/fixtures/non-existent-tools

@@ -2,6 +2,7 @@ import type { AgentArtifacts } from "../types/artifacts.js";
 import type { SerializedError } from "../types/errors.js";
 import type { AgentPermissions } from "../types/agent.js";
 import type { WorkflowRunLimitSummary } from "../types/workflow.js";
+import type { ThinkingEffort } from "../types/thinking-effort.js";
 
 export type EventType =
   | "workflow.started"
@@ -370,6 +371,7 @@ export interface AgentVerboseCommandPayload {
   provider: string;
   model?: string | undefined;
   cwd: string;
+  thinkingEffort?: ThinkingEffort | undefined;
   command?: RedactedProviderCommand | undefined;
   prompt: string;
   artifacts: AgentArtifacts;

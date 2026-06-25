@@ -14,6 +14,7 @@ import { extractJson } from "../structured/extract-json.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { assertThinkingEffortSupported, mapOpenCodeThinkingEffort } from "./thinking-effort-support.js";
 
 export interface OpenCodeProviderConfig extends ProviderConfig {
   modelFlag?: string;
@@ -108,9 +109,23 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       args.push(config.agentFlag ?? "--agent", agent);
     }
 
-    const variant = getStringMetadata(input, "opencodeVariant") ?? config.defaultVariant;
-    if (variant) {
+    const explicitVariant = getStringMetadata(input, "opencodeVariant");
+    if (input.thinkingEffort !== undefined && explicitVariant !== undefined) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.THINKING_EFFORT_CONFLICT,
+        "OpenCode received both thinkingEffort and metadata.opencodeVariant. Use thinkingEffort or opencodeVariant, not both."
+      );
+    }
+
+    if (input.thinkingEffort !== undefined) {
+      assertThinkingEffortSupported("opencode", input.thinkingEffort);
+      const variant = mapOpenCodeThinkingEffort(input.thinkingEffort);
       args.push(config.variantFlag ?? "--variant", variant);
+    } else {
+      const variant = explicitVariant ?? config.defaultVariant;
+      if (variant) {
+        args.push(config.variantFlag ?? "--variant", variant);
+      }
     }
 
     const isDangerous = input.permissions?.mode === "dangerously-full-access";

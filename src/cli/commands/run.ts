@@ -3,7 +3,7 @@ import { OpenDynamicWorkflowError } from "../../errors/types.js";
 import { loadConfig } from "../../config/load.js";
 import { discoverWorkflowRegistry } from "../../workflow/discovery.js";
 import { resolveWorkflowTarget } from "../../workflow/resolve-target.js";
-import { parseKeyValueArgs, parsePositiveInteger, parseReportMode } from "../args.js";
+import { parseKeyValueArgs, parsePositiveInteger, parseReportMode, parseThinkingEffort } from "../args.js";
 import { printDryRunSummary } from "../print.js";
 import { DefaultRuntimeRunner, type RuntimeRunner } from "../../runtime/public.js";
 import { FileSystemArtifactStore } from "../../artifacts/run-store.js";
@@ -69,6 +69,11 @@ export async function runWorkflowService(
       "CLI option '--model' value must be a non-empty string."
     );
   }
+
+  const thinkingEffort = rawOptions.thinkingEffort !== undefined
+    ? parseThinkingEffort(rawOptions.thinkingEffort)
+    : undefined;
+
 
   const cliOverrides: any = {};
   if (rawOptions.provider !== undefined) cliOverrides.provider = rawOptions.provider;
@@ -228,7 +233,8 @@ export async function runWorkflowService(
       resume: rawOptions.resume,
       noCache: noCache,
       failFast: !!rawOptions.failFast,
-      verbose: !!rawOptions.verbose
+      verbose: !!rawOptions.verbose,
+      thinkingEffort: rawOptions.thinkingEffort
     }
   });
 
@@ -315,7 +321,8 @@ export async function runWorkflowService(
         noCache,
         dryRun: false,
         failFast: !!rawOptions.failFast,
-        verbose: config.reporting.verbose
+        verbose: config.reporting.verbose,
+        thinkingEffort
       },
       signal: abortController.signal,
       sharedAgentRegistry,

@@ -515,4 +515,70 @@ describe("CodexExecAdapter", () => {
     const cmd = await adapter.buildCommand(input);
     expect(cmd.args).toContain("--dangerously-bypass-approvals-and-sandbox");
   });
+
+  it("adds thinking effort command arguments when thinkingEffort is specified", async () => {
+    const efforts = ["minimal", "low", "medium", "high"] as const;
+    for (const effort of efforts) {
+      const adapter = new CodexExecAdapter();
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "codex",
+        prompt: "generate a test",
+        cwd: "/root",
+        timeoutMs: 1000,
+        env: { PATH: "/bin" },
+        permissions: { mode: "default" },
+        thinkingEffort: effort
+      };
+
+      const cmd = await adapter.buildCommand(input);
+      expect(cmd.args).toContain("-c");
+      expect(cmd.args).toContain(`model_reasoning_effort="${effort}"`);
+    }
+  });
+
+  it("throws THINKING_EFFORT_VALUE_UNSUPPORTED when thinkingEffort is off or xhigh", async () => {
+    const invalidEfforts = ["off", "xhigh"] as const;
+    for (const effort of invalidEfforts) {
+      const adapter = new CodexExecAdapter();
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "codex",
+        prompt: "generate a test",
+        cwd: "/root",
+        timeoutMs: 1000,
+        env: { PATH: "/bin" },
+        permissions: { mode: "default" },
+        thinkingEffort: effort as any
+      };
+
+      await expect(adapter.buildCommand(input)).rejects.toThrow();
+    }
+  });
+
+  it("places explicit effort after conflicting base config args", async () => {
+    const adapter = new CodexExecAdapter({
+      args: ["exec", "-c", 'model_reasoning_effort="low"']
+    });
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "codex",
+      prompt: "generate a test",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" },
+      thinkingEffort: "high"
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    const indices: number[] = [];
+    cmd.args.forEach((val, idx) => {
+      if (val === "-c") indices.push(idx);
+    });
+    expect(indices.length).toBe(2);
+    expect(cmd.args[indices[0] + 1]).toBe('model_reasoning_effort="low"');
+    expect(cmd.args[indices[1] + 1]).toBe('model_reasoning_effort="high"');
+    expect(indices[1]).toBeGreaterThan(indices[0]);
+  });
 });

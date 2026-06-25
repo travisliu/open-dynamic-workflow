@@ -4,6 +4,7 @@ import type {
   AgentVerboseResultPayload,
   EventEnvelope
 } from "../../../src/output/events.js";
+import { formatVerboseCommand } from "../../../src/output/verbose-formatter.js";
 
 describe("verbose event contracts", () => {
   it("survives JSON round-trip for agent.verbose.command", () => {
@@ -172,5 +173,46 @@ describe("verbose event contracts", () => {
     const json = JSON.stringify(payload);
     const parsed = JSON.parse(json) as AgentVerboseResultPayload;
     expect(parsed.normalized).toBe("just some text");
+  });
+});
+
+describe("verbose event formatter for thinkingEffort", () => {
+  it("formats thinkingEffort when present in the payload", () => {
+    const payload: AgentVerboseCommandPayload = {
+      agentId: "agent-1",
+      provider: "codex",
+      cwd: "/repo",
+      prompt: "test prompt",
+      artifacts: {
+        dir: "agents/agent-1",
+        promptPath: "agents/agent-1/prompt.txt",
+        stdoutPath: "agents/agent-1/stdout.txt",
+        stderrPath: "agents/agent-1/stderr.txt"
+      },
+      permissions: { mode: "default" } as any,
+      thinkingEffort: "high"
+    };
+
+    const formatted = formatVerboseCommand(payload);
+    expect(formatted).toContain("Thinking effort: high");
+  });
+
+  it("omits thinkingEffort line when absent in the payload", () => {
+    const payload: AgentVerboseCommandPayload = {
+      agentId: "agent-1",
+      provider: "codex",
+      cwd: "/repo",
+      prompt: "test prompt",
+      artifacts: {
+        dir: "agents/agent-1",
+        promptPath: "agents/agent-1/prompt.txt",
+        stdoutPath: "agents/agent-1/stdout.txt",
+        stderrPath: "agents/agent-1/stderr.txt"
+      },
+      permissions: { mode: "default" } as any
+    };
+
+    const formatted = formatVerboseCommand(payload);
+    expect(formatted).not.toContain("Thinking effort:");
   });
 });

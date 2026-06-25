@@ -306,4 +306,133 @@ describe("Provider adapter execution", () => {
       }
     }
   });
+
+  it("73. executes thinkingEffort mapped commands for Codex, Pi, and OpenCode", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    // 1. Codex thinking effort (high -> -c model_reasoning_effort="high")
+    {
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+      const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.16"]);
+      expect(result.error).toBeNull();
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!);
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      const agent = report.agents.find((a: any) => a.id === "codex-thinking");
+      expect(agent.ok).toBe(true);
+
+      const agentDir = path.join(runDir, `agents/codex-thinking`);
+      const stderr = JSON.parse(await fs.readFile(path.join(agentDir, "stderr.log"), "utf8"));
+      expect(stderr.argv).toContain("-c");
+      expect(stderr.argv).toContain('model_reasoning_effort="high"');
+    }
+
+    // 2. Pi thinking effort (medium -> --thinking medium)
+    {
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+      const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.17"]);
+      expect(result.error).toBeNull();
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!);
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      const agent = report.agents.find((a: any) => a.id === "pi-thinking");
+      expect(agent.ok).toBe(true);
+
+      const agentDir = path.join(runDir, `agents/pi-thinking`);
+      const stderr = JSON.parse(await fs.readFile(path.join(agentDir, "stderr.log"), "utf8"));
+      expect(stderr.argv).toContain("--thinking");
+      expect(stderr.argv[stderr.argv.indexOf("--thinking") + 1]).toBe("medium");
+    }
+
+    // 3. OpenCode thinking effort (low -> --variant low)
+    {
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+      const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.18"]);
+      expect(result.error).toBeNull();
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!);
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      const agent = report.agents.find((a: any) => a.id === "opencode-thinking");
+      expect(agent.ok).toBe(true);
+
+      const agentDir = path.join(runDir, `agents/opencode-thinking`);
+      const stderr = JSON.parse(await fs.readFile(path.join(agentDir, "stderr.log"), "utf8"));
+      expect(stderr.argv).toContain("--variant");
+      expect(stderr.argv[stderr.argv.indexOf("--variant") + 1]).toBe("low");
+    }
+
+    // 4. OpenCode thinking effort off (off -> --variant none)
+    {
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+      const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.19"]);
+      expect(result.error).toBeNull();
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!);
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      const agent = report.agents.find((a: any) => a.id === "opencode-thinking-off");
+      expect(agent.ok).toBe(true);
+
+      const agentDir = path.join(runDir, `agents/opencode-thinking-off`);
+      const stderr = JSON.parse(await fs.readFile(path.join(agentDir, "stderr.log"), "utf8"));
+      expect(stderr.argv).toContain("--variant");
+      expect(stderr.argv[stderr.argv.indexOf("--variant") + 1]).toBe("none");
+    }
+  });
+
+  it("74. fails fast for unsupported provider thinkingEffort and unsupported value", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    // 1. Gemini thinking effort unsupported
+    {
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+      const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.20"]);
+      expect(result.error).toBeNull();
+
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!);
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      const agent = report.agents.find((a: any) => a.id === "gemini-thinking-unsupported");
+      expect(agent.ok).toBe(false);
+      expect(agent.error.code).toBe("THINKING_EFFORT_NOT_SUPPORTED");
+    }
+
+    // 2. Codex thinking effort off unsupported
+    {
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+      const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.21"]);
+      expect(result.error).toBeNull();
+
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(TEMP_DIR, runs[0]!);
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      const agent = report.agents.find((a: any) => a.id === "codex-thinking-unsupported");
+      expect(agent.ok).toBe(false);
+      expect(agent.error.code).toBe("THINKING_EFFORT_VALUE_UNSUPPORTED");
+    }
+  });
+
+  it("75. fails fast on OpenCode thinkingEffort and opencodeVariant conflict", async () => {
+    const workflowPath = path.resolve("tests/fixtures/workflows/provider-adapters.workflow.js");
+    const configPath = path.resolve("tests/fixtures/config/provider-adapters.config.yaml");
+
+    await fs.rm(TEMP_DIR, { recursive: true, force: true });
+    await fs.mkdir(TEMP_DIR, { recursive: true });
+    const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.22"]);
+    expect(result.error).toBeNull();
+
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs[0]!);
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    const agent = report.agents.find((a: any) => a.id === "opencode-thinking-conflict");
+    expect(agent.ok).toBe(false);
+    expect(agent.error.code).toBe("THINKING_EFFORT_CONFLICT");
+  });
 });

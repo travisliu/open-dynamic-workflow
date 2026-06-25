@@ -150,4 +150,54 @@ describe("Merge Config", () => {
     expect(merged.workflow.maxDepth).toBe(3);
     expect(merged.workflow.maxLoopRounds).toBe(20);
   });
+
+  it("provider-config merge: a later defaultThinkingEffort overrides an earlier value", () => {
+    const customDefaults = {
+      ...DEFAULT_CONFIG,
+      providers: {
+        mock: {
+          command: "mock",
+          defaultModel: null,
+          defaultThinkingEffort: "low" as const
+        }
+      }
+    };
+    const fileConfig: Partial<OpenDynamicWorkflowConfig> = {
+      providers: {
+        mock: {
+          command: "mock",
+          defaultModel: null,
+          defaultThinkingEffort: "high" as const
+        }
+      }
+    };
+
+    const merged = mergeConfig(customDefaults, fileConfig, {});
+    expect(merged.providers.mock?.defaultThinkingEffort).toBe("high");
+  });
+
+  it("provider-config merge: omission in a later layer preserves the earlier value and no layer invents a default", () => {
+    const customDefaults = {
+      ...DEFAULT_CONFIG,
+      providers: {
+        mock: {
+          command: "mock",
+          defaultModel: null,
+          defaultThinkingEffort: "low" as const
+        }
+      }
+    };
+    const fileConfig: Partial<OpenDynamicWorkflowConfig> = {
+      providers: {
+        mock: {
+          command: "mock-custom",
+          defaultModel: null
+        }
+      }
+    };
+
+    const merged = mergeConfig(customDefaults, fileConfig, {});
+    expect(merged.providers.mock?.defaultThinkingEffort).toBe("low");
+    expect(merged.providers.codex?.defaultThinkingEffort).toBeUndefined();
+  });
 });
