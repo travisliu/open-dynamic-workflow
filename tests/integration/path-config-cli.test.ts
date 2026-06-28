@@ -155,6 +155,24 @@ describe("CLI Path Config Integration (Phase 2)", () => {
     );
   }
 
+  it("suppresses default include and exclude zero-match warnings in JSON reports", async () => {
+    await fs.mkdir(path.join(tempDir, "workflows"), { recursive: true });
+    await fs.mkdir(path.join(tempDir, ".open-dynamic-workflow/agents"), { recursive: true });
+    await fs.mkdir(path.join(tempDir, ".open-dynamic-workflow/tools"), { recursive: true });
+
+    const result = await runCli(["list", "--report", "json"]);
+
+    expect(result.exitCode).toBe(ExitCode.Success);
+    expect(result.stdout).not.toContain("*.agent.js");
+    expect(result.stdout).not.toContain("*.tool.js");
+    expect(result.stdout).not.toContain("CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+    expect(result.stdout).not.toContain("CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+
+    const output = JSON.parse(result.stdout);
+    const diagnostics = output.configDiagnostics || [];
+    expect(diagnostics).toEqual([]);
+  });
+
   it("TC-17/18: lists all resources through flat patterns, and filters by target resource type", async () => {
     // Arrange
     const configContent = `

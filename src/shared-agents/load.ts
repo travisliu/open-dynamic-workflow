@@ -55,6 +55,8 @@ export async function loadSharedAgentRegistry(
       include: input.discovery.include,
       exclude: input.discovery.exclude,
       compatibilityMode: input.discovery.compatibilityMode,
+      includeSource: input.discovery.includeSource,
+      excludeSource: input.discovery.excludeSource,
       strict: false,
     });
     const escapeDiag = res.configDiagnostics.find(d => d.code === "CONFIG_PATH_SYMLINK_ESCAPE");

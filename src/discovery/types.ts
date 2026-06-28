@@ -1,5 +1,5 @@
 import type { InitializationHint } from "../errors/project-init-hint.js";
-import type { DiscoveryCompatibilityMode, ConfigDiagnostic } from "../config/types.js";
+import type { DiscoveryCompatibilityMode, DiscoveryConfigSource, ConfigDiagnostic } from "../config/types.js";
 
 export type ListResourceType = "workflow" | "agent" | "tool";
 export type ListCliResourceType = "all" | ListResourceType;
@@ -9,6 +9,8 @@ export interface ResourceDiscoveryPatterns {
   include: string[];
   exclude: string[];
   compatibilityMode: DiscoveryCompatibilityMode;
+  includeSource?: DiscoveryConfigSource | undefined;
+  excludeSource?: DiscoveryConfigSource | undefined;
 }
 
 export interface DiscoveryPatterns {

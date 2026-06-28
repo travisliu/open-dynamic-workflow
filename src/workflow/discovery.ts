@@ -47,6 +47,8 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
       include: discovery.include,
       exclude: discovery.exclude,
       compatibilityMode: discovery.compatibilityMode,
+      includeSource: discovery.includeSource,
+      excludeSource: discovery.excludeSource,
       strict: false,
     });
     const escapeDiag = res.configDiagnostics.find(d => d.code === "CONFIG_PATH_SYMLINK_ESCAPE");

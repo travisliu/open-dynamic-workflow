@@ -183,6 +183,8 @@ export async function resolveWorkflowNameTarget(
       include: workflowPatterns.include,
       exclude: workflowPatterns.exclude,
       compatibilityMode: workflowPatterns.compatibilityMode,
+      includeSource: workflowPatterns.includeSource,
+      excludeSource: workflowPatterns.excludeSource,
     },
     agent: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" as const },
     tool: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" as const },

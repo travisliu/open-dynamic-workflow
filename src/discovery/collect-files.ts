@@ -14,7 +14,7 @@ import {
   LIST_FILE_UNREADABLE 
 } from "./diagnostics.js";
 import { walk, matchGlob, getGlobBaseDir } from "./file-patterns.js";
-import type { DiscoveryCompatibilityMode, ConfigDiagnostic, DiscoveryResource } from "../config/types.js";
+import type { DiscoveryCompatibilityMode, DiscoveryConfigSource, ConfigDiagnostic, DiscoveryResource } from "../config/types.js";
 import { checkMatchedFileSafety } from "../config/path-safety.js";
 
 function mapResourceTypeToDiscoveryResource(rt: ListResourceType): DiscoveryResource {
@@ -28,12 +28,65 @@ function basenamePosix(relativePath: string): string {
   return normalized.split("/").pop() ?? normalized;
 }
 
+function sourcePatternAllowsGenericRuntimeFiles(input: {
+  resourceType: ListResourceType;
+  compatibilityMode: DiscoveryCompatibilityMode;
+  sourcePattern: string;
+}): boolean {
+  const { resourceType, compatibilityMode, sourcePattern } = input;
+  if (compatibilityMode === "legacy-compatible" || compatibilityMode === "cli-dir-compatible") {
+    return true;
+  }
+  if (resourceType !== "workflow") {
+    return false;
+  }
+
+  const marker = resourceType === "workflow" ? ".workflow." : resourceType === "agent" ? ".agent." : ".tool.";
+  const basename = basenamePosix(sourcePattern);
+  if (basename.includes(marker)) {
+    return false;
+  }
+
+  return [".ts", ".js", ".mjs", ".cjs"].some(ext => basename.endsWith(ext));
+}
+
+function diagnosticPatternLabel(input: {
+  resourceType: ListResourceType;
+  compatibilityMode: DiscoveryCompatibilityMode;
+  pattern: string;
+}): string {
+  const { resourceType, compatibilityMode, pattern } = input;
+  if (compatibilityMode !== "default-suffix-specific") {
+    return pattern;
+  }
+
+  const marker = resourceType === "workflow" ? ".workflow" : resourceType === "agent" ? ".agent" : ".tool";
+  for (const ext of [".ts", ".js", ".mjs", ".cjs"]) {
+    const suffix = `${marker}${ext}`;
+    if (pattern.endsWith(suffix)) {
+      return `${pattern.slice(0, -suffix.length)}${ext}`;
+    }
+  }
+
+  return pattern;
+}
+
+function shouldEmitIncludeMatchedNothing(source: DiscoveryConfigSource): boolean {
+  return source !== "default";
+}
+
+function shouldEmitExcludeMatchedNothing(source: DiscoveryConfigSource): boolean {
+  return source === "new" || source === "legacy-discovery";
+}
+
 export async function collectResourceCandidateFiles(input: {
   cwd: string;
   resourceType: ListResourceType;
   include: string[];
   exclude: string[];
   compatibilityMode: DiscoveryCompatibilityMode;
+  includeSource?: DiscoveryConfigSource | undefined;
+  excludeSource?: DiscoveryConfigSource | undefined;
   strict: boolean;
 }): Promise<{ files: CandidateFile[]; diagnostics: ListDiagnostic[]; configDiagnostics: ConfigDiagnostic[] }> {
   const { cwd, resourceType, include, exclude, compatibilityMode, strict } = input;
@@ -46,6 +99,8 @@ export async function collectResourceCandidateFiles(input: {
   const seenPaths = new Set<string>();
 
   const discoveryResource = mapResourceTypeToDiscoveryResource(resourceType);
+  const includeSource = input.includeSource ?? (compatibilityMode === "default-suffix-specific" ? "default" : "new");
+  const excludeSource = input.excludeSource ?? (compatibilityMode === "default-suffix-specific" ? "default" : "new");
   const missingBases = new Set<string>();
   const notDirectoryBases = new Set<string>();
 
@@ -59,10 +114,8 @@ export async function collectResourceCandidateFiles(input: {
   }
 
   async function tryAddCandidate(absolutePath: string, relativePathToReport: string, sourcePattern: string) {
-    let suffixMatches = false;
-    if (compatibilityMode === "legacy-compatible" || compatibilityMode === "cli-dir-compatible") {
-      suffixMatches = true;
-    } else {
+    let suffixMatches = sourcePatternAllowsGenericRuntimeFiles({ resourceType, compatibilityMode, sourcePattern });
+    if (!suffixMatches) {
       const marker = resourceType === "workflow" ? ".workflow." : resourceType === "agent" ? ".agent." : ".tool.";
       suffixMatches = basenamePosix(relativePathToReport).includes(marker);
     }
@@ -236,28 +289,30 @@ export async function collectResourceCandidateFiles(input: {
   }
 
   for (const [inc, count] of includeMatchedCount.entries()) {
-    if (count === 0) {
+    if (count === 0 && shouldEmitIncludeMatchedNothing(includeSource)) {
+      const label = diagnosticPatternLabel({ resourceType, compatibilityMode, pattern: inc });
       configDiagnostics.push({
         resource: discoveryResource,
         path: `${discoveryResource}.include[${include.indexOf(inc)}]`,
         severity: "warning",
         code: "CONFIG_PATH_INCLUDE_MATCHED_NOTHING",
-        message: `Include pattern '${inc}' did not match any files.`,
-        value: inc,
+        message: `Include pattern '${label}' did not match any files.`,
+        value: label,
         fatalInStrictContext: false,
       });
     }
   }
 
   for (const [exc, count] of excludeMatchedCount.entries()) {
-    if (count === 0) {
+    if (count === 0 && shouldEmitExcludeMatchedNothing(excludeSource)) {
+      const label = diagnosticPatternLabel({ resourceType, compatibilityMode, pattern: exc });
       configDiagnostics.push({
         resource: discoveryResource,
         path: `${discoveryResource}.exclude[${exclude.indexOf(exc)}]`,
         severity: "warning",
         code: "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING",
-        message: `Exclude pattern '${exc}' did not match any files or was redundant.`,
-        value: exc,
+        message: `Exclude pattern '${label}' did not match any files or was redundant.`,
+        value: label,
         fatalInStrictContext: false,
       });
     }
@@ -291,6 +346,8 @@ export async function collectCandidateFiles(input: {
         include: patternObj.include,
         exclude: patternObj.exclude,
         compatibilityMode: patternObj.compatibilityMode,
+        includeSource: patternObj.includeSource,
+        excludeSource: patternObj.excludeSource,
         strict,
       });
       files.push(...res.files);
@@ -519,4 +576,3 @@ async function checkSymlinkEscapes(dir: string, absoluteCwd: string, visitedDirs
   } catch {}
   return undefined;
 }
-

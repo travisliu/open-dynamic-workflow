@@ -184,7 +184,7 @@ describe("collect-files", () => {
       expect(relPaths).not.toContain("workflows/w_excluded.workflow.ts");
     });
 
-    it("ignores generic files in suffix-specific mode and accepts them in legacy-compatible", async () => {
+    it("keeps suffix-specific include patterns limited to resource marker files", async () => {
       await fs.writeFile(join(tempDir, "workflows/generic.ts"), "test");
       await fs.writeFile(join(tempDir, "workflows/specific.workflow.ts"), "test");
 
@@ -193,7 +193,7 @@ describe("collect-files", () => {
         resourceTypes: ["workflow"],
         patterns: {
           workflow: {
-            include: ["workflows/**/*.ts"],
+            include: ["workflows/**/*.workflow.ts"],
             exclude: [],
             compatibilityMode: "new-suffix-specific",
           },
@@ -206,6 +206,36 @@ describe("collect-files", () => {
       const specificPaths = resultSpecific.files.map(f => f.relativePath);
       expect(specificPaths).toContain("workflows/specific.workflow.ts");
       expect(specificPaths).not.toContain("workflows/generic.ts");
+    });
+
+    it("accepts generic runtime include patterns in new flat configuration", async () => {
+      await fs.writeFile(join(tempDir, "workflows/generic-flat.js"), "test");
+      await fs.writeFile(join(tempDir, "workflows/specific-flat.workflow.js"), "test");
+
+      const result = await collectCandidateFiles({
+        cwd: tempDir,
+        resourceTypes: ["workflow"],
+        patterns: {
+          workflow: {
+            include: ["workflows/**/*.js"],
+            exclude: [],
+            compatibilityMode: "new-suffix-specific",
+          },
+          agent: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
+          tool: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
+        },
+        strict: false,
+      });
+
+      const paths = result.files.map(f => f.relativePath);
+      expect(paths).toContain("workflows/generic-flat.js");
+      expect(paths).toContain("workflows/specific-flat.workflow.js");
+      expect(result.configDiagnostics?.some(d => d.path === "workflow.include[0]" && d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING")).not.toBe(true);
+    });
+
+    it("accepts generic files in legacy-compatible mode", async () => {
+      await fs.writeFile(join(tempDir, "workflows/generic-legacy.ts"), "test");
+      await fs.writeFile(join(tempDir, "workflows/specific-legacy.workflow.ts"), "test");
 
       const resultLegacy = await collectCandidateFiles({
         cwd: tempDir,
@@ -223,8 +253,8 @@ describe("collect-files", () => {
       });
 
       const legacyPaths = resultLegacy.files.map(f => f.relativePath);
-      expect(legacyPaths).toContain("workflows/specific.workflow.ts");
-      expect(legacyPaths).toContain("workflows/generic.ts");
+      expect(legacyPaths).toContain("workflows/specific-legacy.workflow.ts");
+      expect(legacyPaths).toContain("workflows/generic-legacy.ts");
     });
 
     it("reports unused exclude and zero-match include diagnostics", async () => {
@@ -247,6 +277,56 @@ describe("collect-files", () => {
       const codes = result.configDiagnostics!.map(d => d.code);
       expect(codes).toContain("CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
       expect(codes).toContain("CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+    });
+
+    it("suppresses default suffix-specific include and exclude zero-match warnings", async () => {
+      const result = await collectCandidateFiles({
+        cwd: tempDir,
+        resourceTypes: ["agent", "tool"],
+        patterns: {
+          workflow: { include: [], exclude: [], compatibilityMode: "default-suffix-specific" },
+          agent: {
+            include: ["agents/**/*.agent.js"],
+            exclude: ["**/*.test.*"],
+            compatibilityMode: "default-suffix-specific",
+            includeSource: "default",
+            excludeSource: "default",
+          },
+          tool: {
+            include: ["tools/**/*.tool.js"],
+            exclude: ["**/*.spec.*"],
+            compatibilityMode: "default-suffix-specific",
+            includeSource: "default",
+            excludeSource: "default",
+          },
+        },
+        strict: false,
+      });
+
+      expect(result.configDiagnostics).toEqual([]);
+    });
+
+    it("keeps user-authored suffix-specific include warning labels exact", async () => {
+      const result = await collectCandidateFiles({
+        cwd: tempDir,
+        resourceTypes: ["agent"],
+        patterns: {
+          workflow: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
+          agent: {
+            include: ["agents/**/*.agent.js"],
+            exclude: [],
+            compatibilityMode: "new-suffix-specific",
+            includeSource: "new",
+            excludeSource: "default",
+          },
+          tool: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
+        },
+        strict: false,
+      });
+
+      const agentDiag = result.configDiagnostics?.find(d => d.resource === "sharedAgents" && d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+      expect(agentDiag?.message).toContain("agents/**/*.agent.js");
+      expect(agentDiag?.value).toBe("agents/**/*.agent.js");
     });
 
     it("deduplicates default missing directories per resource base", async () => {
@@ -368,4 +448,3 @@ describe("collect-files", () => {
     });
   });
 });
-

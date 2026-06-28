@@ -6,5 +6,7 @@ export function toResourcePatterns(resource: NormalizedResourceDiscovery): Resou
     include: resource.include,
     exclude: resource.exclude,
     compatibilityMode: resource.compatibilityMode,
+    includeSource: resource.includeSource,
+    excludeSource: resource.excludeSource,
   };
 }

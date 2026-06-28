@@ -283,7 +283,35 @@ workflow:
     expect(diags.some((d: any) => d.code === "CONFIG_PATH_NEW_OVERRIDES_LEGACY")).toBe(true);
   });
 
-  it("3. Security Boundaries: Unsafe paths, directory-only values, and symlink escapes are rejected early with NO side-effects", async () => {
+  it("3. Flat workflow include supports generic .js workflow globs", async () => {
+    const configContent = `
+defaultProvider: mock
+workflow:
+  include:
+    - "workflows/**/*.js"
+`;
+    await fs.mkdir(path.join(tempDir, ".open-dynamic-workflow"), { recursive: true });
+    await fs.writeFile(path.join(tempDir, ".open-dynamic-workflow/config.yaml"), configContent);
+    await writeWorkflow(path.join(tempDir, "workflows/plain-review.js"), "plain-review");
+
+    const result = await runCli(["list", "workflows", "--report", "json"]);
+
+    expect(result.exitCode).toBe(ExitCode.Success);
+    const output = JSON.parse(result.stdout);
+    expect(output.resources.map((r: any) => r.name)).toContain("plain-review");
+    expect(
+      (output.configDiagnostics || []).some(
+        (d: any) => d.path === "workflow.include[0]" && d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING"
+      )
+    ).toBe(false);
+    expect(
+      (output.configDiagnostics || []).some(
+        (d: any) => d.path.startsWith("workflow.exclude") && d.code === "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING"
+      )
+    ).toBe(false);
+  });
+
+  it("4. Security Boundaries: Unsafe paths, directory-only values, and symlink escapes are rejected early with NO side-effects", async () => {
     // ----------------------------------------------------
     // ARRANGE: Set up config containing relative escapes, absolute path configs, directory-only values,
     // and symlink escapes pointing outside workspace, all with side-effect markers.

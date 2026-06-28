@@ -144,6 +144,8 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
       include: input.discovery.include,
       exclude: input.discovery.exclude,
       compatibilityMode: input.discovery.compatibilityMode,
+      includeSource: input.discovery.includeSource,
+      excludeSource: input.discovery.excludeSource,
       strict: false,
     });
     if (res.configDiagnostics && input.configDiagnostics) {
