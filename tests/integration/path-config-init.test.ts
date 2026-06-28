@@ -76,15 +76,15 @@ describe("Init Command Path Config Integration", () => {
     // Assert flat structure without legacy keys
     expect(parsedConfig.sharedAgents).toBeDefined();
     expect(parsedConfig.sharedAgents.dir).toBeUndefined();
-    expect(parsedConfig.sharedAgents.include).toContain(".open-dynamic-workflow/agents/**/*.agent.ts");
-    expect(parsedConfig.sharedAgents.include).toContain(".open-dynamic-workflow/agents/**/*.agent.js");
+    expect(parsedConfig.sharedAgents.include).toContain(".open-dynamic-workflow/agents/**/*.ts");
+    expect(parsedConfig.sharedAgents.include).toContain(".open-dynamic-workflow/agents/**/*.js");
     expect(parsedConfig.sharedAgents.exclude).toContain("**/*.test.*");
     expect(parsedConfig.sharedAgents.exclude).toContain("**/*.spec.*");
 
     expect(parsedConfig.tools).toBeDefined();
     expect(parsedConfig.tools.dir).toBeUndefined();
-    expect(parsedConfig.tools.include).toContain(".open-dynamic-workflow/tools/**/*.tool.ts");
-    expect(parsedConfig.tools.include).toContain(".open-dynamic-workflow/tools/**/*.tool.js");
+    expect(parsedConfig.tools.include).toContain(".open-dynamic-workflow/tools/**/*.ts");
+    expect(parsedConfig.tools.include).toContain(".open-dynamic-workflow/tools/**/*.js");
     expect(parsedConfig.tools.exclude).toContain("**/*.test.*");
     expect(parsedConfig.tools.exclude).toContain("**/*.spec.*");
 
@@ -138,8 +138,8 @@ describe("Init Command Path Config Integration", () => {
     const configContent = await fs.readFile(configPath, "utf8");
     const parsedConfig = parseYaml(configContent) as any;
 
-    expect(parsedConfig.sharedAgents.include).toContain("custom-agents/**/*.agent.ts");
-    expect(parsedConfig.tools.include).toContain("custom-tools/**/*.tool.ts");
+    expect(parsedConfig.sharedAgents.include).toContain("custom-agents/**/*.ts");
+    expect(parsedConfig.tools.include).toContain("custom-tools/**/*.ts");
     expect(parsedConfig.workflow.include).toContain("custom-workflows/**/*.workflow.ts");
   });
 

@@ -134,7 +134,7 @@ describe("Tool Loader Security - Unit Tests", () => {
     expect(existsSync(markerFile)).toBe(false);
   });
 
-  it("4. Helper file in directory with .tool. in name is not loaded in suffix-specific mode", async () => {
+  it("4. Broad runtime include patterns treat plain tool files as entrypoints", async () => {
     const toolHelpersDir = join(tempBaseDir, "my.tool.helpers");
     await mkdir(toolHelpersDir);
     const markerFile = join(tempBaseDir, "helper-side-effect.marker");
@@ -157,7 +157,7 @@ describe("Tool Loader Security - Unit Tests", () => {
       }
     });
 
-    expect(registry.has("helper-tool")).toBe(false);
-    expect(existsSync(markerFile)).toBe(false);
+    expect(registry.has("helper-tool")).toBe(true);
+    expect(existsSync(markerFile)).toBe(true);
   });
 });

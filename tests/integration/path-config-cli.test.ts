@@ -178,12 +178,12 @@ describe("CLI Path Config Integration (Phase 2)", () => {
     const configContent = `
 sharedAgents:
   include:
-    - ".open-dynamic-workflow/agents/**/*.agent.ts"
+    - ".open-dynamic-workflow/agents/**/*.ts"
   exclude:
     - "**/*.test.*"
 tools:
   include:
-    - ".open-dynamic-workflow/tools/**/*.tool.ts"
+    - ".open-dynamic-workflow/tools/**/*.ts"
   exclude:
     - "**/*.test.*"
 workflow:
@@ -197,10 +197,10 @@ workflow:
 
     await writeWorkflow(path.join(tempDir, "workflows/w1.workflow.ts"), "workflow-one");
     await writeWorkflow(path.join(tempDir, "workflows/w2.test.workflow.ts"), "workflow-test-excluded");
-    await writeAgent(path.join(tempDir, ".open-dynamic-workflow/agents/a1.agent.ts"), "agent-one");
-    await writeAgent(path.join(tempDir, ".open-dynamic-workflow/agents/a2.test.agent.ts"), "agent-test-excluded");
-    await writeTool(path.join(tempDir, ".open-dynamic-workflow/tools/t1.tool.ts"), "tool-one");
-    await writeTool(path.join(tempDir, ".open-dynamic-workflow/tools/t2.test.tool.ts"), "tool-test-excluded");
+    await writeAgent(path.join(tempDir, ".open-dynamic-workflow/agents/a1.ts"), "agent-one");
+    await writeAgent(path.join(tempDir, ".open-dynamic-workflow/agents/a2.test.ts"), "agent-test-excluded");
+    await writeTool(path.join(tempDir, ".open-dynamic-workflow/tools/t1.ts"), "tool-one");
+    await writeTool(path.join(tempDir, ".open-dynamic-workflow/tools/t2.test.ts"), "tool-test-excluded");
 
     // Act - list all resources
     const allResult = await runCli(["list", "--report", "json"]);
@@ -241,6 +241,36 @@ workflow:
     const onlyTools = toolOutput.resources;
     expect(onlyTools.every((r: any) => r.type === "tool")).toBe(true);
     expect(onlyTools.map((r: any) => r.id)).toContain("tool-one");
+  });
+
+  it("reports definition-missing diagnostics for broad plain agent and tool includes", async () => {
+    const configContent = `
+sharedAgents:
+  include:
+    - ".open-dynamic-workflow/agents/**/*.js"
+tools:
+  include:
+    - ".open-dynamic-workflow/tools/**/*.js"
+`;
+    await fs.mkdir(path.join(tempDir, ".open-dynamic-workflow"), { recursive: true });
+    await fs.writeFile(path.join(tempDir, ".open-dynamic-workflow/config.yaml"), configContent);
+
+    await writeAgent(path.join(tempDir, ".open-dynamic-workflow/agents/valid.js"), "plain-agent");
+    await writeTool(path.join(tempDir, ".open-dynamic-workflow/tools/valid.js"), "plain-tool");
+    await fs.writeFile(path.join(tempDir, ".open-dynamic-workflow/agents/helper.js"), "export const helper = true;");
+    await fs.writeFile(path.join(tempDir, ".open-dynamic-workflow/tools/helper.js"), "export const helper = true;");
+
+    const result = await runCli(["list", "--report", "json"]);
+
+    expect(result.exitCode).toBe(ExitCode.Success);
+    const output = JSON.parse(result.stdout);
+    const ids = output.resources.map((r: any) => r.id);
+    const warningCodes = output.warnings.map((d: any) => d.code);
+
+    expect(ids).toContain("plain-agent");
+    expect(ids).toContain("plain-tool");
+    expect(warningCodes).toContain("AGENT_DEFINITION_MISSING");
+    expect(warningCodes).toContain("TOOL_DEFINITION_MISSING");
   });
 
   it("TC-07: rejects symlink escapes outside the workspace", async () => {
@@ -335,20 +365,20 @@ workflow:
     const configContent = `
 sharedAgents:
   include:
-    - ".open-dynamic-workflow/agents/**/*.agent.ts"
+    - ".open-dynamic-workflow/agents/**/*.ts"
   exclude:
-    - "**/skip.agent.ts"
+    - "**/skip.ts"
 `;
     await fs.mkdir(path.join(tempDir, ".open-dynamic-workflow"), { recursive: true });
     await fs.writeFile(path.join(tempDir, ".open-dynamic-workflow/config.yaml"), configContent);
 
     // Files in default agents directory
-    await writeAgent(path.join(tempDir, ".open-dynamic-workflow/agents/a1.agent.ts"), "agent-default");
+    await writeAgent(path.join(tempDir, ".open-dynamic-workflow/agents/a1.ts"), "agent-default");
     
     // Files in custom overridden directory
     const customDir = "custom-agents";
-    await writeAgent(path.join(tempDir, `${customDir}/ok.agent.ts`), "agent-custom-ok");
-    await writeAgent(path.join(tempDir, `${customDir}/skip.agent.ts`), "agent-custom-skip"); // should be excluded
+    await writeAgent(path.join(tempDir, `${customDir}/ok.ts`), "agent-custom-ok");
+    await writeAgent(path.join(tempDir, `${customDir}/skip.ts`), "agent-custom-skip"); // should be excluded
 
     // Act - list agents with targeted dir override
     const result = await runCli(["list", "agents", "--dir", customDir, "--report", "json"]);
@@ -364,7 +394,7 @@ sharedAgents:
     // Custom directory resource is included
     expect(agentIds).toContain("agent-custom-ok");
     
-    // Exclude pattern "**/skip.agent.ts" is still applied and skips skip.agent.ts
+    // Exclude pattern "**/skip.ts" is still applied and skips skip.ts
     expect(agentIds).not.toContain("agent-custom-skip");
 
     // Act - invalid targeted flag combination

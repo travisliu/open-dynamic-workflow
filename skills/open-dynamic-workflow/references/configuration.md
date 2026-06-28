@@ -347,12 +347,14 @@ Example config snippet:
 ```yaml
 tools:
   include:
-    - ".open-dynamic-workflow/tools/**/*.tool.ts"
+    - ".open-dynamic-workflow/tools/**/*.ts"
   exclude:
     - "**/*.test.*"
   concurrency: 4
   maxDefinitions: 100
 ```
+
+Tool and shared-agent filenames do not need `.tool.` or `.agent.` markers. Broad runtime-extension patterns such as `**/*.js` and `**/*.ts` are valid, but every included file is treated as an intended entrypoint and must default-export `defineTool()` or `defineAgent()`.
 
 ---
 

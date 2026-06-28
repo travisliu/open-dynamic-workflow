@@ -74,15 +74,15 @@ export function workflowIncludePatterns(workflowsDirDisplay: string): string[] {
 
 export function sharedAgentIncludePatterns(agentsDirDisplay: string): string[] {
   return [
-    `${agentsDirDisplay}/**/*.agent.js`,
-    `${agentsDirDisplay}/**/*.agent.ts`,
+    `${agentsDirDisplay}/**/*.js`,
+    `${agentsDirDisplay}/**/*.ts`,
   ];
 }
 
 export function toolIncludePatterns(toolsDirDisplay: string): string[] {
   return [
-    `${toolsDirDisplay}/**/*.tool.js`,
-    `${toolsDirDisplay}/**/*.tool.ts`,
+    `${toolsDirDisplay}/**/*.js`,
+    `${toolsDirDisplay}/**/*.ts`,
   ];
 }
 

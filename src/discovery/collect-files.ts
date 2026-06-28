@@ -28,6 +28,10 @@ function basenamePosix(relativePath: string): string {
   return normalized.split("/").pop() ?? normalized;
 }
 
+function markerForResourceType(resourceType: ListResourceType): ".workflow." | ".agent." | ".tool." {
+  return resourceType === "workflow" ? ".workflow." : resourceType === "agent" ? ".agent." : ".tool.";
+}
+
 function sourcePatternAllowsGenericRuntimeFiles(input: {
   resourceType: ListResourceType;
   compatibilityMode: DiscoveryCompatibilityMode;
@@ -37,11 +41,8 @@ function sourcePatternAllowsGenericRuntimeFiles(input: {
   if (compatibilityMode === "legacy-compatible" || compatibilityMode === "cli-dir-compatible") {
     return true;
   }
-  if (resourceType !== "workflow") {
-    return false;
-  }
 
-  const marker = resourceType === "workflow" ? ".workflow." : resourceType === "agent" ? ".agent." : ".tool.";
+  const marker = markerForResourceType(resourceType);
   const basename = basenamePosix(sourcePattern);
   if (basename.includes(marker)) {
     return false;
@@ -116,7 +117,7 @@ export async function collectResourceCandidateFiles(input: {
   async function tryAddCandidate(absolutePath: string, relativePathToReport: string, sourcePattern: string) {
     let suffixMatches = sourcePatternAllowsGenericRuntimeFiles({ resourceType, compatibilityMode, sourcePattern });
     if (!suffixMatches) {
-      const marker = resourceType === "workflow" ? ".workflow." : resourceType === "agent" ? ".agent." : ".tool.";
+      const marker = markerForResourceType(resourceType);
       suffixMatches = basenamePosix(relativePathToReport).includes(marker);
     }
 

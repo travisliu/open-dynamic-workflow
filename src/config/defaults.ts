@@ -93,10 +93,10 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
   sharedAgents: {
     dir: ".open-dynamic-workflow/agents",
     include: [
-      ".open-dynamic-workflow/agents/**/*.agent.js",
-      ".open-dynamic-workflow/agents/**/*.agent.ts",
-      ".open-dynamic-workflow/agents/**/*.agent.mjs",
-      ".open-dynamic-workflow/agents/**/*.agent.cjs"
+      ".open-dynamic-workflow/agents/**/*.js",
+      ".open-dynamic-workflow/agents/**/*.ts",
+      ".open-dynamic-workflow/agents/**/*.mjs",
+      ".open-dynamic-workflow/agents/**/*.cjs"
     ],
     exclude: [
       "**/*.test.*",
@@ -109,10 +109,10 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
   tools: {
     dir: ".open-dynamic-workflow/tools",
     include: [
-      ".open-dynamic-workflow/tools/**/*.tool.js",
-      ".open-dynamic-workflow/tools/**/*.tool.ts",
-      ".open-dynamic-workflow/tools/**/*.tool.mjs",
-      ".open-dynamic-workflow/tools/**/*.tool.cjs"
+      ".open-dynamic-workflow/tools/**/*.js",
+      ".open-dynamic-workflow/tools/**/*.ts",
+      ".open-dynamic-workflow/tools/**/*.mjs",
+      ".open-dynamic-workflow/tools/**/*.cjs"
     ],
     exclude: [
       "**/*.test.*",

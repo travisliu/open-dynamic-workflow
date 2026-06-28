@@ -8,7 +8,7 @@ import {
 describe("Path Discovery Normalization", () => {
   const cwd = "/workspace";
 
-  it("defaults produce suffix-specific includes and default excludes for all resources without warnings", () => {
+  it("defaults produce runtime-extension includes and default excludes for all resources without warnings", () => {
     const { discovery, diagnostics } = normalizeDiscoveryConfig({
       config: DEFAULT_CONFIG,
       cwd,
@@ -27,19 +27,19 @@ describe("Path Discovery Normalization", () => {
     expect(discovery.workflow.source).toBe("default");
 
     expect(discovery.sharedAgents.include).toEqual([
-      ".open-dynamic-workflow/agents/**/*.agent.js",
-      ".open-dynamic-workflow/agents/**/*.agent.ts",
-      ".open-dynamic-workflow/agents/**/*.agent.mjs",
-      ".open-dynamic-workflow/agents/**/*.agent.cjs",
+      ".open-dynamic-workflow/agents/**/*.js",
+      ".open-dynamic-workflow/agents/**/*.ts",
+      ".open-dynamic-workflow/agents/**/*.mjs",
+      ".open-dynamic-workflow/agents/**/*.cjs",
     ]);
     expect(discovery.sharedAgents.exclude).toEqual(["**/*.test.*", "**/*.spec.*"]);
     expect(discovery.sharedAgents.source).toBe("default");
 
     expect(discovery.tools.include).toEqual([
-      ".open-dynamic-workflow/tools/**/*.tool.js",
-      ".open-dynamic-workflow/tools/**/*.tool.ts",
-      ".open-dynamic-workflow/tools/**/*.tool.mjs",
-      ".open-dynamic-workflow/tools/**/*.tool.cjs",
+      ".open-dynamic-workflow/tools/**/*.js",
+      ".open-dynamic-workflow/tools/**/*.ts",
+      ".open-dynamic-workflow/tools/**/*.mjs",
+      ".open-dynamic-workflow/tools/**/*.cjs",
     ]);
     expect(discovery.tools.exclude).toEqual(["**/*.test.*", "**/*.spec.*"]);
     expect(discovery.tools.source).toBe("default");
@@ -361,6 +361,54 @@ describe("Path Discovery Normalization", () => {
 
     expect(res.diagnostics[0].code).toBe("CONFIG_PATH_UNSUPPORTED_RESOURCE_SUFFIX");
     expect(res.diagnostics[0].fatalInStrictContext).toBe(true);
+  });
+
+  it("plain runtime-extension literal files are valid for shared agents and tools", () => {
+    const agentConfig = {
+      ...DEFAULT_CONFIG,
+      sharedAgents: {
+        ...DEFAULT_CONFIG.sharedAgents,
+        include: ["agents/task-parser.js"],
+      },
+    };
+    const agentRawConfig = {
+      sharedAgents: {
+        include: ["agents/task-parser.js"],
+      },
+    };
+
+    const agentRes = normalizeResourceDiscovery({
+      resource: "sharedAgents",
+      config: agentConfig,
+      cwd,
+      rawConfig: agentRawConfig,
+    });
+
+    expect(agentRes.include).toEqual(["agents/task-parser.js"]);
+    expect(agentRes.diagnostics).toEqual([]);
+
+    const toolConfig = {
+      ...DEFAULT_CONFIG,
+      tools: {
+        ...DEFAULT_CONFIG.tools,
+        include: ["tools/deploy.ts"],
+      },
+    };
+    const toolRawConfig = {
+      tools: {
+        include: ["tools/deploy.ts"],
+      },
+    };
+
+    const toolRes = normalizeResourceDiscovery({
+      resource: "tools",
+      config: toolConfig,
+      cwd,
+      rawConfig: toolRawConfig,
+    });
+
+    expect(toolRes.include).toEqual(["tools/deploy.ts"]);
+    expect(toolRes.diagnostics).toEqual([]);
   });
 
   it("suffix-wildcard patterns with the correct marker are accepted", () => {

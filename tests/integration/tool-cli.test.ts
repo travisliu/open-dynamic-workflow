@@ -157,6 +157,13 @@ describe("Tool CLI Integration", () => {
 
   it("should run a workflow with a TS tool that imports a helper (Issue 4)", async () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
+
+    await fs.mkdir(path.join(projectDir, ".open-dynamic-workflow"), { recursive: true });
+    await fs.writeFile(path.join(projectDir, ".open-dynamic-workflow/config.yaml"), `
+tools:
+  include:
+    - ".open-dynamic-workflow/tools/*.tool.ts"
+`);
     
     // Helper file in nested directory
     await fs.mkdir(path.join(toolsDir, "utils"), { recursive: true });

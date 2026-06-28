@@ -111,8 +111,8 @@ describe("open-dynamic-workflow init integration", () => {
 
     const config = fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"), "utf8");
     expect(config).toContain("- flows/**/*.workflow.ts");
-    expect(config).toContain("- config/agents/**/*.agent.ts");
-    expect(config).toContain("- config/tools/**/*.tool.ts");
+    expect(config).toContain("- config/agents/**/*.ts");
+    expect(config).toContain("- config/tools/**/*.ts");
   });
 
   it("fails in strict mode if files exist", async () => {

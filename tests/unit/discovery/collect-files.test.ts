@@ -211,18 +211,30 @@ describe("collect-files", () => {
     it("accepts generic runtime include patterns in new flat configuration", async () => {
       await fs.writeFile(join(tempDir, "workflows/generic-flat.js"), "test");
       await fs.writeFile(join(tempDir, "workflows/specific-flat.workflow.js"), "test");
+      await fs.writeFile(join(tempDir, "agents/generic-agent.js"), "test");
+      await fs.writeFile(join(tempDir, "agents/specific-agent.agent.js"), "test");
+      await fs.writeFile(join(tempDir, "tools/generic-tool.js"), "test");
+      await fs.writeFile(join(tempDir, "tools/specific-tool.tool.js"), "test");
 
       const result = await collectCandidateFiles({
         cwd: tempDir,
-        resourceTypes: ["workflow"],
+        resourceTypes: ["workflow", "agent", "tool"],
         patterns: {
           workflow: {
             include: ["workflows/**/*.js"],
             exclude: [],
             compatibilityMode: "new-suffix-specific",
           },
-          agent: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
-          tool: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
+          agent: {
+            include: ["agents/**/*.js"],
+            exclude: [],
+            compatibilityMode: "new-suffix-specific",
+          },
+          tool: {
+            include: ["tools/**/*.js"],
+            exclude: [],
+            compatibilityMode: "new-suffix-specific",
+          },
         },
         strict: false,
       });
@@ -230,7 +242,13 @@ describe("collect-files", () => {
       const paths = result.files.map(f => f.relativePath);
       expect(paths).toContain("workflows/generic-flat.js");
       expect(paths).toContain("workflows/specific-flat.workflow.js");
+      expect(paths).toContain("agents/generic-agent.js");
+      expect(paths).toContain("agents/specific-agent.agent.js");
+      expect(paths).toContain("tools/generic-tool.js");
+      expect(paths).toContain("tools/specific-tool.tool.js");
       expect(result.configDiagnostics?.some(d => d.path === "workflow.include[0]" && d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING")).not.toBe(true);
+      expect(result.configDiagnostics?.some(d => d.path === "sharedAgents.include[0]" && d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING")).not.toBe(true);
+      expect(result.configDiagnostics?.some(d => d.path === "tools.include[0]" && d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING")).not.toBe(true);
     });
 
     it("accepts generic files in legacy-compatible mode", async () => {
@@ -279,21 +297,21 @@ describe("collect-files", () => {
       expect(codes).toContain("CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
     });
 
-    it("suppresses default suffix-specific include and exclude zero-match warnings", async () => {
+    it("suppresses default include and exclude zero-match warnings", async () => {
       const result = await collectCandidateFiles({
         cwd: tempDir,
         resourceTypes: ["agent", "tool"],
         patterns: {
           workflow: { include: [], exclude: [], compatibilityMode: "default-suffix-specific" },
           agent: {
-            include: ["agents/**/*.agent.js"],
+            include: ["agents/**/*.js"],
             exclude: ["**/*.test.*"],
             compatibilityMode: "default-suffix-specific",
             includeSource: "default",
             excludeSource: "default",
           },
           tool: {
-            include: ["tools/**/*.tool.js"],
+            include: ["tools/**/*.js"],
             exclude: ["**/*.spec.*"],
             compatibilityMode: "default-suffix-specific",
             includeSource: "default",
@@ -307,13 +325,15 @@ describe("collect-files", () => {
     });
 
     it("keeps user-authored suffix-specific include warning labels exact", async () => {
+      await fs.mkdir(join(tempDir, "label-agents"), { recursive: true });
+
       const result = await collectCandidateFiles({
         cwd: tempDir,
         resourceTypes: ["agent"],
         patterns: {
           workflow: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
           agent: {
-            include: ["agents/**/*.agent.js"],
+            include: ["label-agents/**/*.agent.js"],
             exclude: [],
             compatibilityMode: "new-suffix-specific",
             includeSource: "new",
@@ -325,8 +345,8 @@ describe("collect-files", () => {
       });
 
       const agentDiag = result.configDiagnostics?.find(d => d.resource === "sharedAgents" && d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
-      expect(agentDiag?.message).toContain("agents/**/*.agent.js");
-      expect(agentDiag?.value).toBe("agents/**/*.agent.js");
+      expect(agentDiag?.message).toContain("label-agents/**/*.agent.js");
+      expect(agentDiag?.value).toBe("label-agents/**/*.agent.js");
     });
 
     it("deduplicates default missing directories per resource base", async () => {
@@ -420,15 +440,12 @@ describe("collect-files", () => {
       await fs.rm(outsideDir, { recursive: true, force: true });
     });
 
-    it("checks resource suffix markers against file basename only", async () => {
+    it("accepts plain tool files from generic runtime include patterns", async () => {
       const unitTempDir = await fs.mkdtemp(join(tmpdir(), "resource-marker-basename-"));
       const toolHelpersDir = join(unitTempDir, "my.tool.helpers");
       await fs.mkdir(toolHelpersDir, { recursive: true });
 
-      // Create my.tool.helpers/helper.ts (should be ignored since it lacks .tool.)
       await fs.writeFile(join(toolHelpersDir, "helper.ts"), "export const meta = {}");
-
-      // Create my.tool.helpers/real.tool.ts (positive control, should be collected)
       await fs.writeFile(join(toolHelpersDir, "real.tool.ts"), "export const meta = {}");
 
       const result = await collectResourceCandidateFiles({
@@ -441,7 +458,7 @@ describe("collect-files", () => {
       });
 
       const relPaths = result.files.map(f => f.relativePath);
-      expect(relPaths).not.toContain("my.tool.helpers/helper.ts");
+      expect(relPaths).toContain("my.tool.helpers/helper.ts");
       expect(relPaths).toContain("my.tool.helpers/real.tool.ts");
 
       await fs.rm(unitTempDir, { recursive: true, force: true });

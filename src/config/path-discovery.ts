@@ -17,9 +17,9 @@ import {
 export const RUNTIME_EXTENSIONS = [".js", ".ts", ".mjs", ".cjs"] as const;
 
 export const RESOURCE_SUFFIXES = {
-  workflow: [".workflow.js", ".workflow.ts", ".workflow.mjs", ".workflow.cjs"],
-  sharedAgents: [".agent.js", ".agent.ts", ".agent.mjs", ".agent.cjs"],
-  tools: [".tool.js", ".tool.ts", ".tool.mjs", ".tool.cjs"],
+  workflow: [".js", ".ts", ".mjs", ".cjs"],
+  sharedAgents: [".js", ".ts", ".mjs", ".cjs"],
+  tools: [".js", ".ts", ".mjs", ".cjs"],
 } as const;
 
 export const LEGACY_COMPATIBLE_SUFFIXES = {
