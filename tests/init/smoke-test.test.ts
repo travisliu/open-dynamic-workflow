@@ -6,12 +6,12 @@ import { ErrorCode } from "../../src/errors/codes.js";
 describe("runInitSmokeTest", () => {
   const defaultInput = {
     cwd: "/fake/cwd",
-    workflowPath: "/fake/cwd/workflows/example.ts",
+    workflowPath: "/fake/cwd/workflows/example.workflow.ts",
     report: "pretty" as const
   };
 
   it("returns success when both validate and run succeed", async () => {
-    const validate = vi.fn().mockResolvedValue({ workflowName: "example", workflowFileRelative: "workflows/example.ts" });
+    const validate = vi.fn().mockResolvedValue({ workflowName: "example", workflowFileRelative: "workflows/example.workflow.ts" });
     const run = vi.fn().mockResolvedValue(undefined);
 
     const result = await runInitSmokeTest({
@@ -63,7 +63,7 @@ describe("runInitSmokeTest", () => {
 
   it("reports run failure after validate success", async () => {
     const error = new OpenDynamicWorkflowError(ErrorCode.PROVIDER_PROCESS_FAILED, "run failed");
-    const validate = vi.fn().mockResolvedValue({ workflowName: "example", workflowFileRelative: "workflows/example.ts" });
+    const validate = vi.fn().mockResolvedValue({ workflowName: "example", workflowFileRelative: "workflows/example.workflow.ts" });
     const run = vi.fn().mockRejectedValue(error);
 
     const result = await runInitSmokeTest({

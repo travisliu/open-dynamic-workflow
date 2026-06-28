@@ -286,6 +286,42 @@ describe("List Reporters", () => {
       expect(matches).toHaveLength(2);
     });
 
+    it("pretty reporter: uninitialized default project pretty summary handles duplicate diagnostics", async () => {
+      const duplicateUninitializedResult: ListResult = {
+        ...uninitializedResult,
+        warnings: [
+          ...uninitializedResult.warnings,
+          // Duplicate workflow warning
+          {
+            severity: "warning",
+            resourceType: "workflow",
+            path: "workflows",
+            code: "LIST_DIRECTORY_NOT_FOUND",
+            message: "Directory workflows not found",
+            hint: {
+              code: "PROJECT_INIT_MISSING",
+              message: "This project may not be initialized yet. Run `odw init` to create .open-dynamic-workflow/config.yaml and default project directories.",
+              command: "odw init",
+            },
+          },
+        ],
+        summary: {
+          discoveredCount: 0,
+          validCount: 0,
+          warningCount: 4,
+          errorCount: 0,
+          countsByType: {},
+        },
+      };
+
+      const reporter = createListReporter({ mode: "pretty", streams: { stdout, stderr } });
+      reporter.render(duplicateUninitializedResult);
+
+      expect(output).toContain("Warnings:\n  - Project is not initialized.\n    Missing config: .open-dynamic-workflow/config.yaml\n    Missing directories:\n      - workflows\n      - .open-dynamic-workflow/agents\n      - .open-dynamic-workflow/tools");
+      expect(output).toContain("Next step:\n  Run `odw init` to initialize this project.");
+      expect(output).not.toContain("Directory workflows not found");
+    });
+
     it("JSON reporter preserves diagnostic.hint", async () => {
       const reporter = createListReporter({ mode: "json", streams: { stdout, stderr } });
       reporter.render(hintResult);

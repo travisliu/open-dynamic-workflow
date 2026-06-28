@@ -56,7 +56,7 @@ security:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 ${extraConfig}
 `, "utf8");
 }
@@ -370,7 +370,7 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "shared-agent-counter.txt");
     await fs.mkdir(agentsDir, { recursive: true });
     
-    await writeConfig(configPath, `sharedAgents:\n  dir: ${JSON.stringify(agentsDir)}\n`);
+    await writeConfig(configPath, `sharedAgents:\n  dir: ${JSON.stringify(path.relative(process.cwd(), agentsDir))}\n`);
 
     await fs.writeFile(path.join(agentsDir, "wrapper.ts"), `export default defineAgent({
   id: "wrapper",
@@ -493,9 +493,9 @@ providers:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
   maxDefinitions: 10
   concurrency: 1
 `, "utf8");
@@ -567,9 +567,9 @@ providers:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
   maxDefinitions: 10
   concurrency: 1
 `, "utf8");
@@ -641,11 +641,11 @@ providers:
     args:
       - ${JSON.stringify(FAKE_PROVIDER)}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
     await fs.writeFile(workflowPath, `
@@ -725,11 +725,11 @@ providers:
     args:
       - ${JSON.stringify(FAKE_PROVIDER)}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
     await fs.writeFile(workflowPath, `
@@ -796,9 +796,9 @@ providers:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
   maxDefinitions: 10
   concurrency: 1
 `, "utf8");
@@ -852,9 +852,9 @@ providers:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
   maxDefinitions: 10
   concurrency: 1
 `, "utf8");
@@ -933,13 +933,13 @@ export default {
 
     await fs.writeFile(configPath, `
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
   maxDefinitions: 10
   concurrency: 1
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
     await fs.writeFile(workflowPath, `export const meta = { name: "traversal", description: "traversal" };
@@ -1101,7 +1101,7 @@ security:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
       expect((await runCli(["resume", firstRunId!, "--out", runsDir])).error).toBeNull();

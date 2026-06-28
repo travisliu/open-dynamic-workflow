@@ -35,6 +35,16 @@ export class ListJsonlReporter implements ListReporter {
       );
     }
 
+    for (const diagnostic of result.configDiagnostics || []) {
+      this.streams.stdout.write(
+        JSON.stringify({
+          schemaVersion: "open-dynamic-workflow.list.v1",
+          type: "list.configDiagnostic",
+          diagnostic,
+        }) + "\n"
+      );
+    }
+
     this.streams.stdout.write(
       JSON.stringify({
         schemaVersion: "open-dynamic-workflow.list.v1",

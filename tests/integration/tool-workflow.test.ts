@@ -59,7 +59,7 @@ describe("Tool Workflow Integration", () => {
 
     // Create a real tool
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "echo.ts"), `
+    await fs.writeFile(path.join(toolsDir, "echo.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({
         id: "echo",
@@ -174,7 +174,7 @@ describe("Tool Workflow Integration", () => {
 
   it("runs a multi-round loop with distinct tool calls and nested-calls.json mapping", async () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "gate.ts"), `
+    await fs.writeFile(path.join(toolsDir, "gate.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({
         id: "gate",
@@ -254,7 +254,7 @@ describe("Tool Workflow Integration", () => {
   it("replays cacheable loop tools with ordered loop metadata", async () => {
     const counterPath = path.join(projectDir, "loop-tool-count.txt");
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "count.ts"), `
+    await fs.writeFile(path.join(toolsDir, "count.tool.ts"), `
       import * as fs from "node:fs";
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({
@@ -436,7 +436,7 @@ describe("Tool Workflow Integration", () => {
 
   it("should produce failure artifacts and report summary for invalid output (Case 55)", async () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "bad-output.ts"), `
+    await fs.writeFile(path.join(toolsDir, "bad-output.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({
         id: "bad-output",
@@ -479,7 +479,7 @@ describe("Tool Workflow Integration", () => {
 
   it("should wait for unawaited top-level tool calls to settle before completing workflow (ISSUE-001)", async () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "slow.ts"), `
+    await fs.writeFile(path.join(toolsDir, "slow.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({
         id: "slow",
@@ -594,7 +594,7 @@ describe("Tool Workflow Integration", () => {
   });
 
   it("supports tool-level settled failure mode inside a loop", async () => {
-    await fs.writeFile(path.join(toolsDir, "fail.ts"), `
+    await fs.writeFile(path.join(toolsDir, "fail.tool.ts"), `
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
         id: "fail",
@@ -659,7 +659,7 @@ describe("Tool Workflow Integration", () => {
   });
 
   it("propagates tool throw to fail-settled the loop in loop settled mode", async () => {
-    await fs.writeFile(path.join(toolsDir, "fail.ts"), `
+    await fs.writeFile(path.join(toolsDir, "fail.tool.ts"), `
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
         id: "fail",
@@ -698,7 +698,7 @@ describe("Tool Workflow Integration", () => {
   });
 
   it("handles tool timeouts in loops under throw and settled failure modes", async () => {
-    await fs.writeFile(path.join(toolsDir, "slow.ts"), `
+    await fs.writeFile(path.join(toolsDir, "slow.tool.ts"), `
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
         id: "slow",
@@ -789,7 +789,7 @@ describe("Tool Workflow Integration", () => {
   });
 
   it("proves tool cancellation when loop/workflow is aborted", async () => {
-    await fs.writeFile(path.join(toolsDir, "slow.ts"), `
+    await fs.writeFile(path.join(toolsDir, "slow.tool.ts"), `
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
         id: "slow",
@@ -846,7 +846,7 @@ describe("Tool Workflow Integration", () => {
 
   it("proves true tool cancellation when workflow is cancelled via AbortController", async () => {
     // 1. Write the slow tool
-    await fs.writeFile(path.join(toolsDir, "slow-cancellable.ts"), `
+    await fs.writeFile(path.join(toolsDir, "slow-cancellable.tool.ts"), `
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
         id: "slow-cancellable",
@@ -1019,7 +1019,7 @@ describe("Tool Workflow Integration", () => {
 
   it("disables cache and executes live on tool resume mismatch", async () => {
     const trackerPath = path.join(projectDir, "mismatch-tracker.txt");
-    await fs.writeFile(path.join(toolsDir, "mismatch-tool.ts"), `
+    await fs.writeFile(path.join(toolsDir, "mismatch-tool.tool.ts"), `
       import * as fs from "node:fs";
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
@@ -1098,7 +1098,7 @@ describe("Tool Workflow Integration", () => {
   });
 
   it("renders live and cached loop tools in pretty reports", async () => {
-    await fs.writeFile(path.join(toolsDir, "echo.ts"), `
+    await fs.writeFile(path.join(toolsDir, "echo.tool.ts"), `
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
         id: "echo",
@@ -1139,7 +1139,7 @@ describe("Tool Workflow Integration", () => {
   });
 
   it("proves loop round drains in-flight tool calls when a concurrent call is rejected", async () => {
-    await fs.writeFile(path.join(toolsDir, "slow-drain.ts"), `
+    await fs.writeFile(path.join(toolsDir, "slow-drain.tool.ts"), `
       import { defineTool } from "${path.resolve(process.cwd(), "src/tools/index.ts")}";
       export default defineTool({
         id: "slow-drain",

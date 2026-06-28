@@ -12,10 +12,10 @@ describe("init summary formatting", () => {
       },
       targets: [],
       strictConflicts: [],
-      nextSteps: ["open-dynamic-workflow doctor", "open-dynamic-workflow run workflows/example.ts --provider mock"]
+      nextSteps: ["open-dynamic-workflow doctor", "open-dynamic-workflow run workflows/example.workflow.ts --provider mock"]
     },
     writeResult: {
-      created: [".open-dynamic-workflow/config.yaml", "workflows/example.ts"],
+      created: [".open-dynamic-workflow/config.yaml", "workflows/example.workflow.ts"],
       overwritten: [],
       skipped: [],
       reusedDirectories: [".open-dynamic-workflow/agents", ".open-dynamic-workflow/tools", "workflows"]
@@ -44,7 +44,7 @@ describe("init summary formatting", () => {
       ...baseResult,
       writeResult: {
         created: [".open-dynamic-workflow/config.yaml"],
-        overwritten: ["workflows/example.ts"],
+        overwritten: ["workflows/example.workflow.ts"],
         skipped: ["existing-file.ts"],
         reusedDirectories: []
       }
@@ -52,7 +52,7 @@ describe("init summary formatting", () => {
     const output = formatInitSummary(result);
     expect(output).toContain("Created:");
     expect(output).toContain("Overwritten:");
-    expect(output).toContain("  workflows/example.ts");
+    expect(output).toContain("  workflows/example.workflow.ts");
     expect(output).toContain("Skipped existing files:");
     expect(output).toContain("  existing-file.ts");
   });

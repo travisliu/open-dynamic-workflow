@@ -72,7 +72,7 @@ describe("Tool CLI Integration", () => {
 
   it("validate should load definitions without running them (Case 58)", async () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "marker-tool.ts"), `
+    await fs.writeFile(path.join(toolsDir, "marker-tool.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       import * as fs from "node:fs";
       export default defineTool({
@@ -107,11 +107,11 @@ describe("Tool CLI Integration", () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
     
     // Duplicate ID tool
-    await fs.writeFile(path.join(toolsDir, "t1.ts"), `
+    await fs.writeFile(path.join(toolsDir, "t1.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({ id: "dup", description: "d", inputSchema: {}, run: () => {} });
     `);
-    await fs.writeFile(path.join(toolsDir, "t2.ts"), `
+    await fs.writeFile(path.join(toolsDir, "t2.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({ id: "dup", description: "d", inputSchema: {}, run: () => {} });
     `);
@@ -123,7 +123,7 @@ describe("Tool CLI Integration", () => {
 
   it("JSONL output should remain machine-readable with tool events (Case 60)", async () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "echo.ts"), `
+    await fs.writeFile(path.join(toolsDir, "echo.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({ id: "echo", description: "d", inputSchema: {}, run: () => "ok" });
     `);
@@ -165,7 +165,7 @@ describe("Tool CLI Integration", () => {
     `);
 
     // Tool file importing helper using .js
-    await fs.writeFile(path.join(toolsDir, "calc-tool.ts"), `
+    await fs.writeFile(path.join(toolsDir, "calc-tool.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       import { multiply } from "./utils/math-helper.js";
       export default defineTool({
@@ -194,7 +194,7 @@ describe("Tool CLI Integration", () => {
 
   it("should generate deterministic tool IDs in CLI runs with omitted ID (WS-002)", async () => {
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "echo.ts"), `
+    await fs.writeFile(path.join(toolsDir, "echo.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({ id: "echo", description: "d", inputSchema: {}, run: () => "ok" });
     `);
@@ -252,7 +252,7 @@ describe("Tool CLI Integration", () => {
       }
     `);
 
-    await fs.writeFile(path.join(toolsDir, "bare-import-tool.ts"), `
+    await fs.writeFile(path.join(toolsDir, "bare-import-tool.tool.ts"), `
       import { defineTool } from "@travisliu/open-dynamic-workflow";
       export default defineTool({
         id: "bare-import-tool",

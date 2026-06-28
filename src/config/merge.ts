@@ -53,8 +53,8 @@ export function mergeConfig(
       ...defaults.workflow,
       ...(fileConfig.workflow ?? {}),
       discovery: {
-        ...defaults.workflow.discovery,
-        ...(fileConfig.workflow?.discovery ?? {})
+        ...(typeof defaults.workflow.discovery === "object" && defaults.workflow.discovery !== null ? defaults.workflow.discovery : {}),
+        ...(typeof fileConfig.workflow?.discovery === "object" && fileConfig.workflow?.discovery !== null ? fileConfig.workflow?.discovery : {})
       }
     }
   };

@@ -30,13 +30,13 @@ export async function validateWorkflowService(
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
 
-  // Load config (resolves paths, merges defaults, etc.)
   const config = await loadConfig({
     cwd,
     configPath: rawOptions.config,
     cli: {
       verbose: rawOptions.verbose
-    }
+    },
+    diagnosticContext: "validate"
   });
 
   // Resolve workflow target
@@ -47,10 +47,12 @@ export async function validateWorkflowService(
     mode: "validate"
   });
 
+  const { toResourcePatterns } = await import("../discovery-patterns.js");
+
   // Load shared agent registry
   const sharedAgentRegistry = await loadSharedAgentRegistry({
     cwd: config.cwd,
-    dir: config.sharedAgents?.dir,
+    discovery: toResourcePatterns(config._normalizedDiscovery.sharedAgents),
     maxDefinitions: config.sharedAgents?.maxDefinitions,
     strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
   });
@@ -58,7 +60,7 @@ export async function validateWorkflowService(
   // Load tool registry
   const toolRegistry = await loadToolRegistry({
     cwd: config.cwd,
-    dir: config.tools?.dir,
+    discovery: toResourcePatterns(config._normalizedDiscovery.tools),
     maxDefinitions: config.tools?.maxDefinitions ?? 100
   });
 
@@ -66,7 +68,7 @@ export async function validateWorkflowService(
   const workflowRegistry = await discoverWorkflowRegistry({
     rootWorkflowPath: resolved.workflowFile,
     cwd: config.cwd,
-    include: config.workflow.discovery.include,
+    discovery: toResourcePatterns(config._normalizedDiscovery.workflow),
     candidatePaths: resolved.candidatePaths,
     sharedAgentRegistry,
     toolRegistry,

@@ -19,7 +19,7 @@ export interface DoctorCommandInput {
 
 const defaultProviderHealthChecker: ProviderHealthChecker = {
   async checkAll(config): Promise<DoctorResult> {
-    const registry = createDefaultProviderRegistry({ config: { ...config, cliArgs: {} } });
+    const registry = createDefaultProviderRegistry({ config: { ...config, cliArgs: {} } as any });
     const providers = [];
     let ok = true;
     for (const adapter of registry.list()) {
@@ -97,20 +97,52 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
     configPath: rawOptions.config,
     cli: {
       verbose: rawOptions.verbose !== undefined ? !!rawOptions.verbose : undefined
+    },
+    diagnosticContext: "doctor",
+    discoveryCliOverrides: {
+      resourceType: rawOptions.resourceType,
+      dir: rawOptions.dir,
+      workflowsDir: rawOptions.workflowsDir,
+      agentsDir: rawOptions.agentsDir,
+      toolsDir: rawOptions.toolsDir
     }
   });
 
-  // Load tool registry
+  const toolDiagnostics: any[] = [];
+  const { toResourcePatterns } = await import("../discovery-patterns.js");
   try {
     const toolRegistry = await loadToolRegistry({
       cwd: config.cwd,
-      dir: config.tools?.dir,
-      maxDefinitions: config.tools?.maxDefinitions ?? 100
+      discovery: toResourcePatterns(config._normalizedDiscovery.tools),
+      maxDefinitions: config.tools?.maxDefinitions ?? 100,
+      configDiagnostics: toolDiagnostics
     });
     const toolCount = toolRegistry.list().length;
     console.log(`✓ Tool registry loaded (${toolCount} tools)`);
   } catch (err: any) {
     console.log(`✕ Tool registry failed to load: ${formatToolRegistryError(err)}`);
+  }
+
+  const allDoctorDiags = [
+    ...(config._configDiagnostics || []),
+    ...toolDiagnostics
+  ];
+
+  if (allDoctorDiags.length > 0) {
+    console.log("Configuration Diagnostics:");
+    for (const d of allDoctorDiags) {
+      const typeStr = d.severity === "error" ? "Error" : "Warning";
+      console.log(`  [${typeStr}] ${d.path} ${d.code}: ${d.message}`);
+      if (rawOptions.verbose) {
+        if (d.hint) {
+          console.log(`    Hint: ${d.hint}`);
+        }
+        if (d.migration) {
+          console.log(`    Migration: Migrate ${d.migration.ignoredKey} to ${d.resource}.include`);
+        }
+      }
+    }
+    console.log();
   }
 
   const checker = input.deps?.providerHealthChecker ?? defaultProviderHealthChecker;

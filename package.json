@@ -60,7 +60,7 @@
     "prepack": "npm run clean && npm run build",
     "pack:local": "npm pack",
     "publish:dry-run": "npm publish --dry-run",
-    "release:check": "npm run typecheck && npm run lint && npm test && npm run build && npm pack --dry-run"
+    "release:check": "npm run build && npm run typecheck && npm run lint && npm test && npm pack --dry-run"
   },
   "engines": {
     "node": ">=20"

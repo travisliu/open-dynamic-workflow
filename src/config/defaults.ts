@@ -92,12 +92,32 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
   },
   sharedAgents: {
     dir: ".open-dynamic-workflow/agents",
+    include: [
+      ".open-dynamic-workflow/agents/**/*.agent.js",
+      ".open-dynamic-workflow/agents/**/*.agent.ts",
+      ".open-dynamic-workflow/agents/**/*.agent.mjs",
+      ".open-dynamic-workflow/agents/**/*.agent.cjs"
+    ],
+    exclude: [
+      "**/*.test.*",
+      "**/*.spec.*"
+    ],
     allowDynamicIds: false,
     maxDefinitions: 100,
     strictPromptTemplateVariables: true
   },
   tools: {
     dir: ".open-dynamic-workflow/tools",
+    include: [
+      ".open-dynamic-workflow/tools/**/*.tool.js",
+      ".open-dynamic-workflow/tools/**/*.tool.ts",
+      ".open-dynamic-workflow/tools/**/*.tool.mjs",
+      ".open-dynamic-workflow/tools/**/*.tool.cjs"
+    ],
+    exclude: [
+      "**/*.test.*",
+      "**/*.spec.*"
+    ],
     concurrency: 4,
     maxDefinitions: 100
   },
@@ -105,6 +125,16 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
     discovery: {
       include: ["workflows/**/*.ts"]
     },
+    include: [
+      "workflows/**/*.workflow.js",
+      "workflows/**/*.workflow.ts",
+      "workflows/**/*.workflow.mjs",
+      "workflows/**/*.workflow.cjs"
+    ],
+    exclude: [
+      "**/*.test.*",
+      "**/*.spec.*"
+    ],
     maxDepth: 8,
     maxLoopRounds: 20
   },

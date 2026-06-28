@@ -154,7 +154,7 @@ describe("CLI package execution and installation", () => {
     execSync(`"${globalBinPath}" init --yes --cwd "${initProjectDir}"`, { encoding: "utf8" });
 
     expect(existsSync(path.join(initProjectDir, ".open-dynamic-workflow/config.yaml"))).toBe(true);
-    expect(existsSync(path.join(initProjectDir, "workflows/example.ts"))).toBe(true);
+    expect(existsSync(path.join(initProjectDir, "workflows/example.workflow.ts"))).toBe(true);
 
     // Init with smoke test
     const smokeTestDir = path.join(TEMP_NPM_DIR, "smoke-test-project");

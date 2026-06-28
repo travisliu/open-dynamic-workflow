@@ -3,7 +3,13 @@ import { getBuiltInProviderDefaults } from "../../config/defaults.js";
 import { validateConfig } from "../../config/schema.js";
 import type { OpenDynamicWorkflowConfig } from "../../config/types.js";
 import type { ResolvedInitOptions, SupportedInitProvider } from "./types.js";
-import { workflowIncludePattern, toDisplayPath } from "./defaults.js";
+import {
+  workflowIncludePatterns,
+  sharedAgentIncludePatterns,
+  toolIncludePatterns,
+  INIT_EXCLUDE_PATTERNS,
+  toDisplayPath
+} from "./defaults.js";
 
 export function buildGeneratedConfig(input: {
   options: ResolvedInitOptions;
@@ -48,20 +54,21 @@ export function buildGeneratedConfig(input: {
       verbose: false
     },
     sharedAgents: {
-      dir: agentsDirDisplay,
+      include: sharedAgentIncludePatterns(agentsDirDisplay),
+      exclude: INIT_EXCLUDE_PATTERNS,
       maxDefinitions: 100,
       allowDynamicIds: false,
       strictPromptTemplateVariables: true
     },
     tools: {
-      dir: toolsDirDisplay,
+      include: toolIncludePatterns(toolsDirDisplay),
+      exclude: INIT_EXCLUDE_PATTERNS,
       concurrency: 4,
       maxDefinitions: 100
     },
     workflow: {
-      discovery: {
-        include: [workflowIncludePattern(workflowsDirDisplay)]
-      },
+      include: workflowIncludePatterns(workflowsDirDisplay),
+      exclude: INIT_EXCLUDE_PATTERNS,
       maxDepth: 8,
       maxLoopRounds: 20
     }

@@ -200,4 +200,60 @@ describe("Merge Config", () => {
     expect(merged.providers.mock?.defaultThinkingEffort).toBe("low");
     expect(merged.providers.codex?.defaultThinkingEffort).toBeUndefined();
   });
+
+  it("sharedAgents.include and exclude override defaults while maxDefinitions remains defaulted", () => {
+    const fileConfig: any = {
+      sharedAgents: {
+        include: ["custom-agents/**/*.js"],
+        exclude: ["**/temp/**"]
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.sharedAgents.include).toEqual(["custom-agents/**/*.js"]);
+    expect(merged.sharedAgents.exclude).toEqual(["**/temp/**"]);
+    expect(merged.sharedAgents.maxDefinitions).toBe(100);
+  });
+
+  it("tools.include and tools.exclude override defaults while concurrency remains defaulted", () => {
+    const fileConfig: any = {
+      tools: {
+        include: ["custom-tools/**/*.js"],
+        exclude: ["custom-tools/**/*.test.js"]
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.tools.include).toEqual(["custom-tools/**/*.js"]);
+    expect(merged.tools.exclude).toEqual(["custom-tools/**/*.test.js"]);
+    expect(merged.tools.concurrency).toBe(4);
+  });
+
+  it("workflow.include and workflow.exclude override defaults while maxDepth and maxLoopRounds remain defaulted", () => {
+    const fileConfig: any = {
+      workflow: {
+        include: ["custom-workflows/**/*.js"],
+        exclude: ["custom-workflows/**/*.test.js"]
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.workflow.include).toEqual(["custom-workflows/**/*.js"]);
+    expect(merged.workflow.exclude).toEqual(["custom-workflows/**/*.test.js"]);
+    expect(merged.workflow.maxDepth).toBe(8);
+    expect(merged.workflow.maxLoopRounds).toBe(20);
+  });
+
+  it("workflow.discovery.include and workflow.discovery.exclude are preserved when flat fields are also present", () => {
+    const fileConfig: any = {
+      workflow: {
+        include: ["custom-workflows/**/*.js"],
+        discovery: {
+          include: ["legacy-workflows/**/*.ts"],
+          exclude: ["legacy-workflows/**/*.test.ts"]
+        }
+      }
+    };
+    const merged = mergeConfig(DEFAULT_CONFIG, fileConfig, {});
+    expect(merged.workflow.include).toEqual(["custom-workflows/**/*.js"]);
+    expect(merged.workflow.discovery.include).toEqual(["legacy-workflows/**/*.ts"]);
+    expect(merged.workflow.discovery.exclude).toEqual(["legacy-workflows/**/*.test.ts"]);
+  });
 });

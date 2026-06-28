@@ -9,13 +9,16 @@ import type { ToolRegistry } from "../types/tool.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { walk, matchGlob, getGlobBaseDir } from "../discovery/file-patterns.js";
+import type { ResourceDiscoveryPatterns } from "../discovery/types.js";
+import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
 
 export { walk, matchGlob, getGlobBaseDir };
 
 export interface DiscoverWorkflowRegistryInput {
   rootWorkflowPath: string;
   cwd: string;
-  include: string[];
+  include?: string[];
+  discovery?: ResourceDiscoveryPatterns;
   sharedAgentRegistry?: SharedAgentRegistry;
   candidatePaths?: string[] | undefined;
   allowDynamicSharedAgentIds?: boolean;
@@ -24,7 +27,7 @@ export interface DiscoverWorkflowRegistryInput {
 }
 
 export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryInput): Promise<WorkflowRegistry> {
-  const { rootWorkflowPath, cwd, include, sharedAgentRegistry, candidatePaths, maxLoopRounds } = input;
+  const { rootWorkflowPath, cwd, include, discovery, sharedAgentRegistry, candidatePaths, maxLoopRounds } = input;
   const absoluteCwd = resolve(cwd);
   const absoluteRootPath = resolve(absoluteCwd, rootWorkflowPath);
 
@@ -37,7 +40,26 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
     for (const p of candidatePaths) {
       pathsToProcess.add(resolve(absoluteCwd, p));
     }
-  } else {
+  } else if (discovery) {
+    const res = await collectResourceCandidateFiles({
+      cwd,
+      resourceType: "workflow",
+      include: discovery.include,
+      exclude: discovery.exclude,
+      compatibilityMode: discovery.compatibilityMode,
+      strict: false,
+    });
+    const escapeDiag = res.configDiagnostics.find(d => d.code === "CONFIG_PATH_SYMLINK_ESCAPE");
+    if (escapeDiag) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.SECURITY_POLICY_VIOLATION,
+        `Workflow file outside project root: ${resolve(absoluteCwd, escapeDiag.value as string)}`
+      );
+    }
+    for (const file of res.files) {
+      pathsToProcess.add(file.absolutePath);
+    }
+  } else if (include) {
     for (const pattern of include) {
       // Basic support for "dir/**/*.ts" or "dir/*.ts"
       let baseDir = getGlobBaseDir(pattern);

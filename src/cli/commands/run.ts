@@ -89,7 +89,8 @@ export async function runWorkflowService(
     cwd,
     configPath: rawOptions.config,
     outDir: rawOptions.out,
-    cli: cliOverrides
+    cli: cliOverrides,
+    diagnosticContext: "run"
   });
 
   // Resolve workflow target
@@ -111,10 +112,12 @@ export async function runWorkflowService(
     resolved.workflowName = rawOptions.originalWorkflowName;
   }
 
+  const { toResourcePatterns } = await import("../discovery-patterns.js");
+
   // Load shared agent registry
   const sharedAgentRegistry = await loadSharedAgentRegistry({
     cwd: config.cwd,
-    dir: config.sharedAgents?.dir,
+    discovery: toResourcePatterns(config._normalizedDiscovery.sharedAgents),
     maxDefinitions: config.sharedAgents?.maxDefinitions,
     strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
   });
@@ -122,7 +125,7 @@ export async function runWorkflowService(
   // Load tool registry
   const toolRegistry = await loadToolRegistry({
     cwd: config.cwd,
-    dir: config.tools?.dir,
+    discovery: toResourcePatterns(config._normalizedDiscovery.tools),
     maxDefinitions: config.tools?.maxDefinitions ?? 100
   });
 
@@ -130,7 +133,7 @@ export async function runWorkflowService(
   const workflowRegistry = await discoverWorkflowRegistry({
     rootWorkflowPath: resolved.workflowFile,
     cwd: config.cwd,
-    include: config.workflow.discovery.include,
+    discovery: toResourcePatterns(config._normalizedDiscovery.workflow),
     candidatePaths: resolved.candidatePaths,
     sharedAgentRegistry,
     toolRegistry,

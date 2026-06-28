@@ -66,14 +66,22 @@ export async function listCommand(input: ListCommandInput): Promise<void> {
       report: reportMode,
       verbose: rawOptions.verbose,
     },
+    diagnosticContext: rawOptions.strict ? "list-strict" : "list",
+    discoveryCliOverrides: {
+      resourceType: cliResourceType,
+      dir: rawOptions.dir,
+      workflowsDir: rawOptions.workflowsDir,
+      agentsDir: rawOptions.agentsDir,
+      toolsDir: rawOptions.toolsDir
+    }
   });
 
-  const directories = resolveDiscoveryDirectories({
-    resourceType: cliResourceType,
-    rawOptions,
-    config,
-    cwd: config.cwd,
-  });
+  const { toResourcePatterns } = await import("../discovery-patterns.js");
+  const patterns = {
+    workflow: toResourcePatterns(config._normalizedDiscovery.workflow),
+    agent: toResourcePatterns(config._normalizedDiscovery.sharedAgents),
+    tool: toResourcePatterns(config._normalizedDiscovery.tools),
+  };
 
   const resourceTypes =
     cliResourceType === "all" ? (["workflow", "agent", "tool"] as const) : [cliResourceType];
@@ -82,17 +90,24 @@ export async function listCommand(input: ListCommandInput): Promise<void> {
   const result = await service.discover({
     cwd: config.cwd,
     resourceTypes: [...resourceTypes],
-    directories,
+    patterns,
     verbose: !!rawOptions.verbose,
     strict: !!rawOptions.strict,
   });
 
   const updatedWarnings = result.warnings.map(d => attachHintToDiagnostic(d, hintContext));
   const updatedErrors = result.errors.map(d => attachHintToDiagnostic(d, hintContext));
+  
+  const finalConfigDiagnostics = [
+    ...(config._configDiagnostics || []),
+    ...(result.configDiagnostics || []),
+  ];
+
   const updatedResult = {
     ...result,
     warnings: updatedWarnings,
     errors: updatedErrors,
+    configDiagnostics: finalConfigDiagnostics,
   };
 
   const reporter = createListReporter({

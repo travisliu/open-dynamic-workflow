@@ -78,7 +78,8 @@ describe("Nested Workflow Security", () => {
     ]);
 
     expect(error).toBeDefined();
-    expect(error.code).toBe("SECURITY_POLICY_VIOLATION");
+    expect(error.code).toBe("CONFIG_VALIDATION_ERROR");
+    expect(error.message).toContain("CONFIG_PATH_ABSOLUTE_CONFIG_PATTERN");
     
     await fs.rm(outsideDir, { recursive: true, force: true });
   });
@@ -115,9 +116,7 @@ describe("Nested Workflow Security", () => {
     const testConfig = {
       workflow: {
         discovery: {
-          include: [
-            path.join(TEMP_DIR, "*.workflow.js")
-          ]
+          include: ["*.workflow.js"]
         }
       }
     };

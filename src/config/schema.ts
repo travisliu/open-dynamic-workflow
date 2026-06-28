@@ -326,25 +326,40 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
       "Config value 'sharedAgents' must be an object."
     );
   }
-  if (typeof config.sharedAgents.dir !== "string" || config.sharedAgents.dir.trim() === "") {
-    throw new OpenDynamicWorkflowError(
-      ErrorCode.CONFIG_VALIDATION_ERROR,
-      "Config value 'sharedAgents.dir' must be a non-empty string."
-    );
+
+  const validSharedAgentsKeys = [
+    "dir",
+    "include",
+    "exclude",
+    "allowDynamicIds",
+    "maxDefinitions",
+    "strictPromptTemplateVariables"
+  ];
+  for (const key of Object.keys(config.sharedAgents)) {
+    if (!validSharedAgentsKeys.includes(key)) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Config value 'sharedAgents.${key}' is not a supported key.`
+      );
+    }
   }
-  if (!Number.isInteger(config.sharedAgents.maxDefinitions) || config.sharedAgents.maxDefinitions < 1) {
-    throw new OpenDynamicWorkflowError(
-      ErrorCode.CONFIG_VALIDATION_ERROR,
-      "Config value 'sharedAgents.maxDefinitions' must be a positive integer."
-    );
+  // Discovery path fields are validated by src/config/path-discovery.ts so
+  // loadConfig() can return structured diagnostics instead of schema hard-fails.
+  if (config.sharedAgents.maxDefinitions !== undefined) {
+    if (!Number.isInteger(config.sharedAgents.maxDefinitions) || config.sharedAgents.maxDefinitions < 1) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'sharedAgents.maxDefinitions' must be a positive integer."
+      );
+    }
   }
-  if (config.sharedAgents.allowDynamicIds !== false) {
+  if (config.sharedAgents.allowDynamicIds !== undefined && config.sharedAgents.allowDynamicIds !== false) {
     throw new OpenDynamicWorkflowError(
       ErrorCode.CONFIG_VALIDATION_ERROR,
       "Config value 'sharedAgents.allowDynamicIds' must be false in MVP."
     );
   }
-  if (typeof config.sharedAgents.strictPromptTemplateVariables !== "boolean") {
+  if (config.sharedAgents.strictPromptTemplateVariables !== undefined && typeof config.sharedAgents.strictPromptTemplateVariables !== "boolean") {
     throw new OpenDynamicWorkflowError(
       ErrorCode.CONFIG_VALIDATION_ERROR,
       "Config value 'sharedAgents.strictPromptTemplateVariables' must be a boolean."
@@ -360,7 +375,7 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
       );
     }
 
-    const validToolsKeys = ["dir", "concurrency", "maxDefinitions"];
+    const validToolsKeys = ["dir", "concurrency", "maxDefinitions", "include", "exclude"];
     for (const key of Object.keys(config.tools)) {
       if (!validToolsKeys.includes(key)) {
         throw new OpenDynamicWorkflowError(
@@ -370,23 +385,21 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
       }
     }
 
-    if (typeof config.tools.dir !== "string" || config.tools.dir.trim() === "") {
-      throw new OpenDynamicWorkflowError(
-        ErrorCode.CONFIG_VALIDATION_ERROR,
-        "Config value 'tools.dir' must be a non-empty string."
-      );
+    if (config.tools.concurrency !== undefined) {
+      if (!Number.isInteger(config.tools.concurrency) || config.tools.concurrency < 1) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          "Config value 'tools.concurrency' must be a positive integer."
+        );
+      }
     }
-    if (!Number.isInteger(config.tools.concurrency) || config.tools.concurrency < 1) {
-      throw new OpenDynamicWorkflowError(
-        ErrorCode.CONFIG_VALIDATION_ERROR,
-        "Config value 'tools.concurrency' must be a positive integer."
-      );
-    }
-    if (!Number.isInteger(config.tools.maxDefinitions) || config.tools.maxDefinitions < 1) {
-      throw new OpenDynamicWorkflowError(
-        ErrorCode.CONFIG_VALIDATION_ERROR,
-        "Config value 'tools.maxDefinitions' must be a positive integer."
-      );
+    if (config.tools.maxDefinitions !== undefined) {
+      if (!Number.isInteger(config.tools.maxDefinitions) || config.tools.maxDefinitions < 1) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          "Config value 'tools.maxDefinitions' must be a positive integer."
+        );
+      }
     }
   }
 
@@ -397,36 +410,38 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
       "Config value 'workflow' must be an object."
     );
   }
-  if (typeof config.workflow.discovery !== "object" || config.workflow.discovery === null) {
-    throw new OpenDynamicWorkflowError(
-      ErrorCode.CONFIG_VALIDATION_ERROR,
-      "Config value 'workflow.discovery' must be an object."
-    );
-  }
-  if (!Array.isArray(config.workflow.discovery.include)) {
-    throw new OpenDynamicWorkflowError(
-      ErrorCode.CONFIG_VALIDATION_ERROR,
-      "Config value 'workflow.discovery.include' must be an array of strings."
-    );
-  }
-  for (const glob of config.workflow.discovery.include) {
-    if (typeof glob !== "string" || glob.trim() === "") {
+
+  const validWorkflowKeys = [
+    "discovery",
+    "include",
+    "exclude",
+    "maxDepth",
+    "maxLoopRounds"
+  ];
+  for (const key of Object.keys(config.workflow)) {
+    if (!validWorkflowKeys.includes(key)) {
       throw new OpenDynamicWorkflowError(
         ErrorCode.CONFIG_VALIDATION_ERROR,
-        "Config value 'workflow.discovery.include' must contain only non-empty strings."
+        `Config value 'workflow.${key}' is not a supported key.`
       );
     }
   }
-  if (!Number.isInteger(config.workflow.maxDepth) || config.workflow.maxDepth < 1) {
-    throw new OpenDynamicWorkflowError(
-      ErrorCode.CONFIG_VALIDATION_ERROR,
-      "Config value 'workflow.maxDepth' must be a positive integer."
-    );
+  // Discovery path fields are validated by src/config/path-discovery.ts so
+  // loadConfig() can return structured diagnostics instead of schema hard-fails.
+  if (config.workflow.maxDepth !== undefined) {
+    if (!Number.isInteger(config.workflow.maxDepth) || config.workflow.maxDepth < 1) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'workflow.maxDepth' must be a positive integer."
+      );
+    }
   }
-  if (!Number.isInteger(config.workflow.maxLoopRounds) || config.workflow.maxLoopRounds < 1) {
-    throw new OpenDynamicWorkflowError(
-      ErrorCode.CONFIG_VALIDATION_ERROR,
-      "Config value 'workflow.maxLoopRounds' must be a positive integer."
-    );
+  if (config.workflow.maxLoopRounds !== undefined) {
+    if (!Number.isInteger(config.workflow.maxLoopRounds) || config.workflow.maxLoopRounds < 1) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'workflow.maxLoopRounds' must be a positive integer."
+      );
+    }
   }
 }

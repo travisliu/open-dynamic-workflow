@@ -128,10 +128,12 @@ describe("listCommand", () => {
 
     expect(mockDiscoveryService.discover).toHaveBeenCalledWith(
       expect.objectContaining({
-        directories: expect.objectContaining({
-          workflowInclude: expect.arrayContaining([
-            expect.stringContaining("my/workflows"),
-          ]),
+        patterns: expect.objectContaining({
+          workflow: expect.objectContaining({
+            include: expect.arrayContaining([
+              expect.stringContaining("my/workflows"),
+            ]),
+          }),
         }),
       })
     );

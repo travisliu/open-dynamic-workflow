@@ -319,4 +319,40 @@ describe("loadSharedAgentRegistry", () => {
     );
     await expect(loadSharedAgentRegistry({ cwd: tempDir, dir: "agents-infinite" })).rejects.toThrow(/timeout|Failed to evaluate/);
   });
+
+  it("loads shared agents using discovery pattern with include and exclude", async () => {
+    const agentsDir = join(tempDir, "agents-pattern");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(join(agentsDir, "a1.agent.js"), "export default defineAgent({ id: 'a1', run: async () => ({ ok: true }) });");
+    await writeFile(join(agentsDir, "a2.agent.js"), "export default defineAgent({ id: 'a2', run: async () => ({ ok: true }) });");
+
+    const registry = await loadSharedAgentRegistry({
+      cwd: tempDir,
+      discovery: {
+        include: ["agents-pattern/**/*.js"],
+        exclude: ["agents-pattern/a2.agent.js"],
+        compatibilityMode: "new-suffix-specific",
+      }
+    });
+
+    expect(registry.list()).toHaveLength(1);
+    expect(registry.get("a1")).toBeDefined();
+    expect(registry.get("a2")).toBeUndefined();
+  });
+
+  it("loads shared agents using candidateFiles", async () => {
+    const agentsDir = join(tempDir, "agents-candidates");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(join(agentsDir, "c1.agent.js"), "export default defineAgent({ id: 'c1', run: async () => ({ ok: true }) });");
+    await writeFile(join(agentsDir, "c2.agent.js"), "export default defineAgent({ id: 'c2', run: async () => ({ ok: true }) });");
+
+    const registry = await loadSharedAgentRegistry({
+      cwd: tempDir,
+      candidateFiles: [join(agentsDir, "c1.agent.js")]
+    });
+
+    expect(registry.list()).toHaveLength(1);
+    expect(registry.get("c1")).toBeDefined();
+    expect(registry.get("c2")).toBeUndefined();
+  });
 });

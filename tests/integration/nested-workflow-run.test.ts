@@ -230,7 +230,7 @@ export default async () => {
       workflow: {
         discovery: {
           include: [
-            "."
+            "*.js"
           ]
         }
       }

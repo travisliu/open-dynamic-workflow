@@ -270,7 +270,7 @@ throw new Error("EXECUTED_AT_TOP_LEVEL");
 defaultProvider: mock
 workflow:
   discovery:
-    include: ["${TEMP_DIR}/*.js"]
+    include: ["${path.relative(process.cwd(), TEMP_DIR)}/*.js"]
 `);
 
     // 2. Validate by name - should NOT throw because it uses static discovery

@@ -4,7 +4,8 @@ import {
   CandidateFile, 
   DiscoveryDirectories, 
   ListDiagnostic, 
-  ListResourceType 
+  ListResourceType,
+  DiscoveryPatterns
 } from "./types.js";
 import { 
   listDiagnostic, 
@@ -13,14 +14,295 @@ import {
   LIST_FILE_UNREADABLE 
 } from "./diagnostics.js";
 import { walk, matchGlob, getGlobBaseDir } from "./file-patterns.js";
+import type { DiscoveryCompatibilityMode, ConfigDiagnostic, DiscoveryResource } from "../config/types.js";
+import { checkMatchedFileSafety } from "../config/path-safety.js";
+
+function mapResourceTypeToDiscoveryResource(rt: ListResourceType): DiscoveryResource {
+  if (rt === "agent") return "sharedAgents";
+  if (rt === "tool") return "tools";
+  return "workflow";
+}
+
+function basenamePosix(relativePath: string): string {
+  const normalized = relativePath.replace(/\\/g, "/");
+  return normalized.split("/").pop() ?? normalized;
+}
+
+export async function collectResourceCandidateFiles(input: {
+  cwd: string;
+  resourceType: ListResourceType;
+  include: string[];
+  exclude: string[];
+  compatibilityMode: DiscoveryCompatibilityMode;
+  strict: boolean;
+}): Promise<{ files: CandidateFile[]; diagnostics: ListDiagnostic[]; configDiagnostics: ConfigDiagnostic[] }> {
+  const { cwd, resourceType, include, exclude, compatibilityMode, strict } = input;
+  const files: CandidateFile[] = [];
+  const diagnostics: ListDiagnostic[] = [];
+  const configDiagnostics: ConfigDiagnostic[] = [];
+
+  const absoluteCwd = resolve(cwd);
+  const supportedExtensions = [".ts", ".js", ".mjs", ".cjs"];
+  const seenPaths = new Set<string>();
+
+  const discoveryResource = mapResourceTypeToDiscoveryResource(resourceType);
+  const missingBases = new Set<string>();
+  const notDirectoryBases = new Set<string>();
+
+  const includeMatchedCount = new Map<string, number>();
+  for (const inc of include) {
+    includeMatchedCount.set(inc, 0);
+  }
+  const excludeMatchedCount = new Map<string, number>();
+  for (const exc of exclude) {
+    excludeMatchedCount.set(exc, 0);
+  }
+
+  async function tryAddCandidate(absolutePath: string, relativePathToReport: string, sourcePattern: string) {
+    let suffixMatches = false;
+    if (compatibilityMode === "legacy-compatible" || compatibilityMode === "cli-dir-compatible") {
+      suffixMatches = true;
+    } else {
+      const marker = resourceType === "workflow" ? ".workflow." : resourceType === "agent" ? ".agent." : ".tool.";
+      suffixMatches = basenamePosix(relativePathToReport).includes(marker);
+    }
+
+    if (!suffixMatches) return;
+
+    let isExcluded = false;
+    for (const exc of exclude) {
+      if (matchGlob(relativePathToReport, exc)) {
+        isExcluded = true;
+        excludeMatchedCount.set(exc, (excludeMatchedCount.get(exc) || 0) + 1);
+      }
+    }
+    if (isExcluded) return;
+
+    const safetyResult = await checkMatchedFileSafety({
+      cwd: absoluteCwd,
+      resource: discoveryResource,
+      path: `${discoveryResource}.include`,
+      filePath: relativePathToReport,
+      source: compatibilityMode === "cli-dir-compatible" ? "cli-override" : "new",
+    });
+
+    if (safetyResult.diagnostics && safetyResult.diagnostics.length > 0) {
+      configDiagnostics.push(...safetyResult.diagnostics);
+      return;
+    }
+
+    const targetPath = safetyResult.realPath || absolutePath;
+    const realStats = await fs.stat(targetPath);
+    if (!realStats.isFile()) return;
+
+    if (seenPaths.has(targetPath)) return;
+    seenPaths.add(targetPath);
+
+    includeMatchedCount.set(sourcePattern, (includeMatchedCount.get(sourcePattern) || 0) + 1);
+
+    files.push({
+      resourceType,
+      absolutePath: targetPath,
+      relativePath: relativePathToReport,
+      realPath: targetPath,
+      sourcePattern,
+    });
+  }
+
+  for (const pattern of include) {
+    if (!pattern.includes("*")) {
+      const globPattern = isAbsolute(pattern) ? relative(absoluteCwd, pattern) : pattern;
+      const resolvedPath = resolve(absoluteCwd, globPattern);
+      const relativePathToReport = globPattern.split(sep).join("/");
+      try {
+        const stats = await fs.stat(resolvedPath);
+        if (stats.isDirectory()) {
+          if (!notDirectoryBases.has(relativePathToReport)) {
+            notDirectoryBases.add(relativePathToReport);
+            diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
+              resourceType,
+              code: LIST_FILE_UNREADABLE,
+              message: `Path is not a directory: ${pattern}`,
+              path: pattern,
+            }), strict));
+          }
+          continue;
+        }
+
+        const hasSupportedExtension = supportedExtensions.some(ext => resolvedPath.endsWith(ext));
+        if (!hasSupportedExtension) {
+          continue;
+        }
+
+        await tryAddCandidate(resolvedPath, relativePathToReport, pattern);
+      } catch (err: any) {
+        if (err.code === "ENOENT") {
+          if (!missingBases.has(relativePathToReport)) {
+            missingBases.add(relativePathToReport);
+            diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
+              resourceType,
+              code: LIST_DIRECTORY_NOT_FOUND,
+              message: `Directory not found: ${pattern}`,
+              path: pattern,
+            }), strict));
+          }
+        } else {
+          diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
+            resourceType,
+            code: LIST_FILE_UNREADABLE,
+            message: `Could not read file: ${pattern} (${err.message})`,
+            path: pattern,
+          }), strict));
+        }
+      }
+      continue;
+    }
+
+    let baseDir = getGlobBaseDir(pattern);
+    if (baseDir.startsWith("./")) {
+      baseDir = baseDir.slice(2);
+    }
+    const absoluteBaseDir = resolve(absoluteCwd, baseDir);
+    const globPattern = isAbsolute(pattern) ? relative(absoluteCwd, pattern) : pattern;
+
+    try {
+      const stats = await fs.stat(absoluteBaseDir);
+      if (!stats.isDirectory()) {
+        if (!notDirectoryBases.has(baseDir)) {
+          notDirectoryBases.add(baseDir);
+          diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
+            resourceType,
+            code: LIST_FILE_UNREADABLE,
+            message: `Path is not a directory: ${baseDir}`,
+            path: baseDir,
+          }), strict));
+        }
+        continue;
+      }
+
+      const escapedSymlink = await checkSymlinkEscapes(absoluteBaseDir, absoluteCwd);
+      if (escapedSymlink) {
+        const relativePathToReport = relative(absoluteCwd, escapedSymlink).split(sep).join("/");
+        configDiagnostics.push({
+          resource: discoveryResource,
+          path: `${discoveryResource}.include`,
+          severity: "error",
+          code: "CONFIG_PATH_SYMLINK_ESCAPE",
+          message: `A matched ${discoveryResource} file resolves through a symlink outside cwd and will not be loaded.`,
+          value: relativePathToReport,
+          fatalInStrictContext: true,
+        });
+      }
+
+      for await (const p of walk(absoluteBaseDir)) {
+        const hasSupportedExtension = supportedExtensions.some(ext => p.endsWith(ext));
+        if (!hasSupportedExtension) continue;
+
+        const relPath = relative(absoluteCwd, p);
+        if (matchGlob(relPath, globPattern)) {
+          const relativePathToReport = relPath.split(sep).join("/");
+          try {
+            await tryAddCandidate(p, relativePathToReport, pattern);
+          } catch {
+            diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
+              resourceType,
+              code: LIST_FILE_UNREADABLE,
+              message: `Could not read file or resolve symlink: ${p}`,
+              path: relativePathToReport,
+            }), strict));
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.code === "ENOENT") {
+        if (!missingBases.has(baseDir)) {
+          missingBases.add(baseDir);
+          diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
+            resourceType,
+            code: LIST_DIRECTORY_NOT_FOUND,
+            message: `Directory not found: ${baseDir}`,
+            path: baseDir,
+          }), strict));
+        }
+      } else {
+        diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
+          resourceType,
+          code: LIST_FILE_UNREADABLE,
+          message: `Error reading directory: ${baseDir} (${err.message})`,
+          path: baseDir,
+        }), strict));
+      }
+    }
+  }
+
+  for (const [inc, count] of includeMatchedCount.entries()) {
+    if (count === 0) {
+      configDiagnostics.push({
+        resource: discoveryResource,
+        path: `${discoveryResource}.include[${include.indexOf(inc)}]`,
+        severity: "warning",
+        code: "CONFIG_PATH_INCLUDE_MATCHED_NOTHING",
+        message: `Include pattern '${inc}' did not match any files.`,
+        value: inc,
+        fatalInStrictContext: false,
+      });
+    }
+  }
+
+  for (const [exc, count] of excludeMatchedCount.entries()) {
+    if (count === 0) {
+      configDiagnostics.push({
+        resource: discoveryResource,
+        path: `${discoveryResource}.exclude[${exclude.indexOf(exc)}]`,
+        severity: "warning",
+        code: "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING",
+        message: `Exclude pattern '${exc}' did not match any files or was redundant.`,
+        value: exc,
+        fatalInStrictContext: false,
+      });
+    }
+  }
+
+  files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+  return { files, diagnostics, configDiagnostics };
+}
 
 export async function collectCandidateFiles(input: {
   cwd: string;
   resourceTypes: ListResourceType[];
-  directories: DiscoveryDirectories;
+  directories?: DiscoveryDirectories;
+  patterns?: DiscoveryPatterns;
   strict: boolean;
-}): Promise<{ files: CandidateFile[]; diagnostics: ListDiagnostic[] }> {
-  const { cwd, resourceTypes, directories, strict } = input;
+}): Promise<{ files: CandidateFile[]; diagnostics: ListDiagnostic[]; configDiagnostics?: ConfigDiagnostic[] }> {
+  const { cwd, resourceTypes, directories, patterns, strict } = input;
+
+  if (patterns) {
+    const files: CandidateFile[] = [];
+    const diagnostics: ListDiagnostic[] = [];
+    const configDiagnostics: ConfigDiagnostic[] = [];
+
+    for (const resourceType of resourceTypes) {
+      const patternObj = patterns[resourceType];
+      if (!patternObj) continue;
+      const res = await collectResourceCandidateFiles({
+        cwd,
+        resourceType,
+        include: patternObj.include,
+        exclude: patternObj.exclude,
+        compatibilityMode: patternObj.compatibilityMode,
+        strict,
+      });
+      files.push(...res.files);
+      diagnostics.push(...res.diagnostics);
+      configDiagnostics.push(...res.configDiagnostics);
+    }
+
+    files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+    return { files, diagnostics, configDiagnostics };
+  }
+
+  // Fallback to legacy directories scanning
   const files: CandidateFile[] = [];
   const diagnostics: ListDiagnostic[] = [];
 
@@ -30,6 +312,7 @@ export async function collectCandidateFiles(input: {
 
   for (const resourceType of resourceTypes) {
     if (resourceType === "workflow") {
+      if (!directories) continue;
       const includePatterns = directories.workflowInclude;
       for (const pattern of includePatterns) {
         let baseDir = getGlobBaseDir(pattern);
@@ -51,7 +334,6 @@ export async function collectCandidateFiles(input: {
             continue;
           }
 
-          // Walk the base directory and find matches
           for await (const p of walk(absoluteBaseDir)) {
             const hasSupportedExtension = supportedExtensions.some(ext => p.endsWith(ext));
             if (!hasSupportedExtension) continue;
@@ -61,15 +343,12 @@ export async function collectCandidateFiles(input: {
               const relativePathToReport = relPath.split(sep).join("/");
               
               try {
-                // Use lstat first to check if it is a symlink
                 const linkStats = await fs.lstat(p);
-                
                 let targetPath = p;
                 if (linkStats.isSymbolicLink()) {
                   targetPath = await fs.realpath(p);
                   const relativeToCwd = relative(absoluteCwd, targetPath);
 
-                  // Security check: do not follow symlinks outside cwd
                   if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
                      diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
                       resourceType,
@@ -91,6 +370,8 @@ export async function collectCandidateFiles(input: {
                   resourceType,
                   absolutePath: targetPath,
                   relativePath: relativePathToReport,
+                  realPath: targetPath,
+                  sourcePattern: pattern,
                 });
               } catch {
                 diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
@@ -121,7 +402,7 @@ export async function collectCandidateFiles(input: {
         }
       }
     } else {
-      // agents and tools still use single directory scanning
+      if (!directories) continue;
       const dir = resourceType === "agent" ? directories.agentsDir : directories.toolsDir;
       const absoluteDir = resolve(absoluteCwd, dir);
 
@@ -147,15 +428,12 @@ export async function collectCandidateFiles(input: {
           const relativePathToReport = relative(absoluteCwd, absolutePath).split(sep).join("/");
           
           try {
-            // Use lstat first to check if it is a symlink
             const linkStats = await fs.lstat(absolutePath);
-            
             let targetPath = absolutePath;
             if (linkStats.isSymbolicLink()) {
               targetPath = await fs.realpath(absolutePath);
               const relativeToCwd = relative(absoluteCwd, targetPath);
 
-              // Security check: do not follow symlinks outside cwd
               if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
                  diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
                   resourceType,
@@ -177,6 +455,8 @@ export async function collectCandidateFiles(input: {
               resourceType,
               absolutePath: targetPath,
               relativePath: relativePathToReport,
+              realPath: targetPath,
+              sourcePattern: "",
             });
           } catch {
             diagnostics.push(normalizeDiagnosticSeverity(listDiagnostic({
@@ -207,8 +487,36 @@ export async function collectCandidateFiles(input: {
     }
   }
 
-  // Sort candidate files by normalized relative path.
   files.sort((a, b) => a.relativePath.localeCompare(b.relativePath));
-
   return { files, diagnostics };
 }
+
+async function checkSymlinkEscapes(dir: string, absoluteCwd: string, visitedDirs = new Set<string>()): Promise<string | undefined> {
+  try {
+    const realDir = await fs.realpath(dir);
+    if (visitedDirs.has(realDir)) return undefined;
+    visitedDirs.add(realDir);
+
+    const entries = await fs.readdir(realDir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = join(realDir, entry.name);
+      if (entry.isSymbolicLink()) {
+        const realTarget = await fs.realpath(fullPath);
+        const relativeToCwd = relative(absoluteCwd, realTarget);
+        if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
+          return fullPath;
+        }
+        const targetStat = await fs.stat(realTarget);
+        if (targetStat.isDirectory()) {
+          const escapedPath = await checkSymlinkEscapes(realTarget, absoluteCwd, visitedDirs);
+          if (escapedPath) return escapedPath;
+        }
+      } else if (entry.isDirectory()) {
+        const escapedPath = await checkSymlinkEscapes(fullPath, absoluteCwd, visitedDirs);
+        if (escapedPath) return escapedPath;
+      }
+    }
+  } catch {}
+  return undefined;
+}
+

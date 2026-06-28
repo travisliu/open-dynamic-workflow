@@ -580,12 +580,44 @@ export default result;
   });
 
   it("verifies child workflow tool scope from loop rounds", async () => {
-    const toolsDir = path.resolve(".open-dynamic-workflow/tools");
+    const toolsDir = path.join(TEMP_DIR, "tools");
     const childWfPath = path.resolve("tests/fixtures/workflows/loop-tool-child.workflow.js");
     const parentWfPath = path.resolve("tests/fixtures/workflows/loop-tool-parent.workflow.js");
-    const toolEchoPath = path.join(toolsDir, "echo.ts");
+    const toolEchoPath = path.join(toolsDir, "echo.tool.ts");
+    const customConfigPath = path.join(TEMP_DIR, "loop-tool-integration.config.yaml");
 
     await fs.mkdir(toolsDir, { recursive: true });
+
+    // Create the custom config file that overrides tools.dir
+    await fs.writeFile(customConfigPath, `
+defaultProvider: mock
+concurrency: 2
+timeoutMs: 30000
+
+workflow:
+  discovery:
+    include:
+      - "tests/fixtures/workflows/*.js"
+
+tools:
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
+
+providers:
+  mock:
+    command: mock
+    responses:
+      default:
+        text: "mock response"
+
+security:
+  passEnv: []
+  redactEnv:
+    - OPENAI_API_KEY
+    - GEMINI_API_KEY
+    - GOOGLE_API_KEY
+    - "*_TOKEN"
+    - "*_SECRET"
+    `, "utf8");
 
     // 2. Create the real tool echo
     const srcToolsPath = path.resolve("src/tools/index.ts");
@@ -626,7 +658,7 @@ export default result;
     const result = await runCli([
       "run",
       parentWfPath,
-      "--config", configPath,
+      "--config", customConfigPath,
       "--out", TEMP_DIR,
       "--report", "json"
     ]);
@@ -650,7 +682,7 @@ export default result;
       expect(childSummaries).toHaveLength(1);
 
       const runs = await fs.readdir(TEMP_DIR);
-      const runDir = path.join(TEMP_DIR, runs[0]!);
+      const runDir = path.join(TEMP_DIR, runs.find((r) => r.startsWith("20")) || runs[0]!);
       const nestedCalls = JSON.parse(
         await fs.readFile(path.join(runDir, "loops/child-tool-loop/rounds/0001/nested-calls.json"), "utf8")
       );
@@ -659,6 +691,7 @@ export default result;
       await fs.rm(toolEchoPath, { force: true });
       await fs.rm(childWfPath, { force: true });
       await fs.rm(parentWfPath, { force: true });
+      await fs.rm(customConfigPath, { force: true });
     }
   });
 

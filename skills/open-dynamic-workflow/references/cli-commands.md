@@ -22,7 +22,7 @@ By default, `open-dynamic-workflow init` creates:
   agents/           # Shared agents directory (empty)
   tools/            # Tools directory (empty)
 workflows/
-  example.ts        # Starter workflow template
+  example.workflow.ts # Starter workflow template
 ```
 
 ### Common options
@@ -56,7 +56,11 @@ open-dynamic-workflow init --force --provider codex
 * **Non-interactive mode**: Triggered by `--yes` or non-TTY stdin. Uses defaults or requested options.
 * **Mock fallback**: If a requested provider is not found in `PATH`, `init` offers a fallback to the `mock` provider.
 * **Safety**: Does **not** modify `package.json`. Existing files are skipped unless `--force` is used.
-* **Smoke test**: If `--run-smoke-test` is used, Open Dynamic Workflow performs a `validate` and `run --provider mock` on the generated example workflow.
+* **Smoke test**: If `--run-smoke-test` is used, Open Dynamic Workflow performs a `validate` and `run --provider mock` on the generated example workflow (`workflows/example.workflow.ts`).
+* **Path configuration**:
+  - The generated `config.yaml` uses the new flat `include` / `exclude` arrays rather than legacy `dir` or `workflow.discovery` fields.
+  - Suffix-specific patterns (e.g. `*.workflow.js`, `*.agent.ts`) are generated explicitly instead of using brace expansion.
+  - `--workflows-dir`, `--agents-dir`, and `--tools-dir` options will customize both the created physical directories and their corresponding generated include patterns.
 
 ---
 
@@ -164,9 +168,9 @@ open-dynamic-workflow validate workflows/review.ts
 * Static `loop()` call shapes and `LoopOptions` are checked.
 * Static loop `maxRounds` values must be positive integers and must not exceed `workflow.maxLoopRounds` (default 20).
 * Global `tool()` usage inside loop callbacks is rejected.
-* Shared agent definitions in `sharedAgents.dir` are loaded and validated.
+* Shared agent definitions configured via `sharedAgents.include` / `exclude` (or legacy `sharedAgents.dir` fallback) are loaded and validated.
 * Verifies that `agent({ definition })` and `ctx.agent({ definition })` calls use string literal IDs that exist in the shared agent registry (when `sharedAgents.allowDynamicIds` is false).
-* Tool definitions in `tools.dir` are loaded and validated.
+* Tool definitions configured via `tools.include` / `exclude` (or legacy `tools.dir` fallback) are loaded and validated.
 * Verifies that `tool({ definition })` calls use string literal IDs that exist in the tool registry.
 
 ---
@@ -224,17 +228,25 @@ open-dynamic-workflow list workflows --dir examples/workflows
 
 ### Resource Discovery
 
-* **Workflows**: Scanned from the directory configured in `workflows.dir` (defaults to `workflows`).
-* **Agents**: Scanned from the directory configured in `sharedAgents.dir` (defaults to `.open-dynamic-workflow/agents`).
-* **Tools**: Scanned from the directory configured in `tools.dir` (defaults to `.open-dynamic-workflow/tools`).
+* **Workflows**: Scanned using the glob patterns configured in `workflow.include` and filtered by `workflow.exclude` (defaults to `workflows/**/*.workflow.js` and `workflows/**/*.workflow.ts`).
+* **Agents**: Scanned using the glob patterns configured in `sharedAgents.include` and filtered by `sharedAgents.exclude` (defaults to `.open-dynamic-workflow/agents/**/*.agent.js` and `.open-dynamic-workflow/agents/**/*.agent.ts`).
+* **Tools**: Scanned using the glob patterns configured in `tools.include` and filtered by `tools.exclude` (defaults to `.open-dynamic-workflow/tools/**/*.tool.js` and `.open-dynamic-workflow/tools/**/*.tool.ts`).
 
-The `list` command is lenient by default. It will report errors and warnings but exit with code `0` unless `--strict` is used. In strict mode, any discovery error (e.g., duplicate IDs, invalid definitions) results in a non-zero exit code (3).
+#### Directory Overrides via CLI flags
+If directory flags are supplied via the CLI (e.g., `--dir`, `--workflows-dir`, `--agents-dir`, `--tools-dir`), they dynamically override the active config's `include` patterns for the targeted resource type:
+- They **replace** the target resource's include patterns with glob patterns pointing to the specified directory.
+- They **preserve** the resource's configured exclude patterns.
+- For example, `open-dynamic-workflow list workflows --dir examples/workflows` targets only workflows in the `examples/workflows` directory while respecting active workflow excludes.
+- Unrelated resource types (e.g., agents and tools when querying all resources with `open-dynamic-workflow list --agents-dir custom-agents`) remain unchanged except for the targeted override.
+
+The `list` command is lenient by default. It will report configuration warnings (such as legacy key usages) and discoverable resource errors but will exit with code `0` unless strict mode is enabled.
+In strict mode (using the `--strict` flag), any fatal path configurations (like symlink escapes, directory-only includes, or out-of-workspace patterns) or resource errors will cause the command to exit with a non-zero exit code (3).
 
 ---
 
 ## Shared Agent Loading & Security Policy
 
-When executing `open-dynamic-workflow run` or `open-dynamic-workflow validate`, Open Dynamic Workflow scans the configured `sharedAgents.dir` directory.
+When executing `open-dynamic-workflow run` or `open-dynamic-workflow validate`, Open Dynamic Workflow resolves agent files using the patterns in `sharedAgents.include` / `exclude`. Legacy key `sharedAgents.dir` remains supported as a fallback during migration.
 If a file contains unauthorized symbols or attempts host operations violating the validation restrictions, a `SHARED_AGENT_SECURITY_POLICY_VIOLATION` error is thrown, halting execution or validation immediately.
 Literal shared agent IDs referenced in `agent({ definition })` or `ctx.agent({ definition })` are checked against this loaded registry.
 
@@ -242,7 +254,7 @@ Literal shared agent IDs referenced in `agent({ definition })` or `ctx.agent({ d
 
 ## Tool Loading & Trust Model
 
-When executing `open-dynamic-workflow run` or `open-dynamic-workflow validate`, Open Dynamic Workflow scans the configured `tools.dir` directory (defaults to `.open-dynamic-workflow/tools`).
+When executing `open-dynamic-workflow run` or `open-dynamic-workflow validate`, Open Dynamic Workflow resolves tool files using the patterns in `tools.include` / `exclude` (with legacy fallback to `tools.dir` supported during migration).
 Unlike workflows or shared agents, tool definitions are trusted application extensions. They may execute unrestricted JavaScript with host access (e.g., read/write files, execute shell commands, import packages, or perform network requests).
 However, tool definitions must be declared with `defineTool()` and have valid default exports. Duplicate or invalid tool definitions will cause a `TOOL_INVALID_DEFINITION` or `TOOL_DUPLICATE_DEFINITION` validation error.
 Individual `tool({ definition })` calls are checked statically during validation to ensure they reference a registered tool ID.

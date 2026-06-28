@@ -37,7 +37,7 @@ export const DEFAULT_INIT_WORKFLOWS_DIR = "workflows";
 export const DEFAULT_INIT_AGENTS_DIR = ".open-dynamic-workflow/agents";
 export const DEFAULT_INIT_TOOLS_DIR = ".open-dynamic-workflow/tools";
 export const DEFAULT_INIT_CONFIG_PATH = ".open-dynamic-workflow/config.yaml";
-export const DEFAULT_INIT_EXAMPLE_FILE = "example.ts";
+export const DEFAULT_INIT_EXAMPLE_FILE = "example.workflow.ts";
 
 export function toDisplayPath(cwd: string, absolutePath: string): string {
   const rel = relative(cwd, absolutePath);
@@ -65,6 +65,25 @@ export function resolveProjectPath(cwd: string, value: string, optionName: strin
   return absolute;
 }
 
-export function workflowIncludePattern(workflowsDirDisplay: string): string {
-  return `${workflowsDirDisplay}/**/*.ts`;
+export function workflowIncludePatterns(workflowsDirDisplay: string): string[] {
+  return [
+    `${workflowsDirDisplay}/**/*.workflow.js`,
+    `${workflowsDirDisplay}/**/*.workflow.ts`,
+  ];
 }
+
+export function sharedAgentIncludePatterns(agentsDirDisplay: string): string[] {
+  return [
+    `${agentsDirDisplay}/**/*.agent.js`,
+    `${agentsDirDisplay}/**/*.agent.ts`,
+  ];
+}
+
+export function toolIncludePatterns(toolsDirDisplay: string): string[] {
+  return [
+    `${toolsDirDisplay}/**/*.tool.js`,
+    `${toolsDirDisplay}/**/*.tool.ts`,
+  ];
+}
+
+export const INIT_EXCLUDE_PATTERNS = ["**/*.test.*", "**/*.spec.*"];

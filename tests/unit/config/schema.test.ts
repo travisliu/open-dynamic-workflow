@@ -61,4 +61,123 @@ describe("Config Schema Validation", () => {
 
     expect(() => validateConfig(config)).not.toThrow();
   });
+
+  it("passes valid flat includes", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      sharedAgents: {
+        ...DEFAULT_CONFIG.sharedAgents,
+        include: ["agents/*.js"]
+      },
+      tools: {
+        ...DEFAULT_CONFIG.tools,
+        include: ["tools/*.js"]
+      },
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        include: ["workflows/*.js"]
+      }
+    };
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("does not throw for malformed path shapes during basic schema validation", () => {
+    const config1 = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        include: "workflows/**/*.workflow.js" as any
+      }
+    };
+    const config2 = {
+      ...DEFAULT_CONFIG,
+      tools: {
+        ...DEFAULT_CONFIG.tools,
+        dir: [] as any
+      }
+    };
+    const config3 = {
+      ...DEFAULT_CONFIG,
+      sharedAgents: {
+        ...DEFAULT_CONFIG.sharedAgents,
+        include: 123 as any
+      }
+    };
+    const config4 = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        discovery: "bad" as any
+      }
+    };
+    const config5 = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        discovery: {
+          include: 123 as any
+        }
+      }
+    };
+
+    expect(() => validateConfig(config1)).not.toThrow();
+    expect(() => validateConfig(config2)).not.toThrow();
+    expect(() => validateConfig(config3)).not.toThrow();
+    expect(() => validateConfig(config4)).not.toThrow();
+    expect(() => validateConfig(config5)).not.toThrow();
+  });
+
+  it("does not throw for directory-only path values in validateConfig", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      tools: {
+        ...DEFAULT_CONFIG.tools,
+        include: [".open-dynamic-workflow/tools"]
+      }
+    };
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("fails if sharedAgents contains unsupported keys", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      sharedAgents: {
+        ...DEFAULT_CONFIG.sharedAgents,
+        bogus: "value"
+      } as any
+    };
+    expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+    expect(() => validateConfig(config)).toThrow("Config value 'sharedAgents.bogus' is not a supported key.");
+  });
+
+  it("fails if workflow contains unsupported keys", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        bogus: "value"
+      } as any
+    };
+    expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+    expect(() => validateConfig(config)).toThrow("Config value 'workflow.bogus' is not a supported key.");
+  });
+
+  it("allows malformed path values under sharedAgents and workflow in validateConfig", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      sharedAgents: {
+        ...DEFAULT_CONFIG.sharedAgents,
+        dir: 123 as any,
+        include: "not-an-array" as any,
+        exclude: { bad: true } as any
+      },
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        include: 456 as any,
+        exclude: "string" as any,
+        discovery: "malformed" as any
+      }
+    };
+    expect(() => validateConfig(config)).not.toThrow();
+  });
 });

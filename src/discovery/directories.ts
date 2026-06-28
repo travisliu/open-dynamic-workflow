@@ -23,16 +23,16 @@ export function resolveDiscoveryDirectories(input: {
       `${normalizedDir}/**/*.cjs`,
     ];
   } else {
-    workflowInclude = input.config.workflow.discovery.include;
+    workflowInclude = input.config.workflow.discovery?.include ?? input.config.workflow.include;
   }
 
   const agentsDir = input.resourceType === "agent"
-    ? input.rawOptions.dir ?? input.rawOptions.agentsDir ?? input.config.sharedAgents.dir
-    : input.rawOptions.agentsDir ?? input.config.sharedAgents.dir;
+    ? input.rawOptions.dir ?? input.rawOptions.agentsDir ?? input.config.sharedAgents.dir ?? ".open-dynamic-workflow/agents"
+    : input.rawOptions.agentsDir ?? input.config.sharedAgents.dir ?? ".open-dynamic-workflow/agents";
 
   const toolsDir = input.resourceType === "tool"
-    ? input.rawOptions.dir ?? input.rawOptions.toolsDir ?? input.config.tools.dir
-    : input.rawOptions.toolsDir ?? input.config.tools.dir;
+    ? input.rawOptions.dir ?? input.rawOptions.toolsDir ?? input.config.tools.dir ?? ".open-dynamic-workflow/tools"
+    : input.rawOptions.toolsDir ?? input.config.tools.dir ?? ".open-dynamic-workflow/tools";
 
   return {
     workflowInclude,

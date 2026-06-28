@@ -449,4 +449,54 @@ describe("Workflow Discovery", () => {
       await rm(tempWorkspaceDir, { recursive: true, force: true });
     }
   });
+
+  it("uses discovery parameter with include, exclude and compatibilityMode", async () => {
+    const { mkdtemp, rm, writeFile, mkdir, realpath } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    const tempWorkspaceDir = await realpath(await mkdtemp(join(tmpdir(), "open-dynamic-workflow-discovery-param-")));
+
+    try {
+      const rootPath = join(tempWorkspaceDir, "root.ts");
+      await writeFile(rootPath, "export const meta = { name: 'root', description: 'test' };");
+
+      await mkdir(join(tempWorkspaceDir, "workflows"));
+      await writeFile(join(tempWorkspaceDir, "workflows/child1.workflow.ts"), "export const meta = { name: 'child1', description: 'test' };");
+      await writeFile(join(tempWorkspaceDir, "workflows/child2.workflow.ts"), "export const meta = { name: 'child2', description: 'test' };");
+
+      vi.mocked(loadWorkflow).mockImplementation(async (p) => ({
+        sourcePath: p,
+        sourceText: "content"
+      }));
+
+      vi.mocked(parseWorkflow).mockImplementation((loaded) => {
+        let name = "unknown";
+        if (loaded.sourcePath.endsWith("root.ts")) name = "root";
+        if (loaded.sourcePath.endsWith("child1.workflow.ts")) name = "child1";
+        if (loaded.sourcePath.endsWith("child2.workflow.ts")) name = "child2";
+        return {
+          meta: { name, description: "test" },
+          body: "",
+          sourcePath: loaded.sourcePath,
+          sourceText: loaded.sourceText,
+          sourceHash: "123"
+        };
+      });
+
+      const registry = await discoverWorkflowRegistry({
+        rootWorkflowPath: rootPath,
+        cwd: tempWorkspaceDir,
+        discovery: {
+          include: ["workflows/**/*.ts"],
+          exclude: ["workflows/child2.workflow.ts"],
+          compatibilityMode: "new-suffix-specific",
+        }
+      });
+
+      expect(registry.names()).toEqual(new Set(["root", "child1"]));
+    } finally {
+      await rm(tempWorkspaceDir, { recursive: true, force: true });
+    }
+  });
 });

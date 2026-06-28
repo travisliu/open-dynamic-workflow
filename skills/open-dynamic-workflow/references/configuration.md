@@ -36,8 +36,9 @@ The generated config typically includes:
   - `mock`: Always included as a safe, built-in fallback.
   - Selected External Provider: Included if an external provider (like `codex` or `gemini`) was chosen during `init`.
 - `security`: Explicitly disables dangerous imports and sets up environment variable redaction.
-- `sharedAgents.dir` and `tools.dir`: Configured to match the directories created by `init`.
-- `workflow.discovery.include`: Automatically set to scan the workflows directory for runnable files.
+- `sharedAgents.include / sharedAgents.exclude`: Automatically set to scan the shared agents directory for runnable agent files.
+- `tools.include / tools.exclude`: Automatically set to scan the tools directory for runnable tool files.
+- `workflow.include / workflow.exclude`: Automatically set to scan the workflows directory for runnable workflow files.
 
 Generated configuration is guaranteed to pass schema validation.
 
@@ -64,7 +65,8 @@ Generated configuration is guaranteed to pass schema validation.
 
 | Option | Type | Default | Validation Rules | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `discovery.include` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns for workflow discovery. Used by `list workflows` and for name-based `run`/`validate` lookup. |
+| `include` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns for workflow discovery. Used by `list workflows` and for name-based `run`/`validate` lookup. |
+| `exclude` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns to exclude workflows from discovery. |
 | `maxDepth` | `integer` | `8` | Positive integer (>= 1). | Maximum recursion/invocation depth for nested workflows. |
 | `maxLoopRounds` | `integer` | `20` | Positive integer (>= 1). | Maximum allowed `maxRounds` value for `loop()` calls. |
 
@@ -319,11 +321,14 @@ When evaluating configuration keys (like `model` or `timeoutMs`), the runtime re
 ## 4. Shared Agents Configuration (`sharedAgents`)
 
 Shared agent settings dictate how reusable, code-based agent definitions are loaded and validated:
-*   `sharedAgents`:
-    *   `dir`: Directory path scanned for shared agent definitions (defaults to `".open-dynamic-workflow/agents"`).
-    *   `maxDefinitions`: Positive integer limit on the maximum definitions loaded (defaults to 100).
-    *   `allowDynamicIds`: Must be strictly `false` (dynamic shared agent IDs are rejected for security reasons).
-    *   `strictPromptTemplateVariables`: Boolean specifying if template variables must match declared schema properties.
+
+| Option | Type | Default | Validation Rules | Description |
+| :--- | :--- | :--- | :--- | :--- |
+| `include` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns to discover shared agent files. |
+| `exclude` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns to exclude files from agent discovery. |
+| `maxDefinitions` | `integer` | `100` | Positive integer (>= 1). | Limit on the maximum definitions loaded. |
+| `allowDynamicIds` | `boolean` | `false` | Must be strictly `false`. | Dynamic shared agent IDs are rejected for security reasons. |
+| `strictPromptTemplateVariables` | `boolean` | `false` | Boolean. | Specifies if template variables must match declared schema properties. |
 
 ---
 
@@ -333,14 +338,45 @@ Tools settings dictate how reusable, trusted application extensions declared wit
 
 | Option | Type | Default | Validation Rules | Description |
 | :--- | :--- | :--- | :--- | :--- |
-| `dir` | `string` | `".open-dynamic-workflow/tools"` | Non-empty path string. | Directory path scanned for tool definitions. |
+| `include` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns to discover tool files. |
+| `exclude` | `string[]` | `[]` | Array of non-empty strings. | Glob patterns to exclude files from tool discovery. |
 | `concurrency` | `integer` | `4` | Positive integer (>= 1). | Maximum parallel tool calls executed concurrently by the tool execution lane. |
 | `maxDefinitions` | `integer` | `100` | Positive integer (>= 1). | Limit on the maximum tool definitions loaded. |
 
 Example config snippet:
 ```yaml
 tools:
-  dir: ".open-dynamic-workflow/tools"
+  include:
+    - ".open-dynamic-workflow/tools/**/*.tool.ts"
+  exclude:
+    - "**/*.test.*"
   concurrency: 4
   maxDefinitions: 100
 ```
+
+---
+
+## 6. Modern Path Discovery Compatibility, Precedence, & Globbing
+
+Open Dynamic Workflow uses flat `include`/`exclude` glob patterns for resource discovery, replacing legacy keys but maintaining backwards compatibility.
+
+### Legacy Key Compatibility & Precedence
+Legacy keys are supported but superseded by flat resource-local keys:
+*   `sharedAgents.dir` (superseded by `sharedAgents.include` / `exclude`)
+*   `tools.dir` (superseded by `tools.include` / `exclude`)
+*   `workflow.discovery.include` / `exclude` (superseded by `workflow.include` / `exclude`)
+
+**Precedence Rules:**
+1.  **Flat overrides legacy**: Flat keys (`include`/`exclude`) override corresponding legacy/nested keys.
+2.  **CLI Directory Flags**: Direct CLI flags (e.g., `--dir`) replace `include` patterns for that resource type while preserving configured `exclude` rules.
+
+### Validation & Diagnostics
+The initialization phase runs validation to ensure sandbox integrity and configuration health:
+*   **Fatal Errors**: Raised for absolute paths, directory-only patterns (trailing `/`), relative paths escaping the workspace Cwd, and symlink escapes (raises [CONFIG_PATH_SYMLINK_ESCAPE](file:///root/projects/cadecli/src/config/types.ts#L228)).
+*   **Warnings (Non-fatal)**: Emitted for unsupported glob syntax (e.g. brace expansion `{js,ts}`) or zero-match patterns (such as [CONFIG_PATH_INCLUDE_MATCHED_NOTHING](file:///root/projects/cadecli/src/config/types.ts#L224) and `CONFIG_PATH_EXCLUDE_MATCHED_NOTHING`). Warnings become fatal in `--strict` mode.
+
+See [path-safety.ts](file:///root/projects/cadecli/src/config/path-safety.ts) and [collect-files.ts](file:///root/projects/cadecli/src/discovery/collect-files.ts) for details.
+
+### Glob Syntax Support
+*   **Supported**: Standard wildcards (`*` single-segment, `**` recursive). Suffix wildcards (e.g., `**/*.workflow.*`) are filtered by runtime-supported extensions (`.ts`, `.js`, `.mjs`, `.cjs`).
+*   **Unsupported**: Advanced glob syntax like brace expansion is rejected/warned. Explicit lines must be used instead.

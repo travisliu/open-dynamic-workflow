@@ -67,7 +67,7 @@ describe("Tool Top-Level Integration", () => {
 
     // Create a real tool
     const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-    await fs.writeFile(path.join(toolsDir, "echo.ts"), `
+    await fs.writeFile(path.join(toolsDir, "echo.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
       export default defineTool({
         id: "echo",

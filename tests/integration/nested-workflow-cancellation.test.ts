@@ -77,7 +77,7 @@ describe("Nested Workflow Cancellation", () => {
     const testConfig = {
       workflow: {
         discovery: {
-          include: [path.join(TEMP_DIR, "*.workflow.js")]
+          include: [path.relative(process.cwd(), path.join(TEMP_DIR, "*.workflow.js"))]
         }
       }
     };
@@ -129,7 +129,7 @@ describe("Nested Workflow Cancellation", () => {
     const testConfig = {
       workflow: {
         discovery: {
-          include: [path.join(TEMP_DIR, "*.workflow.js")]
+          include: [path.relative(process.cwd(), path.join(TEMP_DIR, "*.workflow.js"))]
         }
       }
     };

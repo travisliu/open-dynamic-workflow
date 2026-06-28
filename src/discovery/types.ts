@@ -1,8 +1,21 @@
 import type { InitializationHint } from "../errors/project-init-hint.js";
+import type { DiscoveryCompatibilityMode, ConfigDiagnostic } from "../config/types.js";
 
 export type ListResourceType = "workflow" | "agent" | "tool";
 export type ListCliResourceType = "all" | ListResourceType;
 export type ListReportMode = "pretty" | "json" | "jsonl";
+
+export interface ResourceDiscoveryPatterns {
+  include: string[];
+  exclude: string[];
+  compatibilityMode: DiscoveryCompatibilityMode;
+}
+
+export interface DiscoveryPatterns {
+  workflow: ResourceDiscoveryPatterns;
+  agent: ResourceDiscoveryPatterns;
+  tool: ResourceDiscoveryPatterns;
+}
 
 export interface DiscoveryDirectories {
   workflowInclude: string[];
@@ -14,6 +27,8 @@ export interface CandidateFile {
   resourceType: ListResourceType;
   absolutePath: string;
   relativePath: string;
+  realPath: string;
+  sourcePattern: string;
 }
 
 export interface ListDiagnostic {
@@ -82,12 +97,14 @@ export interface ListResult {
   warnings: ListDiagnostic[];
   errors: ListDiagnostic[];
   summary: ListSummary;
+  configDiagnostics: ConfigDiagnostic[];
 }
 
 export interface ListDiscoveryOptions {
   cwd: string;
   resourceTypes: ListResourceType[];
-  directories: DiscoveryDirectories;
+  directories?: DiscoveryDirectories;
+  patterns?: DiscoveryPatterns;
   verbose: boolean;
   strict: boolean;
 }

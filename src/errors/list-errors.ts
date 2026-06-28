@@ -6,7 +6,9 @@ export function mapListExitCode(result: ListResult, options: { strict: boolean }
     return ExitCode.InternalError;
   }
 
-  if (options.strict && (result.errors.length > 0 || result.status === "failed")) {
+  const hasStrictFatalConfigDiag = result.configDiagnostics?.some((d) => d.fatalInStrictContext) ?? false;
+
+  if (options.strict && (result.errors.length > 0 || result.status === "failed" || hasStrictFatalConfigDiag)) {
     return ExitCode.WorkflowInvalid;
   }
 

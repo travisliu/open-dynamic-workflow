@@ -55,8 +55,8 @@ describe("Init Writer Services", () => {
         {
           kind: "file",
           action: "overwrite",
-          path: "/p/workflows/example.ts",
-          displayPath: "workflows/example.ts",
+          path: "/p/workflows/example.workflow.ts",
+          displayPath: "workflows/example.workflow.ts",
           content: "workflow content"
         }
       ]
@@ -65,11 +65,11 @@ describe("Init Writer Services", () => {
     const result = await applyInitPlan(plan);
 
     expect(mockWriteFile).toHaveBeenCalledWith(
-      "/p/workflows/example.ts",
+      "/p/workflows/example.workflow.ts",
       "workflow content",
       { flag: "w" }
     );
-    expect(result.overwritten).toContain("workflows/example.ts");
+    expect(result.overwritten).toContain("workflows/example.workflow.ts");
   });
 
   it("skips skip actions", async () => {

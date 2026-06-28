@@ -2,7 +2,6 @@ import { resolve, relative, isAbsolute } from "node:path";
 import { realpath } from "node:fs/promises";
 import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
-import { resolveDiscoveryDirectories } from "../discovery/directories.js";
 import { createDiscoveryService } from "../discovery/service.js";
 import { loadWorkflow } from "./load.js";
 import { parseWorkflow } from "./parse.js";
@@ -173,19 +172,27 @@ export async function resolveWorkflowNameTarget(
   input: ResolveWorkflowNameTargetInput
 ): Promise<ResolvedWorkflowTarget | null> {
   const { name, cwd, config } = input;
-
-  const directories = resolveDiscoveryDirectories({
-    resourceType: "workflow",
-    rawOptions: {},
-    config,
-    cwd,
-  });
+  let workflowPatterns = config._normalizedDiscovery?.workflow;
+  if (!workflowPatterns) {
+    const { normalizeDiscoveryConfig } = await import("../config/path-discovery.js");
+    const normalized = normalizeDiscoveryConfig({ config, cwd, rawConfig: config });
+    workflowPatterns = normalized.discovery.workflow;
+  }
+  const patterns = {
+    workflow: {
+      include: workflowPatterns.include,
+      exclude: workflowPatterns.exclude,
+      compatibilityMode: workflowPatterns.compatibilityMode,
+    },
+    agent: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" as const },
+    tool: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" as const },
+  };
 
   const discoveryService = createDiscoveryService();
   const discoveryResult = await discoveryService.discover({
     cwd,
     resourceTypes: ["workflow"],
-    directories,
+    patterns,
     verbose: false,
     strict: false,
   });
@@ -197,7 +204,7 @@ export async function resolveWorkflowNameTarget(
       : "- unknown error during directory scan";
     throw new OpenDynamicWorkflowError(
       ErrorCode.WORKFLOW_DISCOVERY_FAILED,
-      `Could not resolve workflow target "${name}" because workflow discovery failed.\n\nDiscovery errors:\n${errorDetails}\n\nCheck --cwd, --config, and workflow.discovery.include.`
+      `Could not resolve workflow target "${name}" because workflow discovery failed.\n\nDiscovery errors:\n${errorDetails}\n\nCheck --cwd, --config, and workflow.include (note: legacy workflow.discovery.include is still supported during migration).`
     );
   }
 

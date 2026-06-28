@@ -8,6 +8,7 @@ import {
   ListDiagnostic,
   ListSummary
 } from "./types.js";
+import type { ConfigDiagnostic } from "../config/types.js";
 import { collectCandidateFiles } from "./collect-files.js";
 import { extractWorkflow } from "./extract-workflow.js";
 import { extractAgent } from "./extract-agent.js";
@@ -34,12 +35,16 @@ export function createDiscoveryService(input?: {
     async discover(options: ListDiscoveryOptions): Promise<ListResult> {
       const { resourceTypes, strict } = options;
       const allDiagnostics: ListDiagnostic[] = [];
+      const configDiagnostics: ConfigDiagnostic[] = [];
       const resources: ListedResource[] = [];
 
       try {
         // 1. Collect candidate files
-        const { files, diagnostics: collectDiagnostics } = await collectCandidateFiles(options);
+        const { files, diagnostics: collectDiagnostics, configDiagnostics: colConfigDiagnostics } = await collectCandidateFiles(options);
         allDiagnostics.push(...collectDiagnostics.map(d => normalizeDiagnosticSeverity(d, strict)));
+        if (colConfigDiagnostics) {
+          configDiagnostics.push(...colConfigDiagnostics);
+        }
 
         // 2. Extract resources
         const discoveredCount = files.length;
@@ -134,6 +139,7 @@ export function createDiscoveryService(input?: {
           warnings,
           errors,
           summary,
+          configDiagnostics,
         };
 
       } catch (err: any) {
@@ -159,6 +165,7 @@ export function createDiscoveryService(input?: {
             errorCount: 1,
             countsByType: {},
           },
+          configDiagnostics: [],
         };
       }
     }

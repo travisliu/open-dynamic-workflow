@@ -44,7 +44,7 @@ describe("Init Planner Services", () => {
     const plan = await buildInitPlan({ options, providerSelection });
 
     const configTarget = plan.targets.find(t => t.displayPath === ".open-dynamic-workflow/config.yaml");
-    const workflowTarget = plan.targets.find(t => t.displayPath === "workflows/example.ts");
+    const workflowTarget = plan.targets.find(t => t.displayPath === "workflows/example.workflow.ts");
 
     expect(configTarget?.action).toBe("skip");
     expect(workflowTarget?.action).toBe("skip");
@@ -58,7 +58,7 @@ describe("Init Planner Services", () => {
     const plan = await buildInitPlan({ options: forceOptions, providerSelection });
 
     const configTarget = plan.targets.find(t => t.displayPath === ".open-dynamic-workflow/config.yaml");
-    const workflowTarget = plan.targets.find(t => t.displayPath === "workflows/example.ts");
+    const workflowTarget = plan.targets.find(t => t.displayPath === "workflows/example.workflow.ts");
 
     expect(configTarget?.action).toBe("overwrite");
     expect(workflowTarget?.action).toBe("overwrite");
@@ -82,7 +82,7 @@ describe("Init Planner Services", () => {
     const plan = await buildInitPlan({ options, providerSelection });
 
     expect(plan.nextSteps).toContain("odw doctor");
-    expect(plan.nextSteps).toContain("odw run workflows/example.ts --provider mock");
+    expect(plan.nextSteps).toContain("odw run workflows/example.workflow.ts --provider mock");
   });
 
   it("marks a file at .open-dynamic-workflow/agents as a conflict, not reuse-directory", async () => {
@@ -101,7 +101,7 @@ describe("Init Planner Services", () => {
     expect(plan.pathConflicts).toContain(agentsTarget);
   });
 
-  it("detects parent-path file conflict for workflows/example.ts", async () => {
+  it("detects parent-path file conflict for workflows/example.workflow.ts", async () => {
     const mockStat = vi.mocked(fs.stat);
     mockStat.mockImplementation(async (p: any) => {
       if (p === "/project/workflows") {
@@ -111,7 +111,7 @@ describe("Init Planner Services", () => {
     });
 
     const plan = await buildInitPlan({ options, providerSelection });
-    const workflowTarget = plan.targets.find(t => t.displayPath === "workflows/example.ts");
+    const workflowTarget = plan.targets.find(t => t.displayPath === "workflows/example.workflow.ts");
 
     expect(workflowTarget?.conflictReason).toMatch(/parent path "workflows" is a file, not a directory/);
     expect(plan.pathConflicts).toContain(workflowTarget);

@@ -109,11 +109,11 @@ security:
   passEnv:
     - OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
     // 3. Initial Workflow
@@ -247,11 +247,11 @@ export default {
 
     await fs.writeFile(configPath, `
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
     await fs.writeFile(workflowPath, `

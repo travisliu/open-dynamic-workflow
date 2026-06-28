@@ -3,6 +3,9 @@ import { loadConfig } from "../../../src/config/load.js";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import { ErrorCode } from "../../../src/errors/codes.js";
+import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
+
 
 describe("Load Config", () => {
   it("56. no-config defaults include all new providers without changing default provider", async () => {
@@ -127,4 +130,216 @@ providers:
     expect(config.defaultProvider).toBe("codex");
     rmSync(tempDir, { recursive: true, force: true });
   });
+
+  it("returned config includes _normalizedDiscovery and _configDiagnostics", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-d1-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
+    expect(config._normalizedDiscovery).toBeDefined();
+    expect(config._configDiagnostics).toBeDefined();
+    expect(config._normalizedDiscovery.workflow.source).toBe("default");
+    
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("new flat config yields normalized include/exclude", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-d2-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = `
+workflow:
+  include:
+    - workflows/**/*.workflow.js
+  exclude:
+    - workflows/**/*.test.js
+`;
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
+    expect(config._normalizedDiscovery.workflow.include).toEqual(["workflows/**/*.workflow.js"]);
+    expect(config._normalizedDiscovery.workflow.exclude).toEqual(["workflows/**/*.test.js"]);
+    expect(config._normalizedDiscovery.workflow.source).toBe("new");
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("legacy config yields normalized discovery plus migration diagnostics", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-d3-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = `
+sharedAgents:
+  dir: custom-agents
+`;
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
+    expect(config._normalizedDiscovery.sharedAgents.include).toContain("custom-agents/**/*.js");
+    expect(config._normalizedDiscovery.sharedAgents.source).toBe("legacy-dir");
+    expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_LEGACY_KEY_USED")).toBe(true);
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("non-strict load allows fatal-in-strict diagnostics to be returned, while strict throws", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-d4-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = `
+workflow:
+  include:
+    - ../outside/**/*.workflow.js
+`;
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    // Non-strict load does not throw, returns diagnostic
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
+    expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_OUTSIDE_WORKSPACE")).toBe(true);
+
+    // Strict run context throws CONFIG_VALIDATION_ERROR
+    await expect(
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+    ).rejects.toThrow(/Invalid path configuration/);
+
+    // Strict validate context throws CONFIG_VALIDATION_ERROR
+    await expect(
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" })
+    ).rejects.toThrow(/Invalid path configuration/);
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("strict context does not throw for warning-only diagnostics", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-d5-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = `
+workflow:
+  include:
+    - workflows/*.{js,ts}
+`;
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    // Warnings like brace expansion are non-fatal and should load without throwing
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX")).toBe(true);
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("discoveryCliOverrides normalize and do not mutate unrelated resource includes", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-d6-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+
+    const config = await loadConfig({
+      cwd: tempDir,
+      cli: {},
+      diagnosticContext: "list",
+      discoveryCliOverrides: {
+        resourceType: "tool",
+        dir: "cli-tools-override"
+      }
+    });
+
+    // tools includes should be replaced by override
+    expect(config._normalizedDiscovery.tools.include).toContain("cli-tools-override/**/*.js");
+    expect(config._normalizedDiscovery.tools.source).toBe("cli-override");
+
+    // workflow includes should remain default
+    expect(config._normalizedDiscovery.workflow.include).toContain("workflows/**/*.workflow.js");
+    expect(config._normalizedDiscovery.workflow.source).toBe("default");
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("Verify Phase 1 integration with out-of-cwd path pattern and legacy key warning", async () => {
+    // Arrange
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-acceptance-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    
+    // Create a mock configuration file with:
+    // - an invalid out-of-cwd path pattern under workflow.include
+    // - a legacy key warning (tools.dir: 'legacy-tools')
+    const configContent = `
+workflow:
+  include:
+    - ../outside/**/*.workflow.js
+tools:
+  dir: legacy-tools
+`;
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    // Act
+    // Call loadConfig() with diagnosticContext set to 'list' (non-strict)
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
+
+    // Assert non-strict case
+    expect(config).toBeDefined();
+    expect(config._normalizedDiscovery).toBeDefined();
+    expect(config._configDiagnostics).toBeDefined();
+    
+    const codes = config._configDiagnostics.map(d => d.code);
+    expect(codes).toContain("CONFIG_PATH_OUTSIDE_WORKSPACE");
+    expect(codes).toContain("CONFIG_PATH_LEGACY_KEY_USED");
+
+    // Act & Assert strict case
+    let thrownError: any = null;
+    try {
+      await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    } catch (err: any) {
+      thrownError = err;
+    }
+
+    expect(thrownError).toBeInstanceOf(OpenDynamicWorkflowError);
+    expect(thrownError.code).toBe(ErrorCode.CONFIG_VALIDATION_ERROR);
+    expect(thrownError.message).toContain("CONFIG_PATH_OUTSIDE_WORKSPACE");
+
+    // Now test that it does not throw for the legacy key warning alone
+    // Arrange (warning-only config)
+    const warningOnlyConfigContent = `
+tools:
+  dir: legacy-tools
+`;
+    writeFileSync(join(configDir, "config.yaml"), warningOnlyConfigContent);
+
+    // Act & Assert (should not throw for warning alone in strict context)
+    const warningOnlyConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(warningOnlyConfig).toBeDefined();
+    expect(warningOnlyConfig._configDiagnostics.map(d => d.code)).toContain("CONFIG_PATH_LEGACY_KEY_USED");
+
+    // Clean up
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig returns diagnostic for malformed workflow.discovery in non-strict context, and throws in strict context", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-malformed-discovery-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    
+    const configContent = `
+workflow:
+  discovery: "malformed-string"
+`;
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    // Non-strict load does not throw, returns diagnostic
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
+    expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_INVALID_TYPE")).toBe(true);
+
+    // Strict run context throws CONFIG_VALIDATION_ERROR
+    await expect(
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+    ).rejects.toThrow(/Invalid path configuration/);
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
 });
+

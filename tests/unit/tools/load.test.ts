@@ -250,4 +250,79 @@ describe("loadToolRegistry", () => {
 
     await expect(action).rejects.toThrow(/does not have a valid default export/);
   });
+
+  it("should load included tool, skip excluded tool, and not run excluded tool top-level code (Fix 07)", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const markerFile = join(tempBaseDir, "excluded-side-effect.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "included.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      export default defineTool({ id: "included-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    await writeFile(join(toolsDir, "excluded.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerFile)}, "run");
+      export default defineTool({ id: "excluded-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    const registry = await loadToolRegistry({
+      cwd: tempBaseDir,
+      maxDefinitions: 10,
+      discovery: {
+        include: ["tools/included.tool.ts", "tools/excluded.tool.ts"],
+        exclude: ["tools/excluded.tool.ts"],
+        compatibilityMode: "new-suffix-specific",
+      }
+    });
+
+    expect(registry.has("included-tool")).toBe(true);
+    expect(registry.has("excluded-tool")).toBe(false);
+    
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerFile)).toBe(false);
+  });
+
+  it("should fail loading and not execute excluded tool top-level code when included tool imports it (Fix 07)", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const markerFile = join(tempBaseDir, "excluded-import-side-effect.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "included.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import "./excluded.tool.js";
+      export default defineTool({ id: "included-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    await writeFile(join(toolsDir, "excluded.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerFile)}, "run");
+      export default defineTool({ id: "excluded-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    const action = () => loadToolRegistry({
+      cwd: tempBaseDir,
+      maxDefinitions: 10,
+      discovery: {
+        include: ["tools/included.tool.ts", "tools/excluded.tool.ts"],
+        exclude: ["tools/excluded.tool.ts"],
+        compatibilityMode: "new-suffix-specific",
+      }
+    });
+
+    await expect(action).rejects.toThrow(/Failed to load tool definition/);
+    try {
+      await action();
+    } catch (err: any) {
+      expect(err.code).toBe("TOOL_INVALID_DEFINITION");
+    }
+
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerFile)).toBe(false);
+  });
 });

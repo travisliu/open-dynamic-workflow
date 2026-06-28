@@ -1,5 +1,5 @@
 import { readFile, readdir, stat, realpath } from "node:fs/promises";
-import { resolve, relative, join, extname } from "node:path";
+import { resolve, relative, join, extname, isAbsolute } from "node:path";
 import * as vm from "node:vm";
 import * as ts from "typescript";
 import { ErrorCode } from "../errors/codes.js";
@@ -7,10 +7,14 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { SharedAgentRegistry } from "./registry.js";
 import { validateSharedAgentDefinition, validateSharedAgentSource } from "./validate.js";
 import { isDefinedSharedAgent } from "./define-agent.js";
+import type { ResourceDiscoveryPatterns } from "../discovery/types.js";
+import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
 
 export interface LoadSharedAgentRegistryInput {
   cwd: string;
   dir?: string;
+  discovery?: ResourceDiscoveryPatterns;
+  candidateFiles?: string[];
   maxDefinitions?: number;
   strictPromptTemplateVariables?: boolean;
 }
@@ -26,7 +30,44 @@ export async function loadSharedAgentRegistry(
 
   const discoveredFiles: string[] = [];
 
-  if (input.dir) {
+  if (input.candidateFiles) {
+    for (const file of input.candidateFiles) {
+      const fullPath = resolve(realCwd, file);
+      try {
+        const realTarget = await realpath(fullPath);
+        const relativeToCwd = relative(realCwd, realTarget);
+        if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
+          throw new OpenDynamicWorkflowError(
+            ErrorCode.SHARED_AGENT_SECURITY_POLICY_VIOLATION,
+            `Shared agent symlink '${fullPath}' points outside the workspace.`
+          );
+        }
+        discoveredFiles.push(realTarget);
+      } catch (err) {
+        if (err instanceof OpenDynamicWorkflowError) throw err;
+        discoveredFiles.push(fullPath);
+      }
+    }
+  } else if (input.discovery) {
+    const res = await collectResourceCandidateFiles({
+      cwd: input.cwd,
+      resourceType: "agent",
+      include: input.discovery.include,
+      exclude: input.discovery.exclude,
+      compatibilityMode: input.discovery.compatibilityMode,
+      strict: false,
+    });
+    const escapeDiag = res.configDiagnostics.find(d => d.code === "CONFIG_PATH_SYMLINK_ESCAPE");
+    if (escapeDiag) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.SHARED_AGENT_SECURITY_POLICY_VIOLATION,
+        `Shared agent symlink '${resolve(realCwd, escapeDiag.value as string)}' points outside the workspace.`
+      );
+    }
+    for (const file of res.files) {
+      discoveredFiles.push(file.absolutePath);
+    }
+  } else if (input.dir) {
     const absolutePath = resolve(realCwd, input.dir);
 
     try {
@@ -106,7 +147,6 @@ function evaluateJsDefinition(sourceText: string, filePath: string): any {
     const moduleExports = {};
     const sandbox = {
         defineAgent: (def: any) => {
-            // Apply the marker so isDefinedSharedAgent(result) will pass
             const SHARED_AGENT_MARKER = Symbol.for("open-dynamic-workflow.sharedAgentDefinition");
             Object.defineProperty(def, SHARED_AGENT_MARKER, {
                 value: true,
@@ -166,8 +206,8 @@ function transpileTs(sourceText: string, filePath: string): string {
     const transpile = (ts as any).default?.transpileModule ?? ts.transpileModule;
     const result = transpile(sourceText, {
       compilerOptions: {
-        target: (ts as any).ScriptTarget?.ES2022 ?? 9, // ES2022 is 9 in TypeScript ScriptTarget enum
-        module: (ts as any).ModuleKind?.CommonJS ?? 1, // CommonJS is 1
+        target: (ts as any).ScriptTarget?.ES2022 ?? 9,
+        module: (ts as any).ModuleKind?.CommonJS ?? 1,
       }
     });
     return result.outputText;
@@ -178,4 +218,3 @@ function transpileTs(sourceText: string, filePath: string): string {
     );
   }
 }
-

@@ -32,9 +32,7 @@ describe("Tools Config", () => {
         maxDefinitions: -1
       }
     };
-    expect(() => validateConfig(config as any)).toThrow(/Config value 'tools.dir' must be a non-empty string/);
-    
-    config.tools.dir = ".open-dynamic-workflow/tools";
+    // Should NOT throw for empty dir, but should throw for invalid concurrency
     expect(() => validateConfig(config as any)).toThrow(/Config value 'tools.concurrency' must be a positive integer/);
 
     config.tools.concurrency = 4;
@@ -63,7 +61,7 @@ describe("Tools Config", () => {
     const baseConfig = { ...DEFAULT_CONFIG };
 
     expect(() => validateConfig({ ...baseConfig, tools: null } as any)).toThrow();
-    expect(() => validateConfig({ ...baseConfig, tools: { dir: "", concurrency: 4, maxDefinitions: 100 } } as any)).toThrow();
+    // { dir: "", concurrency: 4, maxDefinitions: 100 } should NOT throw anymore in Phase 1
     expect(() => validateConfig({ ...baseConfig, tools: { dir: ".open-dynamic-workflow/tools", concurrency: 0, maxDefinitions: 100 } } as any)).toThrow();
     expect(() => validateConfig({ ...baseConfig, tools: { dir: ".open-dynamic-workflow/tools", concurrency: 4, maxDefinitions: 0 } } as any)).toThrow();
   });

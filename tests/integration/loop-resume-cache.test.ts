@@ -432,7 +432,7 @@ describe("Loop Resume/Cache Integration", () => {
 
       // 1. Create a cacheable tool
       const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
-      await fs.writeFile(path.join(toolsDir, "cache-tool.ts"), `
+      await fs.writeFile(path.join(toolsDir, "cache-tool.tool.ts"), `
         import { defineTool } from "${srcToolsPath}";
         export default defineTool({
           id: "cache-tool",

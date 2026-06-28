@@ -68,7 +68,7 @@ describe("open-dynamic-workflow init integration", () => {
     await runInit();
 
     expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, "workflows/example.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, "workflows/example.workflow.ts"))).toBe(true);
   });
 
   it("succeeds with --run-smoke-test", async () => {
@@ -105,30 +105,30 @@ describe("open-dynamic-workflow init integration", () => {
       "--tools-dir", "config/tools"
     ]);
 
-    expect(fs.existsSync(path.join(tmpDir, "flows/example.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, "flows/example.workflow.ts"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, "config/agents"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, "config/tools"))).toBe(true);
 
     const config = fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"), "utf8");
-    expect(config).toContain("- flows/**/*.ts");
-    expect(config).toContain("dir: config/agents");
-    expect(config).toContain("dir: config/tools");
+    expect(config).toContain("- flows/**/*.workflow.ts");
+    expect(config).toContain("- config/agents/**/*.agent.ts");
+    expect(config).toContain("- config/tools/**/*.tool.ts");
   });
 
   it("fails in strict mode if files exist", async () => {
     fs.mkdirSync(path.join(tmpDir, "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "workflows/example.ts"), "existing");
+    fs.writeFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "existing");
 
     await expect(runInit(["--strict"])).rejects.toThrow(/already exist/);
   });
 
   it("overwrites files with --force", async () => {
     fs.mkdirSync(path.join(tmpDir, "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "workflows/example.ts"), "existing");
+    fs.writeFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "existing");
 
     await runInit(["--force"]);
 
-    const content = fs.readFileSync(path.join(tmpDir, "workflows/example.ts"), "utf8");
+    const content = fs.readFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "utf8");
     expect(content).not.toBe("existing");
   });
 
@@ -207,25 +207,25 @@ describe("open-dynamic-workflow init integration", () => {
     fs.mkdirSync(path.join(tmpDir, ".open-dynamic-workflow"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"), "sentinel config");
-    fs.writeFileSync(path.join(tmpDir, "workflows/example.ts"), "sentinel workflow");
+    fs.writeFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "sentinel workflow");
 
     const { stdoutData } = await runInit();
 
     expect(fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"), "utf8")).toBe("sentinel config");
-    expect(fs.readFileSync(path.join(tmpDir, "workflows/example.ts"), "utf8")).toBe("sentinel workflow");
+    expect(fs.readFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "utf8")).toBe("sentinel workflow");
     expect(stdoutData).toContain("Skipped existing files:");
     expect(stdoutData).toContain(".open-dynamic-workflow/config.yaml");
-    expect(stdoutData).toContain("workflows/example.ts");
+    expect(stdoutData).toContain("workflows/example.workflow.ts");
   });
 
   it("overwrites with --force and preserves unrelated files", async () => {
     fs.mkdirSync(path.join(tmpDir, "workflows"), { recursive: true });
-    fs.writeFileSync(path.join(tmpDir, "workflows/example.ts"), "sentinel workflow");
+    fs.writeFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "sentinel workflow");
     fs.writeFileSync(path.join(tmpDir, "unrelated.txt"), "unrelated content");
 
     await runInit(["--force"]);
 
-    expect(fs.readFileSync(path.join(tmpDir, "workflows/example.ts"), "utf8")).not.toBe("sentinel workflow");
+    expect(fs.readFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "utf8")).not.toBe("sentinel workflow");
     expect(fs.readFileSync(path.join(tmpDir, "unrelated.txt"), "utf8")).toBe("unrelated content");
   });
 
@@ -233,7 +233,7 @@ describe("open-dynamic-workflow init integration", () => {
     fs.mkdirSync(path.join(tmpDir, ".open-dynamic-workflow"), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, "workflows"), { recursive: true });
     fs.writeFileSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"), "existing config");
-    fs.writeFileSync(path.join(tmpDir, "workflows/example.ts"), "existing workflow");
+    fs.writeFileSync(path.join(tmpDir, "workflows/example.workflow.ts"), "existing workflow");
 
     // Capture output by catching the error
     let error: any;
@@ -246,7 +246,7 @@ describe("open-dynamic-workflow init integration", () => {
     expect(error).toBeDefined();
     expect(error.message).toContain("already exist in strict mode");
     expect(error.stdoutData).toContain(".open-dynamic-workflow/config.yaml");
-    expect(error.stdoutData).toContain("workflows/example.ts");
+    expect(error.stdoutData).toContain("workflows/example.workflow.ts");
     
     // Check if missing targets were NOT created
     expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/agents"))).toBe(false);

@@ -39,6 +39,13 @@ export class ListPrettyReporter implements ListReporter {
 
     this.renderDiagnostics(result.warnings, "Warnings");
     this.renderDiagnostics(result.errors, "Errors");
+
+    const configDiagnostics = result.configDiagnostics || [];
+    const configWarnings = configDiagnostics.filter((d) => d.severity === "warning");
+    const configErrors = configDiagnostics.filter((d) => d.severity === "error");
+
+    this.renderConfigDiagnostics(configWarnings, "Configuration Warnings:");
+    this.renderConfigDiagnostics(configErrors, "Configuration Errors:");
   }
 
   private isUninitializedDefaultProject(result: ListResult): boolean {
@@ -58,7 +65,7 @@ export class ListPrettyReporter implements ListReporter {
     }
 
     const allDiags = [...warnings, ...errors];
-    if (allDiags.length !== 3) {
+    if (allDiags.length === 0) {
       return false;
     }
 
@@ -68,6 +75,17 @@ export class ListPrettyReporter implements ListReporter {
       p === ".open-dynamic-workflow/agents" || p.replace(/\\/g, "/").endsWith("/.open-dynamic-workflow/agents");
     const isDefaultToolPath = (p: string) =>
       p === ".open-dynamic-workflow/tools" || p.replace(/\\/g, "/").endsWith("/.open-dynamic-workflow/tools");
+
+    const onlyDefaultBases = allDiags.every(
+      (d) =>
+        d.code === "LIST_DIRECTORY_NOT_FOUND" &&
+        d.hint?.code === "PROJECT_INIT_MISSING" &&
+        (isDefaultWorkflowPath(d.path) || isDefaultAgentPath(d.path) || isDefaultToolPath(d.path))
+    );
+
+    if (!onlyDefaultBases) {
+      return false;
+    }
 
     const hasWorkflowDiag = allDiags.some(
       (d) =>
@@ -191,6 +209,38 @@ export class ListPrettyReporter implements ListReporter {
       this.streams.stdout.write(`  - [${d.resourceType}] ${d.path}: ${d.message} (${d.code})\n`);
       if (d.hint && d.hint.message) {
         this.streams.stdout.write(`    Hint: ${d.hint.message}\n`);
+      }
+    }
+  }
+
+  private renderConfigDiagnostics(diagnostics: any[], title: string): void {
+    if (diagnostics.length === 0) return;
+    this.streams.stdout.write(`\n${title}\n`);
+    for (const d of diagnostics) {
+      this.streams.stdout.write(`  - [${d.resource}] ${d.path}: ${d.message} (${d.code})\n`);
+      if (this.verbose) {
+        if (d.hint) {
+          this.streams.stdout.write(`    Hint: ${d.hint}\n`);
+        }
+        if (d.migration) {
+          const m = d.migration;
+          this.streams.stdout.write(`    Migration:\n`);
+          if (m.oldKey) this.streams.stdout.write(`      Old Key: ${m.oldKey}\n`);
+          if (m.ignoredKey) this.streams.stdout.write(`      Ignored Key: ${m.ignoredKey}\n`);
+          if (m.effectiveInclude) this.streams.stdout.write(`      Effective Include: ${m.effectiveInclude.join(", ")}\n`);
+          if (m.effectiveExclude) this.streams.stdout.write(`      Effective Exclude: ${m.effectiveExclude.join(", ")}\n`);
+          if (m.replacementYaml) {
+            this.streams.stdout.write(`      Replacement YAML:\n${m.replacementYaml.split("\n").map((l: string) => "        " + l).join("\n")}\n`);
+          }
+        }
+        if (d.metrics) {
+          const m = d.metrics;
+          this.streams.stdout.write(`    Metrics:\n`);
+          if (m.includePattern) this.streams.stdout.write(`      Include Pattern: ${m.includePattern}\n`);
+          if (m.includeMatchCount !== undefined) this.streams.stdout.write(`      Include Match Count: ${m.includeMatchCount}\n`);
+          if (m.excludePattern) this.streams.stdout.write(`      Exclude Pattern: ${m.excludePattern}\n`);
+          if (m.excludedMatchCount !== undefined) this.streams.stdout.write(`      Excluded Match Count: ${m.excludedMatchCount}\n`);
+        }
       }
     }
   }

@@ -17,7 +17,8 @@ import {
   resolveProjectPath,
   DEFAULT_INIT_WORKFLOWS_DIR,
   DEFAULT_INIT_AGENTS_DIR,
-  DEFAULT_INIT_TOOLS_DIR
+  DEFAULT_INIT_TOOLS_DIR,
+  DEFAULT_INIT_EXAMPLE_FILE
 } from "../init/defaults.js";
 import { buildInitPlan } from "../init/planner.js";
 import { applyInitPlan } from "../init/writer.js";
@@ -178,7 +179,7 @@ export async function initCommand(input: InitCommandInput): Promise<void> {
   const smokeTestResult = options.runSmokeTest
     ? await deps.runInitSmokeTest({
         cwd: options.cwd,
-        workflowPath: path.join(options.workflowsDir, "example.ts"),
+        workflowPath: path.join(options.workflowsDir, DEFAULT_INIT_EXAMPLE_FILE),
         report: options.smokeReport,
         stdout: deps.stdout,
         stderr: deps.stderr

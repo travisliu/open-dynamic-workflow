@@ -65,7 +65,7 @@ security:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 }
 
@@ -101,7 +101,7 @@ security:
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
     await fs.writeFile(workflowPath, `export const meta = { name: "at-01", description: "test" };
 export default async (ctx) => {
@@ -569,7 +569,7 @@ providers:
 security:
   passEnv: ["OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER"]
 sharedAgents:
-  dir: ${JSON.stringify(agentsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), agentsDir))}
 `, "utf8");
 
     await fs.writeFile(workflowPath, `export const meta = { name: "at-05", description: "test" };
@@ -715,11 +715,11 @@ providers:
     args:
       - ${JSON.stringify(FAKE_PROVIDER)}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
     await fs.writeFile(workflowPath, `export const meta = { name: "tool-at-01", description: "test" };
@@ -764,11 +764,11 @@ providers:
     args:
       - ${JSON.stringify(FAKE_PROVIDER)}
 tools:
-  dir: ${JSON.stringify(toolsDir)}
+  dir: ${JSON.stringify(path.relative(process.cwd(), toolsDir))}
 workflow:
   discovery:
     include:
-      - ${JSON.stringify(path.join(TEMP_DIR, "workflows/**/*.ts"))}
+      - ${JSON.stringify(path.relative(process.cwd(), path.join(TEMP_DIR, "workflows/**/*.ts")))}
 `, "utf8");
 
     await fs.writeFile(workflowPath, `export const meta = { name: "tool-at-02", description: "test" };
