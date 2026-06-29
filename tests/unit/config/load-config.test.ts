@@ -219,13 +219,13 @@ workflow:
     const configContent = `
 workflow:
   include:
-    - workflows/*.{js,ts}
+    - workflows/!foo.js
 `;
     const configDir = join(tempDir, ".open-dynamic-workflow");
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, "config.yaml"), configContent);
 
-    // Warnings like brace expansion are non-fatal and should load without throwing
+    // Warnings like negated patterns are non-fatal and should load without throwing
     const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
     expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX")).toBe(true);
 
@@ -251,7 +251,7 @@ workflow:
     expect(config._normalizedDiscovery.tools.source).toBe("cli-override");
 
     // workflow includes should remain default
-    expect(config._normalizedDiscovery.workflow.include).toContain("workflows/**/*.workflow.js");
+    expect(config._normalizedDiscovery.workflow.include).toContain("workflows/**/*.js");
     expect(config._normalizedDiscovery.workflow.source).toBe("default");
 
     rmSync(tempDir, { recursive: true, force: true });

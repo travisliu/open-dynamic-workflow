@@ -8,7 +8,7 @@ import {
 describe("Path Discovery Normalization", () => {
   const cwd = "/workspace";
 
-  it("defaults produce runtime-extension includes and default excludes for all resources without warnings", () => {
+  it("defaults produce runtime-extension includes and empty excludes for all resources without warnings", () => {
     const { discovery, diagnostics } = normalizeDiscoveryConfig({
       config: DEFAULT_CONFIG,
       cwd,
@@ -18,12 +18,12 @@ describe("Path Discovery Normalization", () => {
     expect(diagnostics).toEqual([]);
 
     expect(discovery.workflow.include).toEqual([
-      "workflows/**/*.workflow.js",
-      "workflows/**/*.workflow.ts",
-      "workflows/**/*.workflow.mjs",
-      "workflows/**/*.workflow.cjs",
+      "workflows/**/*.js",
+      "workflows/**/*.ts",
+      "workflows/**/*.mjs",
+      "workflows/**/*.cjs",
     ]);
-    expect(discovery.workflow.exclude).toEqual(["**/*.test.*", "**/*.spec.*"]);
+    expect(discovery.workflow.exclude).toEqual([]);
     expect(discovery.workflow.source).toBe("default");
 
     expect(discovery.sharedAgents.include).toEqual([
@@ -32,7 +32,7 @@ describe("Path Discovery Normalization", () => {
       ".open-dynamic-workflow/agents/**/*.mjs",
       ".open-dynamic-workflow/agents/**/*.cjs",
     ]);
-    expect(discovery.sharedAgents.exclude).toEqual(["**/*.test.*", "**/*.spec.*"]);
+    expect(discovery.sharedAgents.exclude).toEqual([]);
     expect(discovery.sharedAgents.source).toBe("default");
 
     expect(discovery.tools.include).toEqual([
@@ -41,7 +41,7 @@ describe("Path Discovery Normalization", () => {
       ".open-dynamic-workflow/tools/**/*.mjs",
       ".open-dynamic-workflow/tools/**/*.cjs",
     ]);
-    expect(discovery.tools.exclude).toEqual(["**/*.test.*", "**/*.spec.*"]);
+    expect(discovery.tools.exclude).toEqual([]);
     expect(discovery.tools.source).toBe("default");
   });
 
@@ -312,30 +312,51 @@ describe("Path Discovery Normalization", () => {
     expect(codes).toContain("CONFIG_PATH_OUTSIDE_WORKSPACE");
   });
 
-  it("unsupported glob syntax produces CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX warning", () => {
-    const config = {
+  it("unsupported glob syntax produces CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX warning for negated patterns but not for tinyglobby syntax", () => {
+    const configNegated = {
       ...DEFAULT_CONFIG,
       workflow: {
         ...DEFAULT_CONFIG.workflow,
-        include: ["workflows/*.{js,ts}"],
+        include: ["workflows/!foo.js"],
       },
     };
-    const rawConfig = {
+    const rawConfigNegated = {
       workflow: {
-        include: ["workflows/*.{js,ts}"],
+        include: ["workflows/!foo.js"],
       },
     };
 
-    const res = normalizeResourceDiscovery({
+    const resNegated = normalizeResourceDiscovery({
       resource: "workflow",
-      config,
+      config: configNegated,
       cwd,
-      rawConfig,
+      rawConfig: rawConfigNegated,
     });
 
-    expect(res.diagnostics[0].code).toBe("CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX");
-    expect(res.diagnostics[0].fatalInStrictContext).toBe(false);
-    expect(res.diagnostics[0].severity).toBe("warning");
+    expect(resNegated.diagnostics[0].code).toBe("CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX");
+    expect(resNegated.diagnostics[0].message).toContain("(negated-pattern)");
+
+    const configTiny = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        include: ["workflows/*.{js,ts}", "workflows/??.js", "workflows/foo[a-z].js", "workflows/@(foo|bar).js"],
+      },
+    };
+    const rawConfigTiny = {
+      workflow: {
+        include: ["workflows/*.{js,ts}", "workflows/??.js", "workflows/foo[a-z].js", "workflows/@(foo|bar).js"],
+      },
+    };
+
+    const resTiny = normalizeResourceDiscovery({
+      resource: "workflow",
+      config: configTiny,
+      cwd,
+      rawConfig: rawConfigTiny,
+    });
+
+    expect(resTiny.diagnostics).toEqual([]);
   });
 
   it("unsupported literal suffix produces CONFIG_PATH_UNSUPPORTED_RESOURCE_SUFFIX", () => {
@@ -463,10 +484,10 @@ describe("Path Discovery Normalization", () => {
     expect(res.diagnostics[0].fatalInStrictContext).toBe(true);
     // Should fallback to default include patterns
     expect(res.include).toEqual([
-      "workflows/**/*.workflow.js",
-      "workflows/**/*.workflow.ts",
-      "workflows/**/*.workflow.mjs",
-      "workflows/**/*.workflow.cjs",
+      "workflows/**/*.js",
+      "workflows/**/*.ts",
+      "workflows/**/*.mjs",
+      "workflows/**/*.cjs",
     ]);
   });
 
@@ -496,10 +517,10 @@ describe("Path Discovery Normalization", () => {
     });
 
     expect(res.include).toEqual([
-      "workflows/**/*.workflow.js",
-      "workflows/**/*.workflow.ts",
-      "workflows/**/*.workflow.mjs",
-      "workflows/**/*.workflow.cjs",
+      "workflows/**/*.js",
+      "workflows/**/*.ts",
+      "workflows/**/*.mjs",
+      "workflows/**/*.cjs",
     ]);
     expect(res.exclude).toEqual(["custom-exclude/*.ts"]);
     expect(res.source).toBe("default"); // includeSource is default
@@ -507,5 +528,308 @@ describe("Path Discovery Normalization", () => {
     expect(res.diagnostics.length).toBe(1);
     expect(res.diagnostics[0].code).toBe("CONFIG_PATH_LEGACY_KEY_USED");
     expect(res.diagnostics[0].path).toBe("workflow.discovery");
+  });
+
+  it("a raw config that omits all resource exclude keys normalizes each resource exclude to empty array", () => {
+    const { discovery, diagnostics } = normalizeDiscoveryConfig({
+      config: DEFAULT_CONFIG,
+      cwd,
+      rawConfig: {
+        workflow: { include: ["workflows/*.ts"] },
+        sharedAgents: { include: ["agents/*.ts"] },
+        tools: { include: ["tools/*.ts"] }
+      },
+    });
+
+    expect(diagnostics).toEqual([]);
+    expect(discovery.workflow.exclude).toEqual([]);
+    expect(discovery.workflow.excludeSource).toBe("default");
+    expect(discovery.sharedAgents.exclude).toEqual([]);
+    expect(discovery.sharedAgents.excludeSource).toBe("default");
+    expect(discovery.tools.exclude).toEqual([]);
+    expect(discovery.tools.excludeSource).toBe("default");
+  });
+
+  it("explicit empty exclude: [] normalizes to [] and produces no diagnostics", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        exclude: [],
+      },
+    };
+    const rawConfig = {
+      workflow: {
+        exclude: [],
+      },
+    };
+
+    const res = normalizeResourceDiscovery({
+      resource: "workflow",
+      config,
+      cwd,
+      rawConfig,
+    });
+
+    expect(res.diagnostics).toEqual([]);
+    expect(res.exclude).toEqual([]);
+    expect(res.excludeSource).toBe("new");
+  });
+
+  it("explicit user excludes are preserved with excludeSource new", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        exclude: ["foo/**/*.ts"],
+      },
+    };
+    const rawConfig = {
+      workflow: {
+        exclude: ["foo/**/*.ts"],
+      },
+    };
+
+    const res = normalizeResourceDiscovery({
+      resource: "workflow",
+      config,
+      cwd,
+      rawConfig,
+    });
+
+    expect(res.diagnostics).toEqual([]);
+    expect(res.exclude).toEqual(["foo/**/*.ts"]);
+    expect(res.excludeSource).toBe("new");
+  });
+
+  it("legacy workflow.discovery.exclude is preserved with excludeSource legacy-discovery", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        discovery: {
+          exclude: ["legacy-exclude/**/*.ts"],
+        } as any,
+      },
+    };
+    const rawConfig = {
+      workflow: {
+        discovery: {
+          exclude: ["legacy-exclude/**/*.ts"],
+        } as any,
+      },
+    };
+
+    const res = normalizeResourceDiscovery({
+      resource: "workflow",
+      config,
+      cwd,
+      rawConfig,
+    });
+
+    expect(res.exclude).toEqual(["legacy-exclude/**/*.ts"]);
+    expect(res.excludeSource).toBe("legacy-discovery");
+  });
+
+  it("workflow.exclude overrides workflow.discovery.exclude and generates warning", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        exclude: ["new-exclude/**/*.ts"],
+        discovery: {
+          exclude: ["legacy-exclude/**/*.ts"],
+        } as any,
+      },
+    };
+    const rawConfig = {
+      workflow: {
+        exclude: ["new-exclude/**/*.ts"],
+        discovery: {
+          exclude: ["legacy-exclude/**/*.ts"],
+        } as any,
+      },
+    };
+
+    const res = normalizeResourceDiscovery({
+      resource: "workflow",
+      config,
+      cwd,
+      rawConfig,
+    });
+
+    expect(res.exclude).toEqual(["new-exclude/**/*.ts"]);
+    expect(res.excludeSource).toBe("new");
+    expect(res.diagnostics.some(d => d.code === "CONFIG_PATH_NEW_OVERRIDES_LEGACY")).toBe(true);
+  });
+
+  it("CLI overrides preserve user-authored excludes and do not invent excludes", () => {
+    // 1. With user exclude
+    const configWithExclude = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        exclude: ["user-exclude/**/*.ts"],
+      },
+    };
+    const rawConfigWithExclude = {
+      workflow: {
+        exclude: ["user-exclude/**/*.ts"],
+      },
+    };
+
+    const resWithExclude = normalizeResourceDiscovery({
+      resource: "workflow",
+      config: configWithExclude,
+      cwd,
+      cliOverrides: {
+        resourceType: "workflow",
+        dir: "cli-workflows-override",
+      },
+      rawConfig: rawConfigWithExclude,
+    });
+
+    expect(resWithExclude.exclude).toEqual(["user-exclude/**/*.ts"]);
+    expect(resWithExclude.excludeSource).toBe("new");
+
+    // 2. Without user exclude
+    const resWithoutExclude = normalizeResourceDiscovery({
+      resource: "workflow",
+      config: DEFAULT_CONFIG,
+      cwd,
+      cliOverrides: {
+        resourceType: "workflow",
+        dir: "cli-workflows-override",
+      },
+      rawConfig: {},
+    });
+
+    expect(resWithoutExclude.exclude).toEqual([]);
+    expect(resWithoutExclude.excludeSource).toBe("default");
+  });
+
+  it("invalid present exclude values produce CONFIG_PATH_INVALID_TYPE", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        exclude: "not-array" as any,
+      },
+    };
+    const rawConfig = {
+      workflow: {
+        exclude: "not-array" as any,
+      },
+    };
+
+    const res = normalizeResourceDiscovery({
+      resource: "workflow",
+      config,
+      cwd,
+      rawConfig,
+    });
+
+    expect(res.diagnostics.some(d => d.code === "CONFIG_PATH_INVALID_TYPE")).toBe(true);
+  });
+
+  it("allows extglob negation patterns like workflows/!(draft).js but warns for true negated patterns like workflows/!draft.js in both include and exclude", () => {
+    // Include testing
+    const configInc = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        include: ["workflows/!(draft).js", "workflows/!draft.js"],
+      },
+    };
+    const rawConfigInc = {
+      workflow: {
+        include: ["workflows/!(draft).js", "workflows/!draft.js"],
+      },
+    };
+    const resInc = normalizeResourceDiscovery({
+      resource: "workflow",
+      config: configInc,
+      cwd,
+      rawConfig: rawConfigInc,
+    });
+    const warningsInc = resInc.diagnostics.filter(d => d.code === "CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX");
+    expect(warningsInc.length).toBe(1);
+    expect(warningsInc[0].message).toContain("(negated-pattern)");
+    expect(warningsInc[0].value).toBe("workflows/!draft.js");
+
+    // Exclude testing
+    const configExc = {
+      ...DEFAULT_CONFIG,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        exclude: ["workflows/!(draft).js", "workflows/!draft.js"],
+      },
+    };
+    const rawConfigExc = {
+      workflow: {
+        exclude: ["workflows/!(draft).js", "workflows/!draft.js"],
+      },
+    };
+    const resExc = normalizeResourceDiscovery({
+      resource: "workflow",
+      config: configExc,
+      cwd,
+      rawConfig: rawConfigExc,
+    });
+    const warningsExc = resExc.diagnostics.filter(d => d.code === "CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX");
+    expect(warningsExc.length).toBe(1);
+    expect(warningsExc[0].message).toContain("(negated-pattern)");
+    expect(warningsExc[0].value).toBe("workflows/!draft.js");
+  });
+
+  it("normalizes CLI override source paths correctly for each resource", () => {
+    // 1. workflowsDir override
+    const resWorkflow = normalizeResourceDiscovery({
+      resource: "workflow",
+      config: DEFAULT_CONFIG,
+      cwd,
+      cliOverrides: {
+        workflowsDir: "custom-workflows-override",
+      },
+    });
+    expect(resWorkflow.sourcePaths).toEqual(["cli.workflowsDir"]);
+    expect(resWorkflow.diagnostics[0].path).toBe("cli.workflowsDir");
+
+    // 2. agentsDir override
+    const resAgents = normalizeResourceDiscovery({
+      resource: "sharedAgents",
+      config: DEFAULT_CONFIG,
+      cwd,
+      cliOverrides: {
+        agentsDir: "custom-agents-override",
+      },
+    });
+    expect(resAgents.sourcePaths).toEqual(["cli.agentsDir"]);
+    expect(resAgents.diagnostics[0].path).toBe("cli.agentsDir");
+
+    // 3. toolsDir override
+    const resTools = normalizeResourceDiscovery({
+      resource: "tools",
+      config: DEFAULT_CONFIG,
+      cwd,
+      cliOverrides: {
+        toolsDir: "custom-tools-override",
+      },
+    });
+    expect(resTools.sourcePaths).toEqual(["cli.toolsDir"]);
+    expect(resTools.diagnostics[0].path).toBe("cli.toolsDir");
+
+    // 4. Fallback dir override
+    const resFallback = normalizeResourceDiscovery({
+      resource: "workflow",
+      config: DEFAULT_CONFIG,
+      cwd,
+      cliOverrides: {
+        resourceType: "workflow",
+        dir: "custom-dir-override",
+      },
+    });
+    expect(resFallback.sourcePaths).toEqual(["cli.dir"]);
+    expect(resFallback.diagnostics[0].path).toBe("cli.dir");
   });
 });

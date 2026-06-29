@@ -234,7 +234,7 @@ tools:
     writeConfig(`
 workflow:
   include:
-    - "workflows/**/*.workflow.{js,ts}"
+    - "workflows/**/!foo.js"
 `);
 
     // Non-strict load returns diagnostics
@@ -249,7 +249,7 @@ workflow:
     // Strict context (run) should NOT throw
     const strictConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
     expect(strictConfig._normalizedDiscovery.workflow.include).toContain(
-      "workflows/**/*.workflow.{js,ts}"
+      "workflows/**/!foo.js"
     );
   });
 });

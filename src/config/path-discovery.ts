@@ -140,6 +140,32 @@ function validatePathArray(
   return { valid: allStrings, diagnostics: diags };
 }
 
+function shouldKeepUnsupportedGlobDiagnostic(
+  diagnostic: ConfigDiagnostic,
+  rawPattern: string
+): boolean {
+  if (diagnostic.code !== "CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX") {
+    return true;
+  }
+  if (!diagnostic.message.includes("(negated-pattern)")) {
+    return false;
+  }
+  return rawPattern
+    .replace(/\\/g, "/")
+    .split("/")
+    .some((segment) => segment.startsWith("!") && !segment.startsWith("!("));
+}
+
+function cliOverridePathForResource(
+  resource: DiscoveryResource,
+  cliOverrides: DiscoveryCliOverrides | undefined
+): "cli.workflowsDir" | "cli.agentsDir" | "cli.toolsDir" | "cli.dir" {
+  if (resource === "workflow" && cliOverrides?.workflowsDir) return "cli.workflowsDir";
+  if (resource === "sharedAgents" && cliOverrides?.agentsDir) return "cli.agentsDir";
+  if (resource === "tools" && cliOverrides?.toolsDir) return "cli.toolsDir";
+  return "cli.dir";
+}
+
 /**
  * Normalizes path discovery configuration for a specific resource type.
  */
@@ -206,15 +232,27 @@ export function normalizeResourceDiscovery(input: {
 
   if (resource === "workflow") {
     rawInclude = (config.workflow?.include as string[]) || [];
-    rawExclude = (config.workflow?.exclude as string[]) || [];
   } else if (resource === "sharedAgents") {
     rawInclude = (config.sharedAgents?.include as string[]) || [];
-    rawExclude = (config.sharedAgents?.exclude as string[]) || [];
     configDir = config.sharedAgents?.dir as string | undefined;
   } else if (resource === "tools") {
     rawInclude = (config.tools?.include as string[]) || [];
-    rawExclude = (config.tools?.exclude as string[]) || [];
     configDir = config.tools?.dir as string | undefined;
+  }
+
+  if (hasUserFlatExclude) {
+    if (resource === "workflow") {
+      rawExclude = (config.workflow?.exclude as string[]) || [];
+    } else if (resource === "sharedAgents") {
+      rawExclude = (config.sharedAgents?.exclude as string[]) || [];
+    } else if (resource === "tools") {
+      rawExclude = (config.tools?.exclude as string[]) || [];
+    }
+  } else if (resource === "workflow" && hasUserLegacyExclude) {
+    const legacyDiscovery = (config.workflow as any)?.discovery;
+    rawExclude = (legacyDiscovery?.exclude as string[]) || [];
+  } else {
+    rawExclude = [];
   }
 
   // Determine include source, compatibility mode, and patterns
@@ -222,14 +260,15 @@ export function normalizeResourceDiscovery(input: {
   let compatibilityMode: DiscoveryCompatibilityMode = "default-suffix-specific";
   let sourcePaths: string[] = [];
 
+  const cliOverridePath = cliOverridePathForResource(resource, cliOverrides);
   if (cliOverrideDir !== undefined) {
     includeSource = "cli-override";
     compatibilityMode = "cli-dir-compatible";
     rawInclude = [cliOverrideDir];
-    sourcePaths = ["cli-override"];
+    sourcePaths = [cliOverridePath];
     diagnostics.push({
       resource,
-      path: cliOverrides?.workflowsDir ? "cli.workflowsDir" : cliOverrides?.agentsDir ? "cli.agentsDir" : cliOverrides?.toolsDir ? "cli.toolsDir" : "cli.dir",
+      path: cliOverridePath,
       severity: "warning",
       code: "CONFIG_PATH_CLI_OVERRIDE_USED",
       message: `CLI override is used for ${resource} path discovery.`,
@@ -318,8 +357,6 @@ export function normalizeResourceDiscovery(input: {
     }
   } else if (resource === "workflow" && hasUserLegacyExclude) {
     excludeSource = "legacy-discovery";
-    const legacyDiscovery = (config.workflow as any)?.discovery;
-    rawExclude = (legacyDiscovery?.exclude as string[]) || [];
     if (includeSource !== "legacy-discovery") {
       diagnostics.push({
         resource,
@@ -382,7 +419,7 @@ export function normalizeResourceDiscovery(input: {
       continue;
     }
     const pathKey = includeSource === "cli-override"
-      ? (cliOverrides?.workflowsDir ? "cli.workflowsDir" : cliOverrides?.agentsDir ? "cli.agentsDir" : cliOverrides?.toolsDir ? "cli.toolsDir" : "cli.dir")
+      ? cliOverridePath
       : (includeSource === "legacy-dir" ? `${resource}.dir` : `${includeValidationPath}[${i}]`);
 
     const safetyResult = normalizePatternForMatching({
@@ -393,7 +430,10 @@ export function normalizeResourceDiscovery(input: {
       source: includeSource,
     });
 
-    diagnostics.push(...safetyResult.diagnostics);
+    const filteredDiagnostics = safetyResult.diagnostics.filter(
+      (d) => shouldKeepUnsupportedGlobDiagnostic(d, rawPattern)
+    );
+    diagnostics.push(...filteredDiagnostics);
 
     if (safetyResult.pattern) {
       const normalized = safetyResult.pattern;
@@ -447,7 +487,10 @@ export function normalizeResourceDiscovery(input: {
       source: excludeSource,
     });
 
-    diagnostics.push(...safetyResult.diagnostics);
+    const filteredDiagnostics = safetyResult.diagnostics.filter(
+      (d) => shouldKeepUnsupportedGlobDiagnostic(d, rawPattern)
+    );
+    diagnostics.push(...filteredDiagnostics);
 
     if (safetyResult.pattern) {
       const normalized = safetyResult.pattern;

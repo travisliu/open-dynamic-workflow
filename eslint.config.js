@@ -15,6 +15,7 @@ export default tseslint.config(
       'examples/**',
       'skills/**',
       'tests/fixtures/**',
+      '.open-dynamic-workflow/**',
     ],
   },
   {
