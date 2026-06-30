@@ -1,12 +1,12 @@
 import { 
   DiscoveryService, 
   ListDiscoveryOptions, 
-  ListResult, 
+  DiscoveryRawResult, 
+  DiscoveryRawSummary, 
   ListResourceType, 
   ResourceExtractor, 
   ListedResource,
-  ListDiagnostic,
-  ListSummary
+  ListDiagnostic
 } from "./types.js";
 import type { ConfigDiagnostic } from "../config/types.js";
 import { collectCandidateFiles } from "./collect-files.js";
@@ -18,7 +18,6 @@ import {
   listDiagnostic, 
   LIST_INTERNAL_ERROR,
   normalizeDiagnosticSeverity,
-  LIST_DIRECTORY_NOT_FOUND
 } from "./diagnostics.js";
 
 export function createDiscoveryService(input?: {
@@ -32,7 +31,7 @@ export function createDiscoveryService(input?: {
   };
 
   return {
-    async discover(options: ListDiscoveryOptions): Promise<ListResult> {
+    async discover(options: ListDiscoveryOptions): Promise<DiscoveryRawResult> {
       const { resourceTypes, strict } = options;
       const allDiagnostics: ListDiagnostic[] = [];
       const configDiagnostics: ConfigDiagnostic[] = [];
@@ -103,37 +102,26 @@ export function createDiscoveryService(input?: {
         const warnings = allDiagnostics.filter(d => d.severity === "warning");
         const errors = allDiagnostics.filter(d => d.severity === "error");
 
+        const configWarningCount = configDiagnostics.filter((d) => d.severity === "warning").length;
+        const configErrorCount = configDiagnostics.filter((d) => d.severity === "error").length;
+
         const countsByType: Partial<Record<ListResourceType, number>> = {};
         for (const r of dedupedResources) {
           countsByType[r.type as ListResourceType] = (countsByType[r.type as ListResourceType] ?? 0) + 1;
         }
 
-        const summary: ListSummary = {
+        const summary: DiscoveryRawSummary = {
           discoveredCount,
           validCount: dedupedResources.length,
           warningCount: warnings.length,
           errorCount: errors.length,
+          configWarningCount,
+          configErrorCount,
           countsByType,
         };
 
-        // 6. Set result status
-        let status: "succeeded" | "partially_succeeded" | "failed" = "succeeded";
-        
-        const allPathsFailed = resourceTypes.length > 0 && 
-          resourceTypes.every(rt => 
-            allDiagnostics.some(d => d.resourceType === rt && d.code === LIST_DIRECTORY_NOT_FOUND) &&
-            !dedupedResources.some(r => r.type === rt)
-          );
-
-        if (errors.length > 0 || allPathsFailed) {
-          status = "failed";
-        } else if (warnings.length > 0) {
-          status = "partially_succeeded";
-        }
-
         return {
           schemaVersion: "open-dynamic-workflow.list.v1",
-          status,
           resourceTypes,
           resources: dedupedResources,
           warnings,
@@ -153,7 +141,6 @@ export function createDiscoveryService(input?: {
         
         return {
           schemaVersion: "open-dynamic-workflow.list.v1",
-          status: "failed",
           resourceTypes,
           resources: [],
           warnings: [],
@@ -163,6 +150,8 @@ export function createDiscoveryService(input?: {
             validCount: 0,
             warningCount: 0,
             errorCount: 1,
+            configWarningCount: 0,
+            configErrorCount: 0,
             countsByType: {},
           },
           configDiagnostics: [],

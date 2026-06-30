@@ -108,42 +108,118 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
     }
   });
 
+  const { precollectAllResourcesForLoad } = await import("../../discovery/precollect.js");
+  const precollected = await precollectAllResourcesForLoad({
+    cwd: config.cwd,
+    discovery: config._normalizedDiscovery,
+    strict: false
+  });
+
+  const workflowCount = precollected.workflow.collectionResult.files.length;
+  const agentCount = precollected.sharedAgents.collectionResult.files.length;
+  const toolCount = precollected.tools.collectionResult.files.length;
+
+  console.log(`✓ Discovery: workflows ${workflowCount}, shared agents ${agentCount}, tools ${toolCount}`);
+
+  function simplifyDefaultPatternLabel(pattern: string, source: string): string {
+    if (source !== "default") {
+      return pattern;
+    }
+    const match = pattern.match(/\.([a-z]+)$/i);
+    if (match) {
+      return `*.${match[1]}`;
+    }
+    return pattern;
+  }
+
+  const collectionDiagnostics = [
+    ...precollected.workflow.collectionResult.diagnostics,
+    ...precollected.sharedAgents.collectionResult.diagnostics,
+    ...precollected.tools.collectionResult.diagnostics,
+  ];
+
+  const collectionConfigDiagnostics = [
+    ...precollected.workflow.collectionResult.configDiagnostics,
+    ...precollected.sharedAgents.collectionResult.configDiagnostics,
+    ...precollected.tools.collectionResult.configDiagnostics,
+  ];
+
+  const collectionWarningCount = collectionDiagnostics.filter(d => d.severity === "warning").length +
+    collectionConfigDiagnostics.filter(d => d.severity === "warning").length;
+  const collectionErrorCount = collectionDiagnostics.filter(d => d.severity === "error").length +
+    collectionConfigDiagnostics.filter(d => d.severity === "error").length;
+
+  if (collectionWarningCount > 0 || collectionErrorCount > 0) {
+    console.log(`⚠ Discovery diagnostics: ${collectionWarningCount} warnings, ${collectionErrorCount} errors`);
+  }
+
+  if (rawOptions.verbose) {
+    console.log("\nDiscovery Metrics:");
+    const resourcesList = [
+      { name: "Workflows", key: "workflow" },
+      { name: "Shared Agents", key: "sharedAgents" },
+      { name: "Tools", key: "tools" }
+    ] as const;
+
+    for (const resInfo of resourcesList) {
+      const resResult = precollected[resInfo.key];
+      console.log(`  ${resInfo.name}:`);
+      
+      for (const metric of resResult.collectionResult.metrics) {
+        const displayPattern = simplifyDefaultPatternLabel(metric.pattern, metric.source);
+        console.log(`    Pattern: ${displayPattern} (${metric.configPath}, source: ${metric.source})`);
+        console.log(`      Matched: ${metric.matchedPathCount}, Accepted: ${metric.acceptedCandidateCount}`);
+        console.log(`      Rejected by Marker: ${metric.rejectedByMarkerCount}, Excluded: ${metric.excludedCandidateCount}, Rejected by Safety: ${metric.rejectedBySafetyCount}`);
+      }
+
+      const resConfigDiags = resResult.collectionResult.configDiagnostics;
+
+      if (resConfigDiags.length > 0) {
+        for (const d of resConfigDiags) {
+          console.log(`    [${d.severity === "error" ? "Error" : "Warning"}] ${d.code} (${d.path}): ${d.message}`);
+        }
+      }
+    }
+  }
+
   const toolDiagnostics: any[] = [];
-  const { toResourcePatterns } = await import("../discovery-patterns.js");
   try {
     const toolRegistry = await loadToolRegistry({
       cwd: config.cwd,
-      discovery: toResourcePatterns(config._normalizedDiscovery.tools),
+      precollected: precollected.tools.loadInput,
       maxDefinitions: config.tools?.maxDefinitions ?? 100,
       configDiagnostics: toolDiagnostics
     });
-    const toolCount = toolRegistry.list().length;
-    console.log(`✓ Tool registry loaded (${toolCount} tools)`);
+    const loadedToolCount = toolRegistry.list().length;
+    console.log(`✓ Tool registry loaded (${loadedToolCount} tools)`);
   } catch (err: any) {
     console.log(`✕ Tool registry failed to load: ${formatToolRegistryError(err)}`);
   }
 
   const allDoctorDiags = [
     ...(config._configDiagnostics || []),
+    ...collectionConfigDiagnostics,
+    ...collectionDiagnostics,
     ...toolDiagnostics
   ];
 
   if (allDoctorDiags.length > 0) {
-    console.log("Configuration Diagnostics:");
+    console.log("\nConfiguration Diagnostics:");
     for (const d of allDoctorDiags) {
       const typeStr = d.severity === "error" ? "Error" : "Warning";
-      console.log(`  [${typeStr}] ${d.path} ${d.code}: ${d.message}`);
+      console.log(`  [${typeStr}] ${d.path || (d as any).path} ${d.code}: ${d.message}`);
       if (rawOptions.verbose) {
-        if (d.hint) {
-          console.log(`    Hint: ${d.hint}`);
+        if ((d as any).hint) {
+          console.log(`    Hint: ${(d as any).hint}`);
         }
-        if (d.migration) {
-          console.log(`    Migration: Migrate ${d.migration.ignoredKey} to ${d.resource}.include`);
+        if ((d as any).migration) {
+          console.log(`    Migration: Migrate ${(d as any).migration.ignoredKey} to ${(d as any).resource}.include`);
         }
       }
     }
     console.log();
   }
+
 
   const checker = input.deps?.providerHealthChecker ?? defaultProviderHealthChecker;
   const result = await checker.checkAll(config);

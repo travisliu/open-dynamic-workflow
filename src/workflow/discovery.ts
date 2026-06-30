@@ -9,7 +9,7 @@ import type { ToolRegistry } from "../types/tool.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { walk, matchGlob, getGlobBaseDir } from "../discovery/file-patterns.js";
-import type { ResourceDiscoveryPatterns } from "../discovery/types.js";
+import type { ResourceDiscoveryPatterns, PrecollectedResourceLoadInput } from "../discovery/types.js";
 import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
 
 export { walk, matchGlob, getGlobBaseDir };
@@ -21,24 +21,56 @@ export interface DiscoverWorkflowRegistryInput {
   discovery?: ResourceDiscoveryPatterns;
   sharedAgentRegistry?: SharedAgentRegistry;
   candidatePaths?: string[] | undefined;
+  precollected?: PrecollectedResourceLoadInput;
   allowDynamicSharedAgentIds?: boolean;
   toolRegistry?: ToolRegistry;
   maxLoopRounds?: number;
 }
 
 export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryInput): Promise<WorkflowRegistry> {
-  const { rootWorkflowPath, cwd, include, discovery, sharedAgentRegistry, candidatePaths, maxLoopRounds } = input;
+  const { rootWorkflowPath, cwd, include, discovery, sharedAgentRegistry, candidatePaths, precollected, maxLoopRounds } = input;
   const absoluteCwd = resolve(cwd);
   const absoluteRootPath = resolve(absoluteCwd, rootWorkflowPath);
 
   const canonicalCwd = await fs.realpath(absoluteCwd).catch(() => absoluteCwd);
 
   const pathsToProcess = new Set<string>();
-  pathsToProcess.add(absoluteRootPath);
+  const strictPaths = new Set<string>();
 
-  if (candidatePaths) {
+  pathsToProcess.add(absoluteRootPath);
+  strictPaths.add(absoluteRootPath);
+
+  if (precollected) {
+    const workflowCandidates = precollected.candidateFiles
+      .filter((c) => c.resourceType === "workflow")
+      .slice()
+      .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+    if (candidatePaths) {
+      const resolvedNarrowingSet = new Set(candidatePaths.map((p) => resolve(absoluteCwd, p)));
+      for (const candidate of workflowCandidates) {
+        const pathToAdd = candidate.realPath || candidate.absolutePath;
+        const candidateAbs = resolve(absoluteCwd, candidate.absolutePath);
+        const candidateReal = resolve(absoluteCwd, candidate.realPath);
+        if (resolvedNarrowingSet.has(candidateAbs) || resolvedNarrowingSet.has(candidateReal)) {
+          pathsToProcess.add(pathToAdd);
+          strictPaths.add(pathToAdd);
+        }
+      }
+    } else {
+      for (const candidate of workflowCandidates) {
+        const pathToAdd = candidate.realPath || candidate.absolutePath;
+        pathsToProcess.add(pathToAdd);
+        if (candidate.source !== "legacy-discovery" && candidate.source !== "legacy-dir") {
+          strictPaths.add(pathToAdd);
+        }
+      }
+    }
+  } else if (candidatePaths) {
     for (const p of candidatePaths) {
-      pathsToProcess.add(resolve(absoluteCwd, p));
+      const pathToAdd = resolve(absoluteCwd, p);
+      pathsToProcess.add(pathToAdd);
+      strictPaths.add(pathToAdd);
     }
   } else if (discovery) {
     const res = await collectResourceCandidateFiles({
@@ -116,8 +148,8 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
       parsed = parseWorkflow(loaded);
     } catch (err) {
       // If we are scanning from 'include', we might hit files that are not workflows.
-      // We should only throw if it's the root workflow or if we were given explicit candidatePaths.
-      if (absolutePath === absoluteRootPath || candidatePaths) {
+      // We should only throw if it's a strict path.
+      if (strictPaths.has(absolutePath)) {
         throw err;
       }
       continue;

@@ -33,6 +33,8 @@ describe("List Reporters", () => {
       validCount: 3,
       warningCount: 0,
       errorCount: 0,
+      configWarningCount: 0,
+      configErrorCount: 0,
       countsByType: { workflow: 1, agent: 1, tool: 1 },
     },
   };
@@ -60,6 +62,8 @@ describe("List Reporters", () => {
         validCount: 0,
         warningCount: 0,
         errorCount: 0,
+        configWarningCount: 0,
+        configErrorCount: 0,
         countsByType: { workflow: 0, agent: 0, tool: 0 },
       },
     };
@@ -105,25 +109,66 @@ describe("List Reporters", () => {
     expect(output).toContain("Input Schema: {\"type\":\"object\"}");
   });
 
-  it("json reporter: emits parseable JSON", async () => {
+  it("json reporter: emits parseable JSON and includes new summary fields", async () => {
+    const customResult: ListResult = {
+      schemaVersion: "open-dynamic-workflow.list.v1",
+      status: "failed",
+      resourceTypes: ["workflow", "agent", "tool"],
+      resources: [],
+      warnings: [],
+      errors: [],
+      summary: {
+        discoveredCount: 0,
+        validCount: 0,
+        warningCount: 3,
+        errorCount: 2,
+        configWarningCount: 1,
+        configErrorCount: 1,
+        countsByType: {},
+      },
+      configDiagnostics: [],
+    };
     const reporter = createListReporter({ mode: "json", streams: { stdout, stderr } });
-    reporter.render(mockResult);
+    reporter.render(customResult);
 
     const parsed = JSON.parse(output);
     expect(parsed.schemaVersion).toBe("open-dynamic-workflow.list.v1");
-    expect(parsed.resources).toHaveLength(3);
+    expect(parsed.summary.warningCount).toBe(3);
+    expect(parsed.summary.errorCount).toBe(2);
+    expect(parsed.summary.configWarningCount).toBe(1);
+    expect(parsed.summary.configErrorCount).toBe(1);
   });
 
-  it("jsonl reporter: emits multiple records", async () => {
+  it("jsonl reporter: emits multiple records and includes new summary fields in list.summary", async () => {
+    const customResult: ListResult = {
+      schemaVersion: "open-dynamic-workflow.list.v1",
+      status: "failed",
+      resourceTypes: ["workflow", "agent", "tool"],
+      resources: [],
+      warnings: [],
+      errors: [],
+      summary: {
+        discoveredCount: 0,
+        validCount: 0,
+        warningCount: 3,
+        errorCount: 2,
+        configWarningCount: 1,
+        configErrorCount: 1,
+        countsByType: {},
+      },
+      configDiagnostics: [],
+    };
     const reporter = createListReporter({ mode: "jsonl", streams: { stdout, stderr } });
-    reporter.render(mockResult);
+    reporter.render(customResult);
 
     const lines = output.trim().split("\n");
-    expect(lines).toHaveLength(4); // 3 resources + 1 summary
-    const first = JSON.parse(lines[0]);
-    expect(first.type).toBe("list.resource");
-    const last = JSON.parse(lines[3]);
-    expect(last.type).toBe("list.summary");
+    const summaryLine = lines.find((l) => JSON.parse(l).type === "list.summary");
+    expect(summaryLine).toBeDefined();
+    const summaryObj = JSON.parse(summaryLine!).summary;
+    expect(summaryObj.warningCount).toBe(3);
+    expect(summaryObj.errorCount).toBe(2);
+    expect(summaryObj.configWarningCount).toBe(1);
+    expect(summaryObj.configErrorCount).toBe(1);
   });
 
   it("structured reporters: no ANSI styling and no source leakage", async () => {
@@ -209,6 +254,8 @@ describe("List Reporters", () => {
         validCount: 0,
         warningCount: 3,
         errorCount: 0,
+        configWarningCount: 0,
+        configErrorCount: 0,
         countsByType: {},
       },
     };
@@ -251,6 +298,8 @@ describe("List Reporters", () => {
         validCount: 0,
         warningCount: 1,
         errorCount: 1,
+        configWarningCount: 0,
+        configErrorCount: 0,
         countsByType: {},
       },
     };
@@ -310,6 +359,8 @@ describe("List Reporters", () => {
           validCount: 0,
           warningCount: 4,
           errorCount: 0,
+          configWarningCount: 0,
+          configErrorCount: 0,
           countsByType: {},
         },
       };

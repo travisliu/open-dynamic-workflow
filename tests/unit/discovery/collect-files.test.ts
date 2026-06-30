@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { promises as fs } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { collectCandidateFiles, collectResourceCandidateFiles } from "../../../src/discovery/collect-files.js";
-import { DiscoveryDirectories } from "../../../src/discovery/types.js";
+import { DiscoveryDirectories, PatternMatchMetrics } from "../../../src/discovery/types.js";
+import { ConfigDiagnostic } from "../../../src/config/types.js";
 
 describe("collect-files", () => {
   let tempDir: string;
@@ -275,7 +276,8 @@ describe("collect-files", () => {
       expect(legacyPaths).toContain("workflows/generic-legacy.ts");
     });
 
-    it("reports unused exclude and zero-match include diagnostics", async () => {
+    it("reports unused exclude and suppresses zero-match include diagnostics when another include matches", async () => {
+      await fs.mkdir(join(tempDir, "workflows/nonexistent"), { recursive: true });
       const result = await collectCandidateFiles({
         cwd: tempDir,
         resourceTypes: ["workflow"],
@@ -293,7 +295,7 @@ describe("collect-files", () => {
 
       expect(result.configDiagnostics).toBeDefined();
       const codes = result.configDiagnostics!.map(d => d.code);
-      expect(codes).toContain("CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+      expect(codes).not.toContain("CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
       expect(codes).toContain("CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
     });
 
@@ -462,6 +464,938 @@ describe("collect-files", () => {
       expect(relPaths).toContain("my.tool.helpers/real.tool.ts");
 
       await fs.rm(unitTempDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("source-aware candidate collection", () => {
+    async function getTempDir() {
+      return await fs.mkdtemp(join(tmpdir(), "collect-files-source-aware-"));
+    }
+
+    async function writeFile(root: string, relativePath: string, contents = "export const meta = {};") {
+      const filePath = join(root, relativePath);
+      await fs.mkdir(join(filePath, ".."), { recursive: true });
+      await fs.writeFile(filePath, contents);
+      return filePath;
+    }
+
+    function relativePaths(result: { files: Array<{ relativePath: string }> }) {
+      return result.files.map((file) => file.relativePath);
+    }
+
+    function metricFor(result: { metrics: PatternMatchMetrics[] }, pattern: string) {
+      return result.metrics.find((m) => m.pattern === pattern || m.configPath === pattern);
+    }
+
+    function configDiagnosticsWithCode(result: { configDiagnostics: ConfigDiagnostic[] }, code: string) {
+      return result.configDiagnostics.filter((d) => d.code === code);
+    }
+
+    it("1. Generic workflow runtime include accepts plain and marker files", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/plain.ts");
+        await writeFile(root, "workflows/marked.workflow.ts");
+        await writeFile(root, "workflows/readme.md");
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+
+        const paths = relativePaths(result);
+        expect(paths.sort()).toEqual(["workflows/marked.workflow.ts", "workflows/plain.ts"]);
+
+        const metric = metricFor(result, "workflows/**/*.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(2);
+        expect(metric!.acceptedCandidateCount).toBe(2);
+        expect(metric!.rejectedByMarkerCount).toBe(0);
+
+        for (const file of result.files) {
+          expect(file.sourcePattern).toBe("workflows/**/*.ts");
+          expect(file.sourceConfigPath).toBeDefined();
+          expect(file.source).toBe("new");
+        }
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("2. Generic shared-agent and tool runtime includes accept plain and marker files", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "agents/plain-agent.js");
+        await writeFile(root, "agents/marked.agent.js");
+        await writeFile(root, "tools/plain-tool.js");
+        await writeFile(root, "tools/marked.tool.js");
+
+        const result = await collectCandidateFiles({
+          cwd: root,
+          resourceTypes: ["agent", "tool"],
+          patterns: {
+            workflow: { include: [], exclude: [], compatibilityMode: "new-suffix-specific" },
+            agent: {
+              include: ["agents/**/*.js"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+            tool: {
+              include: ["tools/**/*.js"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+          },
+          strict: false,
+        });
+
+        const paths = relativePaths(result);
+        expect(paths.sort()).toEqual([
+          "agents/marked.agent.js",
+          "agents/plain-agent.js",
+          "tools/marked.tool.js",
+          "tools/plain-tool.js",
+        ]);
+
+        const agentMetric = metricFor(result, "agents/**/*.js");
+        expect(agentMetric).toBeDefined();
+        expect(agentMetric!.matchedPathCount).toBe(2);
+        expect(agentMetric!.acceptedCandidateCount).toBe(2);
+        expect(agentMetric!.rejectedByMarkerCount).toBe(0);
+
+        const toolMetric = metricFor(result, "tools/**/*.js");
+        expect(toolMetric).toBeDefined();
+        expect(toolMetric!.matchedPathCount).toBe(2);
+        expect(toolMetric!.acceptedCandidateCount).toBe(2);
+        expect(toolMetric!.rejectedByMarkerCount).toBe(0);
+
+        for (const file of result.files) {
+          expect(file.sourcePattern).toBeDefined();
+          expect(file.sourceConfigPath).toBeDefined();
+          expect(file.source).toBeDefined();
+        }
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("3. Suffix-specific patterns stay marker-specific", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/plain.ts");
+        await writeFile(root, "workflows/marked.workflow.ts");
+        await writeFile(root, "agents/plain.js");
+        await writeFile(root, "agents/marked.agent.js");
+        await writeFile(root, "tools/plain.js");
+        await writeFile(root, "tools/marked.tool.js");
+
+        const result = await collectCandidateFiles({
+          cwd: root,
+          resourceTypes: ["workflow", "agent", "tool"],
+          patterns: {
+            workflow: {
+              include: ["workflows/**/*.workflow.ts"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+            agent: {
+              include: ["agents/**/*.agent.js"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+            tool: {
+              include: ["tools/**/*.tool.js"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+          },
+          strict: false,
+        });
+
+        const paths = relativePaths(result);
+        expect(paths.sort()).toEqual([
+          "agents/marked.agent.js",
+          "tools/marked.tool.js",
+          "workflows/marked.workflow.ts",
+        ]);
+
+        const wfMetric = metricFor(result, "workflows/**/*.workflow.ts");
+        expect(wfMetric).toBeDefined();
+        expect(wfMetric!.matchedPathCount).toBe(1);
+        expect(wfMetric!.acceptedCandidateCount).toBe(1);
+        expect(wfMetric!.rejectedByMarkerCount).toBe(0);
+
+        const agentMetric = metricFor(result, "agents/**/*.agent.js");
+        expect(agentMetric).toBeDefined();
+        expect(agentMetric!.matchedPathCount).toBe(1);
+        expect(agentMetric!.acceptedCandidateCount).toBe(1);
+        expect(agentMetric!.rejectedByMarkerCount).toBe(0);
+
+        const toolMetric = metricFor(result, "tools/**/*.tool.js");
+        expect(toolMetric).toBeDefined();
+        expect(toolMetric!.matchedPathCount).toBe(1);
+        expect(toolMetric!.acceptedCandidateCount).toBe(1);
+        expect(toolMetric!.rejectedByMarkerCount).toBe(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("4. Broad non-generic patterns require markers and count marker rejections", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/plain.ts");
+        await writeFile(root, "workflows/marked.workflow.ts");
+        await writeFile(root, "agents/plain.js");
+        await writeFile(root, "agents/marked.agent.js");
+        await writeFile(root, "tools/plain.js");
+        await writeFile(root, "tools/marked.tool.js");
+
+        const result = await collectCandidateFiles({
+          cwd: root,
+          resourceTypes: ["workflow", "agent", "tool"],
+          patterns: {
+            workflow: {
+              include: ["workflows/**/*"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+            agent: {
+              include: ["agents/**/*"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+            tool: {
+              include: ["tools/**/*"],
+              exclude: [],
+              compatibilityMode: "new-suffix-specific",
+            },
+          },
+          strict: false,
+        });
+
+        const paths = relativePaths(result);
+        expect(paths.sort()).toEqual([
+          "agents/marked.agent.js",
+          "tools/marked.tool.js",
+          "workflows/marked.workflow.ts",
+        ]);
+
+        const wfMetric = metricFor(result, "workflows/**/*");
+        expect(wfMetric).toBeDefined();
+        expect(wfMetric!.matchedPathCount).toBe(2);
+        expect(wfMetric!.acceptedCandidateCount).toBe(1);
+        expect(wfMetric!.rejectedByMarkerCount).toBe(1);
+
+        const agentMetric = metricFor(result, "agents/**/*");
+        expect(agentMetric).toBeDefined();
+        expect(agentMetric!.matchedPathCount).toBe(2);
+        expect(agentMetric!.acceptedCandidateCount).toBe(1);
+        expect(agentMetric!.rejectedByMarkerCount).toBe(1);
+
+        const toolMetric = metricFor(result, "tools/**/*");
+        expect(toolMetric).toBeDefined();
+        expect(toolMetric!.matchedPathCount).toBe(2);
+        expect(toolMetric!.acceptedCandidateCount).toBe(1);
+        expect(toolMetric!.rejectedByMarkerCount).toBe(1);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("5. Non-runtime matches are ignored without marker rejection", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/notes.md", "content");
+        await writeFile(root, "workflows/data.json", "{}");
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        expect(result.files).toHaveLength(0);
+
+        const metric = metricFor(result, "workflows/**/*");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(2);
+        expect(metric!.acceptedCandidateCount).toBe(0);
+        expect(metric!.rejectedByMarkerCount).toBe(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("6. Excluded candidates are counted separately", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "tools/keep.tool.ts");
+        await writeFile(root, "tools/drop.tool.ts");
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "tool",
+          include: ["tools/**/*.tool.ts"],
+          exclude: ["tools/drop.tool.ts"],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+
+        expect(relativePaths(result)).toEqual(["tools/keep.tool.ts"]);
+
+        const metric = metricFor(result, "tools/**/*.tool.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(2);
+        expect(metric!.acceptedCandidateCount).toBe(1);
+        expect(metric!.excludedCandidateCount).toBe(1);
+        expect(metric!.rejectedByMarkerCount).toBe(0);
+
+        const unusedExcludeDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+        expect(unusedExcludeDiags).toHaveLength(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("7. Safety rejection increments metrics and keeps safe files", async () => {
+      const root = await getTempDir();
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), "collect-files-outside-"));
+      try {
+        await writeFile(root, "workflows/safe.workflow.ts");
+        const outsideFile = join(outsideDir, "outside.workflow.ts");
+        await fs.writeFile(outsideFile, "export const meta = {};");
+
+        const symlinkPath = join(root, "workflows/escaped.workflow.ts");
+        let symlinksSupported = true;
+        try {
+          await fs.symlink(outsideFile, symlinkPath);
+        } catch {
+          symlinksSupported = false;
+        }
+
+        if (!symlinksSupported) return;
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        expect(relativePaths(result)).toEqual(["workflows/safe.workflow.ts"]);
+
+        const safetyDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_SYMLINK_ESCAPE");
+        expect(safetyDiags.length).toBeGreaterThan(0);
+
+        const metric = metricFor(result, "workflows/**/*.workflow.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(2);
+        expect(metric!.acceptedCandidateCount).toBe(1);
+        expect(metric!.rejectedBySafetyCount).toBe(1);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("8. Unmatched symlink under glob base is not inspected", async () => {
+      const root = await getTempDir();
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), "collect-files-outside-"));
+      try {
+        const outsideFile = join(outsideDir, "outside.ts");
+        await fs.writeFile(outsideFile, "export const meta = {};");
+
+        const symlinkPath = join(root, "workflows/escaped.other.ts");
+        await fs.mkdir(join(symlinkPath, ".."), { recursive: true });
+        let symlinksSupported = true;
+        try {
+          await fs.symlink(outsideFile, symlinkPath);
+        } catch {
+          symlinksSupported = false;
+        }
+
+        if (!symlinksSupported) return;
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        const safetyDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_SYMLINK_ESCAPE");
+        expect(safetyDiags).toHaveLength(0);
+
+        const metric = metricFor(result, "workflows/**/*.workflow.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(0);
+        expect(metric!.rejectedBySafetyCount).toBe(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("9. Excluded symlink is filtered before safety", async () => {
+      const root = await getTempDir();
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), "collect-files-outside-"));
+      try {
+        const outsideFile = join(outsideDir, "outside.ts");
+        await fs.writeFile(outsideFile, "export const meta = {};");
+
+        const symlinkPath = join(root, "workflows/escaped.workflow.ts");
+        await fs.mkdir(join(symlinkPath, ".."), { recursive: true });
+        let symlinksSupported = true;
+        try {
+          await fs.symlink(outsideFile, symlinkPath);
+        } catch {
+          symlinksSupported = false;
+        }
+
+        if (!symlinksSupported) return;
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: ["workflows/escaped.workflow.ts"],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+
+        const safetyDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_SYMLINK_ESCAPE");
+        expect(safetyDiags).toHaveLength(0);
+
+        const metric = metricFor(result, "workflows/**/*.workflow.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(1);
+        expect(metric!.excludedCandidateCount).toBe(1);
+        expect(metric!.rejectedBySafetyCount).toBe(0);
+
+        const unusedExcludeDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+        expect(unusedExcludeDiags).toHaveLength(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("9b. Glob excluded symlink is filtered before safety", async () => {
+      const root = await getTempDir();
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), "collect-files-outside-"));
+      try {
+        const outsideFile = join(outsideDir, "outside.ts");
+        await fs.writeFile(outsideFile, "export const meta = {};");
+
+        const symlinkPath = join(root, "workflows/escaped.workflow.ts");
+        await fs.mkdir(join(symlinkPath, ".."), { recursive: true });
+        let symlinksSupported = true;
+        try {
+          await fs.symlink(outsideFile, symlinkPath);
+        } catch {
+          symlinksSupported = false;
+        }
+
+        if (!symlinksSupported) return;
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: ["workflows/escaped.*.ts"],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+
+        const safetyDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_SYMLINK_ESCAPE");
+        expect(safetyDiags).toHaveLength(0);
+
+        const metric = metricFor(result, "workflows/**/*.workflow.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(1);
+        expect(metric!.excludedCandidateCount).toBe(1);
+        expect(metric!.rejectedBySafetyCount).toBe(0);
+
+        const unusedExcludeDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+        expect(unusedExcludeDiags).toHaveLength(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("9c. Symlinked include candidate honors tinyglobby-supported glob syntax", async () => {
+      const root = await getTempDir();
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), "collect-files-outside-"));
+      try {
+        const outsideFile = join(outsideDir, "outside.ts");
+        await fs.writeFile(outsideFile, "export const meta = {};");
+
+        const symlinkPath = join(root, "workflows/escaped.workflow.ts");
+        await fs.mkdir(join(symlinkPath, ".."), { recursive: true });
+        let symlinksSupported = true;
+        try {
+          await fs.symlink(outsideFile, symlinkPath);
+        } catch {
+          symlinksSupported = false;
+        }
+
+        if (!symlinksSupported) return;
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/*.{workflow.ts,agent.ts}"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+
+        const safetyDiags = configDiagnosticsWithCode(result, "CONFIG_PATH_SYMLINK_ESCAPE");
+        expect(safetyDiags.length).toBeGreaterThan(0);
+
+        const metric = metricFor(result, "workflows/*.{workflow.ts,agent.ts}");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(1);
+        expect(metric!.rejectedBySafetyCount).toBe(1);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("10. Marker and runtime rejections happen before safety", async () => {
+      const root = await getTempDir();
+      const outsideDir = await fs.mkdtemp(join(tmpdir(), "collect-files-outside-"));
+      try {
+        const outsideFile = join(outsideDir, "outside.ts");
+        await fs.writeFile(outsideFile, "export const meta = {};");
+
+        // Subcase 1: Marker case
+        const plainSymlink = join(root, "workflows/plain.ts");
+        await fs.mkdir(join(plainSymlink, ".."), { recursive: true });
+        let symlinksSupported = true;
+        try {
+          await fs.symlink(outsideFile, plainSymlink);
+        } catch {
+          symlinksSupported = false;
+        }
+
+        if (!symlinksSupported) return;
+
+        const resultMarker = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        const safetyDiagsMarker = configDiagnosticsWithCode(resultMarker, "CONFIG_PATH_SYMLINK_ESCAPE");
+        expect(safetyDiagsMarker).toHaveLength(0);
+
+        const metricMarker = metricFor(resultMarker, "workflows/**/*");
+        expect(metricMarker).toBeDefined();
+        expect(metricMarker!.rejectedByMarkerCount).toBe(1);
+        expect(metricMarker!.rejectedBySafetyCount).toBe(0);
+
+        // Subcase 2: Runtime case
+        try {
+          await fs.unlink(plainSymlink);
+        } catch {}
+        const mdOutsideFile = join(outsideDir, "outside.md");
+        await fs.writeFile(mdOutsideFile, "markdown");
+        const mdSymlink = join(root, "workflows/escaped.workflow.md");
+        await fs.symlink(mdOutsideFile, mdSymlink);
+
+        const resultRuntime = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*"],
+          exclude: ["workflows/plain.ts"],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        const safetyDiagsRuntime = configDiagnosticsWithCode(resultRuntime, "CONFIG_PATH_SYMLINK_ESCAPE");
+        expect(safetyDiagsRuntime).toHaveLength(0);
+
+        const metricRuntime = metricFor(resultRuntime, "workflows/**/*");
+        expect(metricRuntime).toBeDefined();
+        expect(metricRuntime!.rejectedByMarkerCount).toBe(0);
+        expect(metricRuntime!.rejectedBySafetyCount).toBe(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+        await fs.rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+
+    it("11. User-authored include with no accepted candidates warns", async () => {
+      const root = await getTempDir();
+      try {
+        await fs.mkdir(join(root, "workflows"), { recursive: true });
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          strict: false,
+        });
+
+        const diags = configDiagnosticsWithCode(result, "CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+        expect(diags).toHaveLength(1);
+        expect(diags[0].resource).toBe("workflow");
+        expect(diags[0].path).toBe("workflow.include[0]");
+        expect(diags[0].value).toBe("workflows/**/*.workflow.ts");
+        expect(diags[0].fatalInStrictContext).toBe(false);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("12. Default include with no accepted candidates is quiet", async () => {
+      const root = await getTempDir();
+      try {
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.ts"],
+          exclude: [],
+          compatibilityMode: "default-suffix-specific",
+          includeSource: "default",
+          strict: false,
+        });
+
+        const diags = configDiagnosticsWithCode(result, "CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+        expect(diags).toHaveLength(0);
+
+        const metric = metricFor(result, "workflows/**/*.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.acceptedCandidateCount).toBe(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("13. CLI and legacy include zero-match warnings are preserved", async () => {
+      const root = await getTempDir();
+      try {
+        await fs.mkdir(join(root, "workflows"), { recursive: true });
+        const sources: Array<"cli-override" | "legacy-dir" | "legacy-discovery"> = [
+          "cli-override",
+          "legacy-dir",
+          "legacy-discovery",
+        ];
+
+        for (const src of sources) {
+          const result = await collectResourceCandidateFiles({
+            cwd: root,
+            resourceType: "workflow",
+            include: ["workflows/**/*.workflow.ts"],
+            exclude: [],
+            compatibilityMode: src === "legacy-dir" ? "cli-dir-compatible" : "new-suffix-specific",
+            includeSource: src,
+            strict: false,
+          });
+
+          const diags = configDiagnosticsWithCode(result, "CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+          expect(diags.length).toBeGreaterThan(0);
+        }
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("14. Include matched files but accepted none has accurate warning wording", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/plain.ts");
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          strict: false,
+        });
+
+        const metric = metricFor(result, "workflows/**/*");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(1);
+        expect(metric!.acceptedCandidateCount).toBe(0);
+        expect(metric!.rejectedByMarkerCount).toBe(1);
+
+        const diags = configDiagnosticsWithCode(result, "CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+        expect(diags).toHaveLength(1);
+        expect(diags[0].message).not.toContain("did not match any files");
+        expect(diags[0].message.toLowerCase()).toContain("candidate");
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("15. Exclude zero-match source policy", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/keep.workflow.ts");
+
+        const testCases = [
+          { source: "new" as const, expectedDiagCount: 1 },
+          { source: "legacy-discovery" as const, expectedDiagCount: 1 },
+          { source: "default" as const, expectedDiagCount: 0 },
+          { source: "legacy-dir" as const, expectedDiagCount: 0 },
+          { source: "cli-override" as const, expectedDiagCount: 0 },
+        ];
+
+        for (const tc of testCases) {
+          const result = await collectResourceCandidateFiles({
+            cwd: root,
+            resourceType: "workflow",
+            include: ["workflows/**/*.workflow.ts"],
+            exclude: ["workflows/unused.workflow.ts"],
+            compatibilityMode: "new-suffix-specific",
+            includeSource: "new",
+            excludeSource: tc.source,
+            strict: false,
+          });
+
+          const diags = configDiagnosticsWithCode(result, "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+          expect(diags).toHaveLength(tc.expectedDiagCount);
+          if (tc.expectedDiagCount > 0) {
+            expect(diags[0].code).toBe("CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+            expect(diags[0].resource).toBe("workflow");
+            expect(diags[0].value).toBe("workflows/unused.workflow.ts");
+          }
+        }
+
+        // exclude: [] should be quiet
+        const resultEmpty = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+        const diagsEmpty = configDiagnosticsWithCode(resultEmpty, "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+        expect(diagsEmpty).toHaveLength(0);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("16. Exclude usage means actual candidate filtering", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "docs/ignored.workflow.ts");
+        await writeFile(root, "workflows/keep.workflow.ts");
+
+        // Subcase 1: exclude matches outside include set
+        const result1 = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: ["docs/**/*.workflow.ts"],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+
+        expect(relativePaths(result1)).toEqual(["workflows/keep.workflow.ts"]);
+        const diags1 = configDiagnosticsWithCode(result1, "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+        expect(diags1).toHaveLength(1);
+
+        const metric1 = metricFor(result1, "workflows/**/*.workflow.ts");
+        expect(metric1).toBeDefined();
+        expect(metric1!.excludedCandidateCount).toBe(0);
+
+        // Subcase 2: exclude actually filters a candidate
+        await writeFile(root, "workflows/drop.workflow.ts");
+        const result2 = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: ["workflows/drop.workflow.ts"],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+          excludeSource: "new",
+          strict: false,
+        });
+
+        expect(relativePaths(result2)).toEqual(["workflows/keep.workflow.ts"]);
+        const diags2 = configDiagnosticsWithCode(result2, "CONFIG_PATH_EXCLUDE_MATCHED_NOTHING");
+        expect(diags2).toHaveLength(0);
+
+        const metric2 = metricFor(result2, "workflows/**/*.workflow.ts");
+        expect(metric2).toBeDefined();
+        expect(metric2!.excludedCandidateCount).toBe(1);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("17. Real-path dedupe keeps one candidate", async () => {
+      const root = await getTempDir();
+      try {
+        const realPath = await writeFile(root, "workflows/real.workflow.ts");
+        const linkPath = join(root, "workflows/link.workflow.ts");
+
+        let symlinksSupported = true;
+        try {
+          await fs.symlink(realPath, linkPath);
+        } catch {
+          symlinksSupported = false;
+        }
+
+        if (!symlinksSupported) return;
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        expect(result.files).toHaveLength(1);
+        expect(result.files[0].realPath).toBe(resolve(realPath));
+
+        const metric = metricFor(result, "workflows/**/*.workflow.ts");
+        expect(metric).toBeDefined();
+        expect(metric!.matchedPathCount).toBe(2);
+        expect(metric!.acceptedCandidateCount).toBe(1);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("18. Returned candidates are sorted", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/z.workflow.ts");
+        await writeFile(root, "workflows/a.workflow.ts");
+        await writeFile(root, "workflows/m.workflow.ts");
+
+        const result = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["workflows/**/*.workflow.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        const paths = relativePaths(result);
+        const sortedPaths = [...paths].sort((a, b) => a.localeCompare(b));
+        expect(paths).toEqual(sortedPaths);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("19. Legacy directory fallback returns source metadata and metrics", async () => {
+      const root = await getTempDir();
+      try {
+        await writeFile(root, "workflows/w1.ts");
+        await writeFile(root, "agents/a1.js");
+        await writeFile(root, "tools/t1.js");
+
+        const result = await collectCandidateFiles({
+          cwd: root,
+          resourceTypes: ["workflow", "agent", "tool"],
+          directories: {
+            workflowInclude: ["workflows/**/*.ts"],
+            agentsDir: "agents",
+            toolsDir: "tools",
+          },
+          strict: false,
+        });
+
+        expect(result.files.length).toBeGreaterThan(0);
+        for (const file of result.files) {
+          expect(file).toHaveProperty("sourcePattern");
+          expect(file).toHaveProperty("sourceConfigPath");
+          expect(file).toHaveProperty("source");
+        }
+
+        expect(result).toHaveProperty("metrics");
+        expect(Array.isArray(result.metrics)).toBe(true);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
+    });
+
+    it("20. Missing and unreadable include-base diagnostics remain stable", async () => {
+      const root = await getTempDir();
+      try {
+        // Missing directory case
+        const resultMissing = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["missing-dir/**/*.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        expect(resultMissing.diagnostics).toHaveLength(1);
+        expect(resultMissing.diagnostics[0].code).toBe("LIST_DIRECTORY_NOT_FOUND");
+        const hasZeroMatchMissing = resultMissing.configDiagnostics.some(
+          d => d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING"
+        );
+        expect(hasZeroMatchMissing).toBe(false);
+
+        // Unreadable (is file instead of directory) case
+        await writeFile(root, "file-instead-of-dir.ts");
+        const resultUnreadable = await collectResourceCandidateFiles({
+          cwd: root,
+          resourceType: "workflow",
+          include: ["file-instead-of-dir.ts/**/*.ts"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          strict: false,
+        });
+
+        expect(resultUnreadable.diagnostics).toHaveLength(1);
+        expect(resultUnreadable.diagnostics[0].code).toBe("LIST_FILE_UNREADABLE");
+        const hasZeroMatchUnreadable = resultUnreadable.configDiagnostics.some(
+          d => d.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING"
+        );
+        expect(hasZeroMatchUnreadable).toBe(false);
+      } finally {
+        await fs.rm(root, { recursive: true, force: true });
+      }
     });
   });
 });

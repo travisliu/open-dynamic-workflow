@@ -15,6 +15,7 @@ describe("listCommand", () => {
     stderr = new PassThrough();
     originalExitCode = process.exitCode;
     process.exitCode = 0;
+    mockDiscoveryService.discover.mockClear();
   });
 
   afterEach(() => {
@@ -205,6 +206,97 @@ describe("listCommand", () => {
 
     await listCommand({
       rawOptions: {},
+      deps: {
+        discoveryService: mockDiscoveryService as any,
+        stdout,
+        stderr,
+      },
+    });
+
+    expect(process.exitCode).toBe(ExitCode.InternalError);
+  });
+
+  it("renders list result returned by centralized policy after project-init hint attachment", async () => {
+    const renderSpy = vi.fn();
+    vi.mocked(createListReporter).mockReturnValueOnce({
+      render: renderSpy,
+    } as any);
+
+    mockDiscoveryService.discover.mockResolvedValueOnce({
+      schemaVersion: "open-dynamic-workflow.list.v1",
+      status: "succeeded",
+      resourceTypes: ["workflow"],
+      resources: [],
+      warnings: [
+        { severity: "warning", resourceType: "workflow", path: "test.ts", code: "LIST_DIRECTORY_NOT_FOUND", message: "warning" }
+      ],
+      errors: [],
+      configDiagnostics: [
+        { severity: "error", code: "COLL_ERR", message: "collection error" }
+      ],
+      summary: {
+        discoveredCount: 0,
+        validCount: 0,
+        warningCount: 1,
+        errorCount: 0,
+        countsByType: {},
+      },
+    });
+
+    vi.mocked(fs.existsSync).mockReturnValue(false); // missing config to trigger hint
+
+    await listCommand({
+      rawOptions: {},
+      deps: {
+        discoveryService: mockDiscoveryService as any,
+        stdout,
+        stderr,
+      },
+    });
+
+    expect(renderSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "failed", // policy changes status to failed due to collection error configDiagnostics
+        warnings: [
+          expect.objectContaining({
+            code: "LIST_DIRECTORY_NOT_FOUND",
+            hint: expect.objectContaining({ code: "PROJECT_INIT_MISSING" })
+          })
+        ],
+        configDiagnostics: expect.arrayContaining([
+          expect.objectContaining({ code: "COLL_ERR" })
+        ]),
+        summary: expect.objectContaining({
+          warningCount: 1,
+          errorCount: 1,
+          configErrorCount: 1,
+          configWarningCount: 0
+        })
+      })
+    );
+  });
+
+  it("sets exit code 8 on internal discovery failure even in strict mode", async () => {
+    mockDiscoveryService.discover.mockResolvedValueOnce({
+      schemaVersion: "open-dynamic-workflow.list.v1",
+      status: "failed",
+      resourceTypes: ["workflow"],
+      resources: [],
+      warnings: [],
+      errors: [
+        { severity: "error", resourceType: "workflow", path: "test.ts", code: "LIST_INTERNAL_ERROR", message: "boom" }
+      ],
+      summary: {
+        discoveredCount: 0,
+        validCount: 0,
+        warningCount: 0,
+        errorCount: 1,
+        countsByType: {},
+      },
+    });
+
+    await listCommand({
+      rawOptions: { strict: true },
       deps: {
         discoveryService: mockDiscoveryService as any,
         stdout,
@@ -415,6 +507,27 @@ describe("listCommand", () => {
       expect(process.exitCode).toBe(ExitCode.WorkflowInvalid);
     });
   });
+});
+
+vi.mock("../../../src/config/load.js", () => {
+  return {
+    loadConfig: vi.fn().mockImplementation(async (opts: any) => {
+      const dir = opts.discoveryCliOverrides?.dir;
+      return {
+        cwd: opts.cwd ?? "/mock-cwd",
+        reporting: {
+          mode: opts.cli?.report ?? "pretty",
+          verbose: !!opts.cli?.verbose,
+        },
+        _normalizedDiscovery: {
+          workflow: { include: opts.discoveryCliOverrides?.workflowsDir ? [opts.discoveryCliOverrides.workflowsDir] : (dir ? [dir] : ["workflows"]), exclude: [] },
+          sharedAgents: { include: opts.discoveryCliOverrides?.agentsDir ? [opts.discoveryCliOverrides.agentsDir] : (dir ? [dir] : ["agents"]), exclude: [] },
+          tools: { include: opts.discoveryCliOverrides?.toolsDir ? [opts.discoveryCliOverrides.toolsDir] : (dir ? [dir] : ["tools"]), exclude: [] },
+        },
+        _configDiagnostics: [],
+      };
+    }),
+  };
 });
 
 vi.mock("node:fs", async (importOriginal) => {

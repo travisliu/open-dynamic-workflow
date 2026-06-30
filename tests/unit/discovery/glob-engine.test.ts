@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { expandIncludePattern } from "../../../src/discovery/glob-engine.js";
+import { expandIncludePattern, TINYGLOBBY_OPTIONS, matchesDiscoveryPattern } from "../../../src/discovery/glob-engine.js";
 
 describe("glob-engine", () => {
   let tempDir: string;
@@ -43,23 +43,24 @@ describe("glob-engine", () => {
   });
 
   it("discovers dot-directory files, proving dot: true", async () => {
-    const dotDir = join(tempDir, ".open-dynamic-workflow", "agents");
-    await fs.mkdir(dotDir, { recursive: true });
-    
-    const agentFile = join(dotDir, "a.agent.ts");
-    await fs.writeFile(agentFile, "content");
-    
+    expect(TINYGLOBBY_OPTIONS.dot).toBe(true);
+
+    const workflowsDir = join(tempDir, "workflows", ".dot-dir");
+    await fs.mkdir(workflowsDir, { recursive: true });
+    const hiddenFile = join(workflowsDir, "nested.workflow.ts");
+    await fs.writeFile(hiddenFile, "content");
+
     const results = await expandIncludePattern({
       cwd: tempDir,
-      pattern: ".open-dynamic-workflow/agents/**/*.agent.ts",
+      pattern: "workflows/**/*.workflow.ts",
     });
-    
-    expect(results).toEqual([
-      toPosix(resolve(agentFile)),
-    ]);
+
+    expect(results).toEqual([toPosix(resolve(hiddenFile))]);
   });
 
   it("does not follow symlinked directories, proving followSymbolicLinks: false", async () => {
+    expect(TINYGLOBBY_OPTIONS.followSymbolicLinks).toBe(false);
+
     const parentDir = join(tempDir, "parent");
     const targetDir = join(tempDir, "outside-target");
     const symlinkDir = join(parentDir, "workflows-symlink");
@@ -115,5 +116,18 @@ describe("glob-engine", () => {
     expect(results).toEqual([
       toPosix(resolve(fileA)),
     ]);
+  });
+
+  describe("matchesDiscoveryPattern", () => {
+    it("matches basic globs and respects dot option", () => {
+      expect(matchesDiscoveryPattern("workflows/a.workflow.ts", "workflows/**/*.workflow.ts")).toBe(true);
+      expect(matchesDiscoveryPattern(".github/workflows/escaped.workflow.ts", "**/*.workflow.ts")).toBe(true);
+      expect(matchesDiscoveryPattern("workflows/escaped.workflow.ts", "workflows/*.{workflow.ts,agent.ts}")).toBe(true);
+      expect(matchesDiscoveryPattern("workflows/a.js", "workflows/*.ts")).toBe(false);
+    });
+
+    it("normalizes Windows-style separators and leading ./", () => {
+      expect(matchesDiscoveryPattern("workflows\\a.workflow.ts", "./workflows/**/*.workflow.ts")).toBe(true);
+    });
   });
 });

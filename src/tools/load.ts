@@ -7,7 +7,7 @@ import { buildToolRegistry } from "./registry.js";
 import { isDefinedTool } from "./define-tool.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
-import type { ResourceDiscoveryPatterns } from "../discovery/types.js";
+import type { ResourceDiscoveryPatterns, PrecollectedResourceLoadInput } from "../discovery/types.js";
 import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
 import { matchGlob } from "../discovery/file-patterns.js";
 import type { ConfigDiagnostic } from "../config/types.js";
@@ -17,6 +17,7 @@ export interface LoadToolRegistryInput {
   dir?: string;
   discovery?: ResourceDiscoveryPatterns;
   candidateFiles?: string[];
+  precollected?: PrecollectedResourceLoadInput;
   maxDefinitions: number;
   configDiagnostics?: ConfigDiagnostic[];
 }
@@ -57,6 +58,19 @@ function rewriteRelativeSpecifiers(code: string, isTypeScript: boolean): string 
   return output;
 }
 
+async function assertPathInsideCwd(realCwd: string, candidatePath: string, message: string): Promise<string> {
+  const resolved = resolve(realCwd, candidatePath);
+  const real = await realpath(resolved);
+  const relativeToCwd = relative(realCwd, real);
+  if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.SECURITY_POLICY_VIOLATION,
+      message
+    );
+  }
+  return real;
+}
+
 async function mirrorDirectory(
   srcDir: string,
   destDir: string,
@@ -68,19 +82,34 @@ async function mirrorDirectory(
     const srcPath = join(srcDir, entry.name);
     const destPath = join(destDir, entry.name);
 
+    // Enforce CWD containment on mirrored helpers
+    await assertPathInsideCwd(cwd, srcPath, `Tool path '${srcPath}' points outside the workspace.`);
+
+    // Enforce excludes on mirrored helpers
+    const relPath = relative(cwd, srcPath).replace(/\\/g, "/");
+    let isExcluded = false;
+    for (const exc of excludePatterns) {
+      if (matchGlob(relPath, exc)) {
+        isExcluded = true;
+        break;
+      }
+    }
+    if (isExcluded) {
+      continue;
+    }
+
     if (entry.isDirectory()) {
       await mkdir(destPath, { recursive: true });
       await mirrorDirectory(srcPath, destPath, cwd, excludePatterns);
-    } else if (entry.isFile()) {
-      const relPath = relative(cwd, srcPath).replace(/\\/g, "/");
-      let isExcluded = false;
-      for (const exc of excludePatterns) {
-        if (matchGlob(relPath, exc)) {
-          isExcluded = true;
-          break;
-        }
-      }
-      if (isExcluded) {
+    } else if (entry.isFile() || entry.isSymbolicLink()) {
+      let realTarget = srcPath;
+      try {
+        realTarget = await realpath(srcPath);
+      } catch {}
+      const targetStats = await stat(realTarget);
+      if (targetStats.isDirectory()) {
+        await mkdir(destPath, { recursive: true });
+        await mirrorDirectory(realTarget, destPath, cwd, excludePatterns);
         continue;
       }
 
@@ -119,7 +148,18 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
 
   const discoveredFiles: string[] = [];
 
-  if (input.candidateFiles) {
+  if (input.precollected) {
+    const toolCandidates = input.precollected.candidateFiles
+      .filter(c => c.resourceType === "tool")
+      .slice()
+      .sort((a, b) => a.relativePath.localeCompare(b.relativePath));
+
+    for (const candidate of toolCandidates) {
+      const fullPath = resolve(realCwd, candidate.realPath || candidate.absolutePath);
+      await assertPathInsideCwd(realCwd, fullPath, `Tool path '${fullPath}' points outside the workspace.`);
+      discoveredFiles.push(fullPath);
+    }
+  } else if (input.candidateFiles) {
     for (const f of input.candidateFiles) {
       const fullPath = resolve(realCwd, f);
       try {
@@ -193,8 +233,112 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
     await mkdir(projectTmpDir, { recursive: true });
     tempDir = await mkdtemp(join(projectTmpDir, "tools-"));
 
-    const excludePatterns = input.discovery?.exclude || [];
+    const excludePatterns = input.precollected
+      ? input.precollected.discoveryPolicy.exclude.map((p) => p.normalizedPattern)
+      : (input.discovery?.exclude || []);
+
+    const fileExists = async (p: string): Promise<boolean> => {
+      try {
+        const s = await stat(p);
+        return s.isFile();
+      } catch {
+        return false;
+      }
+    };
+
+    const resolveSpecifierPath = async (dir: string, specifier: string): Promise<string | undefined> => {
+      const resolved = resolve(dir, specifier);
+      if (await fileExists(resolved)) return resolved;
+      if (specifier.endsWith(".js")) {
+        const tsPath = resolved.slice(0, -3) + ".ts";
+        if (await fileExists(tsPath)) return tsPath;
+      } else if (specifier.endsWith(".mjs")) {
+        const tsPath = resolved.slice(0, -4) + ".ts";
+        if (await fileExists(tsPath)) return tsPath;
+      } else if (specifier.endsWith(".cjs")) {
+        const tsPath = resolved.slice(0, -4) + ".ts";
+        if (await fileExists(tsPath)) return tsPath;
+      }
+      for (const ext of [".ts", ".js", ".mjs", ".cjs"]) {
+        const pathWithExt = resolved + ext;
+        if (await fileExists(pathWithExt)) return pathWithExt;
+      }
+      return undefined;
+    };
+
+    const inspected = new Set<string>();
+    const inspectImportsRecursive = async (filePath: string): Promise<void> => {
+      let realFilePath = filePath;
+      try {
+        realFilePath = await realpath(filePath);
+      } catch {}
+
+      if (inspected.has(realFilePath)) return;
+      inspected.add(realFilePath);
+
+      let content: string;
+      try {
+        content = await readFile(realFilePath, "utf8");
+      } catch (err: any) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.TOOL_INVALID_DEFINITION,
+          `Failed to read file '${realFilePath}' for static import inspection: ${err.message}`
+        );
+      }
+
+      const sourceFile = ts.createSourceFile(
+        realFilePath,
+        content,
+        ts.ScriptTarget.Latest,
+        true
+      );
+
+      const dir = dirname(realFilePath);
+      for (const statement of sourceFile.statements) {
+        if (ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) {
+          if (statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) {
+            const specifier = statement.moduleSpecifier.text;
+            if (specifier.startsWith(".") || specifier.startsWith("..")) {
+              const resolvedTarget = await resolveSpecifierPath(dir, specifier);
+              if (resolvedTarget) {
+                const realTarget = await realpath(resolvedTarget);
+                const relativeToCwd = relative(realCwd, realTarget);
+                if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
+                  throw new OpenDynamicWorkflowError(
+                    ErrorCode.SECURITY_POLICY_VIOLATION,
+                    `Relative import '${specifier}' in '${filePath}' resolves to '${realTarget}' which points outside the workspace.`
+                  );
+                }
+
+                const relPath = relative(realCwd, realTarget).replace(/\\/g, "/");
+                let isExcluded = false;
+                for (const exc of excludePatterns) {
+                  if (matchGlob(relPath, exc)) {
+                    isExcluded = true;
+                    break;
+                  }
+                }
+                if (isExcluded) {
+                  throw new OpenDynamicWorkflowError(
+                    ErrorCode.SECURITY_POLICY_VIOLATION,
+                    `Relative import '${specifier}' in '${filePath}' resolves to '${realTarget}' which is excluded by policy.`
+                  );
+                }
+
+                await inspectImportsRecursive(realTarget);
+              }
+            }
+          }
+        }
+      }
+    };
+
+    for (const filePath of discoveredFiles) {
+      await inspectImportsRecursive(filePath);
+    }
+
     const mirroredDirs = new Set<string>();
+
     for (const filePath of discoveredFiles) {
       const srcDir = dirname(filePath);
       if (!mirroredDirs.has(srcDir)) {

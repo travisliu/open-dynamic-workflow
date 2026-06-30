@@ -442,6 +442,7 @@ workflow:
     - "**/never-excl.ts"
 `;
     await fs.mkdir(path.join(tempDir, ".open-dynamic-workflow"), { recursive: true });
+    await fs.mkdir(path.join(tempDir, "missing"), { recursive: true });
     await fs.writeFile(path.join(tempDir, ".open-dynamic-workflow/config.yaml"), zeroMatchConfig);
 
     // --- 1. Act: JSON format ---

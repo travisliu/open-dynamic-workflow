@@ -127,4 +127,82 @@ providers:
     expect(result.error).toBeNull();
     expect(result.stdout).toContain("mock");
   });
+
+  it("Concise doctor discovery summary (non-verbose)", async () => {
+    // Arrange
+    const projectDir = path.join(TEMP_DIR, "concise-proj");
+    await fs.mkdir(projectDir, { recursive: true });
+    
+    const configPath = path.join(projectDir, "config.yaml");
+    await fs.writeFile(configPath, `
+defaultProvider: mock
+workflow:
+  include:
+    - "workflows/**/*.ts"
+sharedAgents:
+  include:
+    - "agents/**/*.ts"
+tools:
+  include:
+    - "tools/**/*.ts"
+`);
+
+    await fs.mkdir(path.join(projectDir, "workflows"), { recursive: true });
+    await fs.mkdir(path.join(projectDir, "agents"), { recursive: true });
+    await fs.mkdir(path.join(projectDir, "tools"), { recursive: true });
+
+    await fs.writeFile(path.join(projectDir, "workflows/test.workflow.ts"), "export default {}");
+    await fs.writeFile(path.join(projectDir, "agents/test.agent.ts"), "export default {}");
+    await fs.writeFile(path.join(projectDir, "tools/test.tool.ts"), "export default {}");
+
+    // Act
+    const result = await runCli(["doctor", "--config", configPath, "--cwd", projectDir]);
+
+    // Assert
+    expect(result.error).toBeNull();
+    expect(result.stdout).toContain("Discovery: workflows 1, shared agents 1, tools 1");
+  });
+
+  it("Verbose doctor metrics and diagnostics", async () => {
+    // Arrange
+    const projectDir = path.join(TEMP_DIR, "verbose-proj");
+    await fs.mkdir(projectDir, { recursive: true });
+    
+    const configPath = path.join(projectDir, "config.yaml");
+    await fs.writeFile(configPath, `
+defaultProvider: mock
+workflow:
+  include:
+    - "workflows/**/*.ts"
+    - "workflows/**/*.js"
+sharedAgents:
+  include:
+    - "agents/**/*.ts"
+tools:
+  include:
+    - "tools/**/*.ts"
+`);
+
+    await fs.mkdir(path.join(projectDir, "workflows"), { recursive: true });
+    await fs.mkdir(path.join(projectDir, "agents"), { recursive: true });
+    await fs.mkdir(path.join(projectDir, "tools"), { recursive: true });
+
+    await fs.writeFile(path.join(projectDir, "workflows/test.workflow.ts"), "export default {}");
+    await fs.writeFile(path.join(projectDir, "agents/test.agent.ts"), "export default {}");
+    await fs.writeFile(path.join(projectDir, "tools/test.tool.ts"), "export default {}");
+
+    // Act
+    const result = await runCli(["doctor", "--config", configPath, "--cwd", projectDir, "--verbose"]);
+
+    // Assert
+    expect(result.error).toBeNull();
+    expect(result.stdout).toContain("Discovery: workflows 1, shared agents 1, tools 1");
+    expect(result.stdout).toContain("Discovery Metrics:");
+    expect(result.stdout).toContain("Workflows:");
+    expect(result.stdout).toContain("Shared Agents:");
+    expect(result.stdout).toContain("Tools:");
+    expect(result.stdout).toContain("Pattern: workflows/**/*.ts");
+    expect(result.stdout).toContain("Pattern: workflows/**/*.js");
+    expect(result.stdout).not.toContain("CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
+  });
 });

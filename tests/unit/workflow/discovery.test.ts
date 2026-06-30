@@ -499,4 +499,277 @@ describe("Workflow Discovery", () => {
       await rm(tempWorkspaceDir, { recursive: true, force: true });
     }
   });
+
+  it("loads root plus pre-collected workflow candidates", async () => {
+    const rootPath = "root.js";
+    const childPath = "workflows/child.js";
+    const cwd = "/test";
+
+    vi.mocked(loadWorkflow).mockImplementation(async (p) => ({
+      sourcePath: p,
+      sourceText: "content"
+    }));
+
+    vi.mocked(parseWorkflow).mockImplementation((loaded) => ({
+      meta: { name: loaded.sourcePath === "/test/root.js" ? "root" : "child", description: "test" },
+      body: "",
+      sourcePath: loaded.sourcePath,
+      sourceText: loaded.sourceText,
+      sourceHash: "123"
+    }));
+
+    const precollected = {
+      candidateFiles: [
+        {
+          resourceType: "workflow" as const,
+          absolutePath: "/test/workflows/child.js",
+          relativePath: "workflows/child.js",
+          realPath: "/test/workflows/child.js",
+          sourcePattern: "workflows/*.js",
+          sourceConfigPath: "workflow.include[0]",
+          source: "new" as const,
+        }
+      ],
+      discoveryPolicy: {
+        exclude: [],
+      }
+    };
+
+    const registry = await discoverWorkflowRegistry({
+      rootWorkflowPath: rootPath,
+      cwd,
+      precollected
+    });
+
+    expect(registry.names()).toEqual(new Set(["root", "child"]));
+  });
+
+  it("supports all runtime extensions through pre-collected candidates", async () => {
+    const rootPath = "root.ts";
+    const cwd = "/test";
+
+    const extensions = ["js", "ts", "mjs", "cjs"];
+    const candidateFiles = extensions.map((ext) => ({
+      resourceType: "workflow" as const,
+      absolutePath: `/test/child.${ext}`,
+      relativePath: `child.${ext}`,
+      realPath: `/test/child.${ext}`,
+      sourcePattern: `*.${ext}`,
+      sourceConfigPath: "workflow.include[0]",
+      source: "new" as const,
+    }));
+
+    vi.mocked(loadWorkflow).mockImplementation(async (p) => ({
+      sourcePath: p,
+      sourceText: "content"
+    }));
+
+    vi.mocked(parseWorkflow).mockImplementation((loaded) => {
+      const ext = loaded.sourcePath.split(".").pop();
+      return {
+        meta: { name: ext === "ts" && loaded.sourcePath.endsWith("root.ts") ? "root" : `child_${ext}`, description: "test" },
+        body: "",
+        sourcePath: loaded.sourcePath,
+        sourceText: loaded.sourceText,
+        sourceHash: "123"
+      };
+    });
+
+    const precollected = {
+      candidateFiles,
+      discoveryPolicy: { exclude: [] }
+    };
+
+    const registry = await discoverWorkflowRegistry({
+      rootWorkflowPath: rootPath,
+      cwd,
+      precollected
+    });
+
+    expect(registry.names()).toEqual(new Set(["root", "child_js", "child_ts", "child_mjs", "child_cjs"]));
+  });
+
+  it("does not rediscover when pre-collected input is present", async () => {
+    const rootPath = "root.ts";
+    const cwd = "/test";
+
+    const precollected = {
+      candidateFiles: [
+        {
+          resourceType: "workflow" as const,
+          absolutePath: "/test/precollected.ts",
+          relativePath: "precollected.ts",
+          realPath: "/test/precollected.ts",
+          sourcePattern: "*.ts",
+          sourceConfigPath: "workflow.include[0]",
+          source: "new" as const,
+        }
+      ],
+      discoveryPolicy: { exclude: [] }
+    };
+
+    vi.mocked(loadWorkflow).mockImplementation(async (p) => ({
+      sourcePath: p,
+      sourceText: "content"
+    }));
+
+    vi.mocked(parseWorkflow).mockImplementation((loaded) => ({
+      meta: { name: loaded.sourcePath === "/test/root.ts" ? "root" : "precollected", description: "test" },
+      body: "",
+      sourcePath: loaded.sourcePath,
+      sourceText: loaded.sourceText,
+      sourceHash: "123"
+    }));
+
+    const collectFiles = await import("../../../src/discovery/collect-files.js");
+    const spy = vi.spyOn(collectFiles, "collectResourceCandidateFiles");
+
+    const registry = await discoverWorkflowRegistry({
+      rootWorkflowPath: rootPath,
+      cwd,
+      precollected,
+      include: ["other/**/*.ts"],
+      discovery: {
+        include: ["other/**/*.ts"],
+        exclude: [],
+        compatibilityMode: "new-suffix-specific",
+      }
+    });
+
+    expect(registry.names()).toEqual(new Set(["root", "precollected"]));
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("narrows pre-collected candidates when candidatePaths is also provided", async () => {
+    const rootPath = "root.js";
+    const cwd = "/test";
+
+    const precollected = {
+      candidateFiles: [
+        {
+          resourceType: "workflow" as const,
+          absolutePath: "/test/child-a.js",
+          relativePath: "child-a.js",
+          realPath: "/test/child-a.js",
+          sourcePattern: "*.js",
+          sourceConfigPath: "workflow.include[0]",
+          source: "new" as const,
+        },
+        {
+          resourceType: "workflow" as const,
+          absolutePath: "/test/child-b.js",
+          relativePath: "child-b.js",
+          realPath: "/test/child-b.js",
+          sourcePattern: "*.js",
+          sourceConfigPath: "workflow.include[0]",
+          source: "new" as const,
+        }
+      ],
+      discoveryPolicy: { exclude: [] }
+    };
+
+    vi.mocked(loadWorkflow).mockImplementation(async (p) => ({
+      sourcePath: p,
+      sourceText: "content"
+    }));
+
+    vi.mocked(parseWorkflow).mockImplementation((loaded) => {
+      let name = "unknown";
+      if (loaded.sourcePath === "/test/root.js") name = "root";
+      else if (loaded.sourcePath === "/test/child-a.js") name = "child-a";
+      else if (loaded.sourcePath === "/test/child-b.js") name = "child-b";
+      return {
+        meta: { name, description: "test" },
+        body: "",
+        sourcePath: loaded.sourcePath,
+        sourceText: loaded.sourceText,
+        sourceHash: "123"
+      };
+    });
+
+    const registry = await discoverWorkflowRegistry({
+      rootWorkflowPath: rootPath,
+      cwd,
+      precollected,
+      candidatePaths: ["child-a.js"]
+    });
+
+    expect(registry.names()).toEqual(new Set(["root", "child-a"]));
+  });
+
+  it("throws for invalid pre-collected candidate parse/load errors", async () => {
+    const rootPath = "root.js";
+    const cwd = "/test";
+
+    const precollected = {
+      candidateFiles: [
+        {
+          resourceType: "workflow" as const,
+          absolutePath: "/test/invalid-child.js",
+          relativePath: "invalid-child.js",
+          realPath: "/test/invalid-child.js",
+          sourcePattern: "*.js",
+          sourceConfigPath: "workflow.include[0]",
+          source: "new" as const,
+        }
+      ],
+      discoveryPolicy: { exclude: [] }
+    };
+
+    vi.mocked(loadWorkflow).mockImplementation(async (p) => ({
+      sourcePath: p,
+      sourceText: "content"
+    }));
+
+    vi.mocked(parseWorkflow).mockImplementation((loaded) => {
+      if (loaded.sourcePath.endsWith("invalid-child.js")) {
+        throw new Error("Parse error");
+      }
+      return {
+        meta: { name: "root", description: "test" },
+        body: "",
+        sourcePath: loaded.sourcePath,
+        sourceText: loaded.sourceText,
+        sourceHash: "123"
+      };
+    });
+
+    await expect(discoverWorkflowRegistry({
+      rootWorkflowPath: rootPath,
+      cwd,
+      precollected
+    })).rejects.toThrow("Parse error");
+  });
+
+  it("preserves workspace safety for pre-collected candidates outside cwd", async () => {
+    const rootPath = "root.js";
+    const cwd = "/test/project";
+
+    const precollected = {
+      candidateFiles: [
+        {
+          resourceType: "workflow" as const,
+          absolutePath: "/test/outside.js",
+          relativePath: "../outside.js",
+          realPath: "/test/outside.js",
+          sourcePattern: "*.js",
+          sourceConfigPath: "workflow.include[0]",
+          source: "new" as const,
+        }
+      ],
+      discoveryPolicy: { exclude: [] }
+    };
+
+    vi.mocked(loadWorkflow).mockImplementation(async (p) => ({
+      sourcePath: p,
+      sourceText: "content"
+    }));
+
+    await expect(discoverWorkflowRegistry({
+      rootWorkflowPath: rootPath,
+      cwd,
+      precollected
+    })).rejects.toThrow(/Workflow file outside project root/);
+  });
 });

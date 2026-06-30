@@ -5,7 +5,7 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { createDiscoveryService } from "../discovery/service.js";
 import { loadWorkflow } from "./load.js";
 import { parseWorkflow } from "./parse.js";
-import type { ResolvedOpenDynamicWorkflowConfig } from "../config/types.js";
+import type { ResolvedOpenDynamicWorkflowConfig, ConfigDiagnosticContext } from "../config/types.js";
 import type { ListedWorkflow } from "../discovery/types.js";
 
 export type WorkflowTargetKind = "workflow-name" | "workflow-file";
@@ -56,6 +56,7 @@ export interface ResolveWorkflowNameTargetInput {
   name: string;
   cwd: string;
   config: ResolvedOpenDynamicWorkflowConfig;
+  context?: ConfigDiagnosticContext | undefined;
 }
 
 export function isPathLikeWorkflowTarget(target: string): boolean {
@@ -95,6 +96,7 @@ export async function resolveWorkflowTarget(
     name: target,
     cwd,
     config,
+    context: input.mode,
   });
 
   if (resolvedByName) {
@@ -171,7 +173,7 @@ export async function resolveWorkflowFileTarget(
 export async function resolveWorkflowNameTarget(
   input: ResolveWorkflowNameTargetInput
 ): Promise<ResolvedWorkflowTarget | null> {
-  const { name, cwd, config } = input;
+  const { name, cwd, config, context } = input;
   let workflowPatterns = config._normalizedDiscovery?.workflow;
   if (!workflowPatterns) {
     const { normalizeDiscoveryConfig } = await import("../config/path-discovery.js");
@@ -191,13 +193,21 @@ export async function resolveWorkflowNameTarget(
   };
 
   const discoveryService = createDiscoveryService();
-  const discoveryResult = await discoveryService.discover({
+  const rawResult = await discoveryService.discover({
     cwd,
     resourceTypes: ["workflow"],
     patterns,
     verbose: false,
     strict: false,
   });
+
+  const { applyDiscoveryPolicy } = await import("../discovery/policy.js");
+  const policy = applyDiscoveryPolicy({
+    context: context ?? "run",
+    rawResult,
+    configDiagnostics: config._configDiagnostics || [],
+  });
+  const discoveryResult = policy.result;
 
   if (discoveryResult.status === "failed") {
     const allDiags = [...discoveryResult.errors, ...discoveryResult.warnings];

@@ -29,7 +29,8 @@ describe("Doctor Model Support Output", () => {
         opencode: { command: "opencode", defaultModel: "gpt-4" }
       },
       cwd: "/root",
-      outDir: "/root/out"
+      outDir: "/root/out",
+      _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     } as any);
 
     const rawOptions = { config: "config.yaml" };
@@ -64,7 +65,8 @@ describe("Doctor Model Support Output", () => {
         copilot: { command: "copilot" }
       },
       cwd: "/root",
-      outDir: "/root/out"
+      outDir: "/root/out",
+      _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     } as any);
 
     const rawOptions = { config: "config.yaml" };
@@ -101,7 +103,8 @@ describe("Doctor Model Support Output", () => {
         copilot: { command: "copilot" }
       },
       cwd: "/root",
-      outDir: "/root/out"
+      outDir: "/root/out",
+      _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     } as any);
 
     const rawOptions = { config: "config.yaml" };

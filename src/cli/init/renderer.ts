@@ -55,20 +55,17 @@ export function buildGeneratedConfig(input: {
     },
     sharedAgents: {
       include: sharedAgentIncludePatterns(agentsDirDisplay),
-      exclude: INIT_EXCLUDE_PATTERNS,
       maxDefinitions: 100,
       allowDynamicIds: false,
       strictPromptTemplateVariables: true
     },
     tools: {
       include: toolIncludePatterns(toolsDirDisplay),
-      exclude: INIT_EXCLUDE_PATTERNS,
       concurrency: 4,
       maxDefinitions: 100
     },
     workflow: {
       include: workflowIncludePatterns(workflowsDirDisplay),
-      exclude: INIT_EXCLUDE_PATTERNS,
       maxDepth: 8,
       maxLoopRounds: 20
     }

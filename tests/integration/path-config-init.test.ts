@@ -78,22 +78,19 @@ describe("Init Command Path Config Integration", () => {
     expect(parsedConfig.sharedAgents.dir).toBeUndefined();
     expect(parsedConfig.sharedAgents.include).toContain(".open-dynamic-workflow/agents/**/*.ts");
     expect(parsedConfig.sharedAgents.include).toContain(".open-dynamic-workflow/agents/**/*.js");
-    expect(parsedConfig.sharedAgents.exclude).toContain("**/*.test.*");
-    expect(parsedConfig.sharedAgents.exclude).toContain("**/*.spec.*");
+    expect(parsedConfig.sharedAgents.exclude).toBeUndefined();
 
     expect(parsedConfig.tools).toBeDefined();
     expect(parsedConfig.tools.dir).toBeUndefined();
     expect(parsedConfig.tools.include).toContain(".open-dynamic-workflow/tools/**/*.ts");
     expect(parsedConfig.tools.include).toContain(".open-dynamic-workflow/tools/**/*.js");
-    expect(parsedConfig.tools.exclude).toContain("**/*.test.*");
-    expect(parsedConfig.tools.exclude).toContain("**/*.spec.*");
+    expect(parsedConfig.tools.exclude).toBeUndefined();
 
     expect(parsedConfig.workflow).toBeDefined();
     expect(parsedConfig.workflow.discovery).toBeUndefined();
     expect(parsedConfig.workflow.include).toContain("workflows/**/*.workflow.ts");
     expect(parsedConfig.workflow.include).toContain("workflows/**/*.workflow.js");
-    expect(parsedConfig.workflow.exclude).toContain("**/*.test.*");
-    expect(parsedConfig.workflow.exclude).toContain("**/*.spec.*");
+    expect(parsedConfig.workflow.exclude).toBeUndefined();
 
     // Assert explicit patterns contain no brace expansion or directory-only globs
     const allIncludePatterns = [

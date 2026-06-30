@@ -97,18 +97,18 @@ export async function listCommand(input: ListCommandInput): Promise<void> {
 
   const updatedWarnings = result.warnings.map(d => attachHintToDiagnostic(d, hintContext));
   const updatedErrors = result.errors.map(d => attachHintToDiagnostic(d, hintContext));
-  
-  const finalConfigDiagnostics = [
-    ...(config._configDiagnostics || []),
-    ...(result.configDiagnostics || []),
-  ];
 
-  const updatedResult = {
-    ...result,
-    warnings: updatedWarnings,
-    errors: updatedErrors,
-    configDiagnostics: finalConfigDiagnostics,
-  };
+  const { applyDiscoveryPolicy } = await import("../../discovery/policy.js");
+  const policy = applyDiscoveryPolicy({
+    context: rawOptions.strict ? "list-strict" : "list",
+    rawResult: {
+      ...result,
+      warnings: updatedWarnings,
+      errors: updatedErrors,
+    },
+    configDiagnostics: config._configDiagnostics || [],
+    collectionDiagnostics: result.configDiagnostics || [],
+  });
 
   const reporter = createListReporter({
     mode: config.reporting.mode,
@@ -118,7 +118,7 @@ export async function listCommand(input: ListCommandInput): Promise<void> {
     },
     verbose: config.reporting.verbose,
   });
-  reporter.render(updatedResult);
-  process.exitCode = mapListExitCode(updatedResult, { strict: !!rawOptions.strict });
+  reporter.render(policy.result);
+  process.exitCode = mapListExitCode(policy.result, { strict: !!rawOptions.strict });
 }
 

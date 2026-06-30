@@ -6,6 +6,23 @@ import { createDiscoveryService } from "../../../src/discovery/service.js";
 import { resolveDiscoveryDirectories } from "../../../src/discovery/directories.js";
 import { ResourceExtractor } from "../../../src/discovery/types.js";
 import { DEFAULT_CONFIG } from "../../../src/config/defaults.js";
+import { applyDiscoveryPolicy } from "../../../src/discovery/policy.js";
+
+function createTestService(input?: {
+  extractors?: any;
+}) {
+  const rawService = createDiscoveryService(input);
+  return {
+    ...rawService,
+    async discover(options: any) {
+      const rawResult = await rawService.discover(options);
+      return applyDiscoveryPolicy({
+        context: options.strict ? "list-strict" : "list",
+        rawResult
+      }).result;
+    }
+  };
+}
 
 describe("discovery-service", () => {
   let tempDir: string;
@@ -57,7 +74,7 @@ describe("discovery-service", () => {
     await fs.writeFile(join(tempDir, "workflows/w1.ts"), "export const meta = { name: 'w1', description: 'd1' }");
     await fs.writeFile(join(tempDir, "agents/a1.ts"), "agent content");
 
-    const service = createDiscoveryService({
+    const service = createTestService({
       extractors: { agent: fakeAgentExtractor }
     });
 
@@ -81,7 +98,7 @@ describe("discovery-service", () => {
     await fs.writeFile(join(tempDir, "workflows/dup1.ts"), "export const meta = { name: 'dup', description: 'd1' }");
     await fs.writeFile(join(tempDir, "workflows/dup2.ts"), "export const meta = { name: 'dup', description: 'd2' }");
 
-    const service = createDiscoveryService();
+    const service = createTestService();
     const result = await service.discover({
       cwd: tempDir,
       resourceTypes: ["workflow"],
@@ -119,7 +136,7 @@ describe("discovery-service", () => {
       }
     };
 
-    const service = createDiscoveryService({
+    const service = createTestService({
       extractors: { agent: fakeDuplicateExtractor }
     });
     const result = await service.discover({
@@ -155,7 +172,7 @@ describe("discovery-service", () => {
       }
     };
 
-    const service = createDiscoveryService({
+    const service = createTestService({
       extractors: { tool: fakeDuplicateExtractor }
     });
     const result = await service.discover({
@@ -174,7 +191,7 @@ describe("discovery-service", () => {
   it("handles strict mode", async () => {
     await fs.writeFile(join(tempDir, "workflows/invalid.ts"), "invalid content");
 
-    const service = createDiscoveryService();
+    const service = createTestService();
     const result = await service.discover({
       cwd: tempDir,
       resourceTypes: ["workflow"],
@@ -196,7 +213,7 @@ describe("discovery-service", () => {
     };
     await fs.writeFile(join(tempDir, "agents/boom.ts"), "content");
 
-    const service = createDiscoveryService({
+    const service = createTestService({
       extractors: { agent: crashingExtractor }
     });
 
@@ -210,6 +227,61 @@ describe("discovery-service", () => {
 
     expect(result.status).toBe("failed");
     expect(result.errors[0].code).toBe("LIST_INTERNAL_ERROR");
+  });
+
+  it("includes collection config diagnostics in service status and counts", async () => {
+    const service = createTestService();
+    const result = await service.discover({
+      cwd: tempDir,
+      resourceTypes: ["workflow"],
+      patterns: {
+        workflow: {
+          include: ["workflows/*.js"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+          includeSource: "new",
+        },
+        agent: {
+          include: [],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+        },
+        tool: {
+          include: [],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific",
+        },
+      },
+      verbose: false,
+      strict: false,
+    });
+
+    expect(result.summary.configWarningCount).toBeGreaterThan(0);
+    expect(result.summary.configErrorCount).toBe(0);
+    expect(result.summary.warningCount).toBeGreaterThanOrEqual(result.summary.configWarningCount);
+    expect(result.status).toBe("partially_succeeded");
+  });
+
+  it("handles catch path when candidate collection fails", async () => {
+    const service = createTestService();
+    const result = await service.discover({
+      cwd: tempDir,
+      resourceTypes: {
+        [Symbol.iterator]() {
+          throw new Error("Simulated collect error");
+        }
+      } as any,
+      verbose: false,
+      strict: false
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0].code).toBe("LIST_INTERNAL_ERROR");
+    expect(result.summary.configWarningCount).toBe(0);
+    expect(result.summary.configErrorCount).toBe(0);
+    expect(result.summary.warningCount).toBe(0);
+    expect(result.summary.errorCount).toBe(1);
   });
 
   describe("directory resolution", () => {

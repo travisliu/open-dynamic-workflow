@@ -39,6 +39,18 @@ export async function validateWorkflowService(
     diagnosticContext: "validate"
   });
 
+  const { precollectAllResourcesForLoad, checkDiscoveryPolicy } = await import("../../discovery/precollect.js");
+
+  // Precollect all resources
+  const precollected = await precollectAllResourcesForLoad({
+    cwd: config.cwd,
+    discovery: config._normalizedDiscovery,
+    strict: true,
+  });
+
+  // Apply policy checks
+  await checkDiscoveryPolicy("validate", config._configDiagnostics || [], precollected, config.cwd);
+
   // Resolve workflow target
   const resolved = await resolveWorkflowTarget({
     target: input.workflowFile,
@@ -47,12 +59,10 @@ export async function validateWorkflowService(
     mode: "validate"
   });
 
-  const { toResourcePatterns } = await import("../discovery-patterns.js");
-
   // Load shared agent registry
   const sharedAgentRegistry = await loadSharedAgentRegistry({
     cwd: config.cwd,
-    discovery: toResourcePatterns(config._normalizedDiscovery.sharedAgents),
+    precollected: precollected.sharedAgents.loadInput,
     maxDefinitions: config.sharedAgents?.maxDefinitions,
     strictPromptTemplateVariables: config.sharedAgents?.strictPromptTemplateVariables
   });
@@ -60,7 +70,7 @@ export async function validateWorkflowService(
   // Load tool registry
   const toolRegistry = await loadToolRegistry({
     cwd: config.cwd,
-    discovery: toResourcePatterns(config._normalizedDiscovery.tools),
+    precollected: precollected.tools.loadInput,
     maxDefinitions: config.tools?.maxDefinitions ?? 100
   });
 
@@ -68,7 +78,7 @@ export async function validateWorkflowService(
   const workflowRegistry = await discoverWorkflowRegistry({
     rootWorkflowPath: resolved.workflowFile,
     cwd: config.cwd,
-    discovery: toResourcePatterns(config._normalizedDiscovery.workflow),
+    precollected: precollected.workflow.loadInput,
     candidatePaths: resolved.candidatePaths,
     sharedAgentRegistry,
     toolRegistry,

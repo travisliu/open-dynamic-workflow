@@ -315,11 +315,11 @@ describe("loadToolRegistry", () => {
       }
     });
 
-    await expect(action).rejects.toThrow(/Failed to load tool definition/);
+    await expect(action).rejects.toThrow(/excluded by policy/);
     try {
       await action();
     } catch (err: any) {
-      expect(err.code).toBe("TOOL_INVALID_DEFINITION");
+      expect(err.code).toBe("SECURITY_POLICY_VIOLATION");
     }
 
     const { existsSync } = await import("node:fs");

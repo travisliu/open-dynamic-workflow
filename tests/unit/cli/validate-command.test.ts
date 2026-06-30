@@ -1,20 +1,144 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { validateCommand } from "../../../src/cli/commands/validate.js";
 import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
-import { resolve } from "node:path";
+import { ErrorCode } from "../../../src/errors/codes.js";
 import * as fs from "node:fs";
 
+// Mock imports
+import { precollectAllResourcesForLoad, checkDiscoveryPolicy } from "../../../src/discovery/precollect.js";
+import { resolveWorkflowTarget } from "../../../src/workflow/resolve-target.js";
+import { loadSharedAgentRegistry } from "../../../src/shared-agents/load.js";
+import { loadToolRegistry } from "../../../src/tools/load.js";
+import { discoverWorkflowRegistry } from "../../../src/workflow/discovery.js";
+
+const mockLoadInputWorkflow = { candidateFiles: ["workflow.js"], discoveryPolicy: { exclude: [] } };
+const mockLoadInputAgents = { candidateFiles: ["agent.js"], discoveryPolicy: { exclude: [] } };
+const mockLoadInputTools = { candidateFiles: ["tool.js"], discoveryPolicy: { exclude: [] } };
+
+const mockPrecollected = {
+  workflow: {
+    loadInput: mockLoadInputWorkflow,
+    collectionResult: { files: [], configDiagnostics: [], diagnostics: [] }
+  },
+  sharedAgents: {
+    loadInput: mockLoadInputAgents,
+    collectionResult: { files: [], configDiagnostics: [], diagnostics: [] }
+  },
+  tools: {
+    loadInput: mockLoadInputTools,
+    collectionResult: { files: [], configDiagnostics: [], diagnostics: [] }
+  }
+};
+
+vi.mock("../../../src/config/load.js", () => ({
+  loadConfig: vi.fn().mockResolvedValue({
+    cwd: "/mock-cwd",
+    workflow: { maxLoopRounds: 10 },
+    sharedAgents: { maxDefinitions: 100, allowDynamicIds: false },
+    tools: { maxDefinitions: 100 },
+    _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} },
+    _configDiagnostics: []
+  })
+}));
+
+vi.mock("../../../src/discovery/precollect.js", () => ({
+  precollectAllResourcesForLoad: vi.fn(),
+  checkDiscoveryPolicy: vi.fn()
+}));
+
+vi.mock("../../../src/workflow/resolve-target.js", () => ({
+  resolveWorkflowTarget: vi.fn()
+}));
+
+vi.mock("../../../src/shared-agents/load.js", () => ({
+  loadSharedAgentRegistry: vi.fn()
+}));
+
+vi.mock("../../../src/tools/load.js", () => ({
+  loadToolRegistry: vi.fn()
+}));
+
+vi.mock("../../../src/workflow/discovery.js", () => ({
+  discoverWorkflowRegistry: vi.fn()
+}));
+
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return {
+    ...actual,
+    existsSync: vi.fn().mockReturnValue(true),
+  };
+});
+
 describe("Validate Command", () => {
-  it("valid workflow prints success", async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(precollectAllResourcesForLoad).mockResolvedValue(mockPrecollected);
+    vi.mocked(checkDiscoveryPolicy).mockResolvedValue(undefined);
+    vi.mocked(resolveWorkflowTarget).mockResolvedValue({
+      workflowFile: "valid-simple.js",
+      workflowFileRelative: "workflows/valid-simple.js",
+      candidatePaths: [],
+      requestedTarget: "valid-simple.js"
+    });
+    vi.mocked(loadSharedAgentRegistry).mockResolvedValue({ registry: "sharedAgents" } as any);
+    vi.mocked(loadToolRegistry).mockResolvedValue({ registry: "tools" } as any);
+    vi.mocked(discoverWorkflowRegistry).mockResolvedValue({
+      list: () => [
+        { sourcePath: "/mock-cwd/valid-simple.js", name: "valid-simple" }
+      ]
+    } as any);
+  });
+
+  it("valid workflow prints success and asserts the Phase 2 contract", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const fixturePath = resolve(process.cwd(), "tests/fixtures/workflows/valid-simple.js");
-    
+    const callOrder: string[] = [];
+
+    vi.mocked(precollectAllResourcesForLoad).mockImplementation(async () => {
+      callOrder.push("precollect");
+      return mockPrecollected;
+    });
+    vi.mocked(checkDiscoveryPolicy).mockImplementation(async () => {
+      callOrder.push("policy");
+    });
+    vi.mocked(resolveWorkflowTarget).mockImplementation(async () => {
+      callOrder.push("target");
+      return {
+        workflowFile: "valid-simple.js",
+        workflowFileRelative: "workflows/valid-simple.js",
+        candidatePaths: [],
+        requestedTarget: "valid-simple.js"
+      };
+    });
+
     await expect(
       validateCommand({
-        workflowFile: fixturePath,
-        rawOptions: {}
+        workflowFile: "valid-simple.js",
+        rawOptions: { cwd: "/mock-cwd" }
       })
     ).resolves.not.toThrow();
+
+    // Assert ordering contract
+    expect(callOrder).toEqual(["precollect", "policy", "target"]);
+
+    // 1. precollectAllResourcesForLoad is called after config load
+    expect(precollectAllResourcesForLoad).toHaveBeenCalledWith({
+      cwd: "/mock-cwd",
+      discovery: { workflow: {}, sharedAgents: {}, tools: {} },
+      strict: true
+    });
+
+    // 3. loaders receive matching precollected.*.loadInput objects
+    expect(loadSharedAgentRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputAgents
+    }));
+    expect(loadToolRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputTools
+    }));
+    expect(discoverWorkflowRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputWorkflow
+    }));
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("✓ Validated workflow \"valid-simple\" at"));
     logSpy.mockRestore();
@@ -22,35 +146,41 @@ describe("Validate Command", () => {
 
   it("invalid workflow throws WORKFLOW_VALIDATION_ERROR", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    const fixturePath = resolve(process.cwd(), "tests/fixtures/workflows/invalid-pipeline.js");
+    vi.mocked(discoverWorkflowRegistry).mockRejectedValue(
+      new OpenDynamicWorkflowError(ErrorCode.WORKFLOW_VALIDATION_ERROR, "invalid workflow")
+    );
 
     await expect(
       validateCommand({
-        workflowFile: fixturePath,
+        workflowFile: "invalid-pipeline.js",
         rawOptions: {}
       })
     ).rejects.toThrow(OpenDynamicWorkflowError);
 
-    try {
-      await validateCommand({
-        workflowFile: fixturePath,
-        rawOptions: {}
-      });
-    } catch (err: any) {
-      expect(err.code).toBe("WORKFLOW_VALIDATION_ERROR");
-    }
     logSpy.mockRestore();
   });
 
+  it("fails closed on policy check rejection and invokes no resource loader or resolver", async () => {
+    vi.mocked(checkDiscoveryPolicy).mockRejectedValue(
+      new OpenDynamicWorkflowError(ErrorCode.WORKFLOW_DISCOVERY_FAILED, "Discovery policy blocked loading")
+    );
+
+    await expect(
+      validateCommand({
+        workflowFile: "some-file.js",
+        rawOptions: {}
+      })
+    ).rejects.toThrow(expect.objectContaining({
+      code: "WORKFLOW_DISCOVERY_FAILED"
+    }));
+
+    expect(resolveWorkflowTarget).not.toHaveBeenCalled();
+    expect(loadSharedAgentRegistry).not.toHaveBeenCalled();
+    expect(loadToolRegistry).not.toHaveBeenCalled();
+    expect(discoverWorkflowRegistry).not.toHaveBeenCalled();
+  });
+
   describe("initialization hints", () => {
-    beforeEach(() => {
-      vi.mocked(fs.existsSync).mockReset();
-    });
-
-    afterEach(() => {
-      vi.mocked(fs.existsSync).mockReturnValue(true);
-    });
-
     it("attaches hint to eligible target resolution failure when config is missing", async () => {
       vi.mocked(fs.existsSync).mockImplementation((p: any) => {
         if (p.toString().includes("config.yaml") || p.toString().includes(".open-dynamic-workflow")) {
@@ -58,6 +188,9 @@ describe("Validate Command", () => {
         }
         return true;
       });
+      vi.mocked(resolveWorkflowTarget).mockRejectedValue(
+        new OpenDynamicWorkflowError(ErrorCode.WORKFLOW_TARGET_NOT_FOUND, "target not found")
+      );
 
       await expect(
         validateCommand({
@@ -73,7 +206,10 @@ describe("Validate Command", () => {
     });
 
     it("does not attach hint to eligible target resolution failure when config exists", async () => {
-      vi.mocked(fs.existsSync).mockReturnValue(true); // config exists
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+      vi.mocked(resolveWorkflowTarget).mockRejectedValue(
+        new OpenDynamicWorkflowError(ErrorCode.WORKFLOW_TARGET_NOT_FOUND, "target not found")
+      );
 
       await expect(
         validateCommand({
@@ -93,47 +229,19 @@ describe("Validate Command", () => {
         }
         return true;
       });
-      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-      const fixturePath = resolve(process.cwd(), "tests/fixtures/workflows/invalid-pipeline.js");
+      vi.mocked(discoverWorkflowRegistry).mockRejectedValue(
+        new OpenDynamicWorkflowError(ErrorCode.WORKFLOW_VALIDATION_ERROR, "some other validation error")
+      );
 
       await expect(
         validateCommand({
-          workflowFile: fixturePath,
+          workflowFile: "invalid-pipeline.js",
           rawOptions: {},
         })
       ).rejects.toThrow(expect.objectContaining({
         code: "WORKFLOW_VALIDATION_ERROR",
         hint: undefined,
       }));
-
-      logSpy.mockRestore();
     });
   });
 });
-
-vi.mock("node:fs", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("node:fs")>();
-  return {
-    ...actual,
-    existsSync: vi.fn().mockReturnValue(true),
-    promises: {
-      ...actual.promises,
-      stat: vi.fn().mockImplementation(async (p: any) => {
-        if (p.toString().includes("workflows") || p.toString().includes("agents") || p.toString().includes("tools")) {
-          return {
-            isDirectory: () => true,
-          } as any;
-        }
-        return actual.promises.stat(p);
-      }),
-      readdir: vi.fn().mockImplementation(async (p: any) => {
-        if (p.toString().includes("workflows") || p.toString().includes("agents") || p.toString().includes("tools")) {
-          return [];
-        }
-        return actual.promises.readdir(p);
-      }),
-    },
-  };
-});
-
-

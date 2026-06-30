@@ -67,18 +67,15 @@ describe("Init Renderer Services", () => {
 
       expect(config.sharedAgents.include).toContain("cfg/agents/**/*.ts");
       expect(config.sharedAgents.include).toContain("cfg/agents/**/*.js");
-      expect(config.sharedAgents.exclude).toContain("**/*.test.*");
-      expect(config.sharedAgents.exclude).toContain("**/*.spec.*");
+      expect(config.sharedAgents.exclude).toBeUndefined();
 
       expect(config.tools?.include).toContain("cfg/tools/**/*.ts");
       expect(config.tools?.include).toContain("cfg/tools/**/*.js");
-      expect(config.tools?.exclude).toContain("**/*.test.*");
-      expect(config.tools?.exclude).toContain("**/*.spec.*");
+      expect(config.tools?.exclude).toBeUndefined();
 
       expect(config.workflow.include).toContain("flows/**/*.workflow.ts");
       expect(config.workflow.include).toContain("flows/**/*.workflow.js");
-      expect(config.workflow.exclude).toContain("**/*.test.*");
-      expect(config.workflow.exclude).toContain("**/*.spec.*");
+      expect(config.workflow.exclude).toBeUndefined();
     });
   });
 

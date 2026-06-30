@@ -1,5 +1,7 @@
 import type { InitializationHint } from "../errors/project-init-hint.js";
 import type { DiscoveryCompatibilityMode, DiscoveryConfigSource, ConfigDiagnostic } from "../config/types.js";
+import type { CompiledDiscoveryPattern } from "./compile-patterns.js";
+
 
 export type ListResourceType = "workflow" | "agent" | "tool";
 export type ListCliResourceType = "all" | ListResourceType;
@@ -31,6 +33,34 @@ export interface CandidateFile {
   relativePath: string;
   realPath: string;
   sourcePattern: string;
+  sourceConfigPath: string;
+  source: DiscoveryConfigSource;
+}
+
+export interface PrecollectedResourceLoadInput {
+  candidateFiles: CandidateFile[];
+  discoveryPolicy: {
+    exclude: CompiledDiscoveryPattern[];
+  };
+}
+
+
+export interface PatternMatchMetrics {
+  configPath: string;
+  pattern: string;
+  source: DiscoveryConfigSource;
+  matchedPathCount: number;
+  acceptedCandidateCount: number;
+  rejectedByMarkerCount: number;
+  excludedCandidateCount: number;
+  rejectedBySafetyCount: number;
+}
+
+export interface DiscoveryCollectionResult {
+  files: CandidateFile[];
+  diagnostics: ListDiagnostic[];
+  configDiagnostics: ConfigDiagnostic[];
+  metrics: PatternMatchMetrics[];
 }
 
 export interface ListDiagnostic {
@@ -88,6 +118,8 @@ export interface ListSummary {
   validCount: number;
   warningCount: number;
   errorCount: number;
+  configWarningCount: number;
+  configErrorCount: number;
   countsByType: Partial<Record<ListResourceType, number>>;
 }
 
@@ -120,6 +152,27 @@ export interface ResourceExtractor {
   extract(file: CandidateFile): Promise<ResourceExtractionResult>;
 }
 
-export interface DiscoveryService {
-  discover(options: ListDiscoveryOptions): Promise<ListResult>;
+export interface DiscoveryRawSummary {
+  discoveredCount: number;
+  validCount: number;
+  warningCount: number;
+  errorCount: number;
+  configWarningCount: number;
+  configErrorCount: number;
+  countsByType: Partial<Record<ListResourceType, number>>;
 }
+
+export interface DiscoveryRawResult {
+  schemaVersion: "open-dynamic-workflow.list.v1";
+  resourceTypes: ListResourceType[];
+  resources: ListedResource[];
+  warnings: ListDiagnostic[];
+  errors: ListDiagnostic[];
+  summary: DiscoveryRawSummary;
+  configDiagnostics: ConfigDiagnostic[];
+}
+
+export interface DiscoveryService {
+  discover(options: ListDiscoveryOptions): Promise<DiscoveryRawResult>;
+}
+

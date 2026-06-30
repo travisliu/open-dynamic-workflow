@@ -355,4 +355,131 @@ describe("loadSharedAgentRegistry", () => {
     expect(registry.get("c1")).toBeDefined();
     expect(registry.get("c2")).toBeUndefined();
   });
+
+  describe("Precollected Agent Loader", () => {
+    it("should load plain supported runtime file without .agent. marker when passed as precollected candidate", async () => {
+      const agentsDir = join(tempDir, "agents");
+      await mkdir(agentsDir, { recursive: true });
+      await writeFile(join(agentsDir, "plain.js"), `
+        export default defineAgent({ id: "plain-agent", description: "d", run: async () => ({ ok: true }) });
+      `);
+
+      const registry = await loadSharedAgentRegistry({
+        cwd: tempDir,
+        precollected: {
+          candidateFiles: [{
+            relativePath: "agents/plain.js",
+            absolutePath: join(agentsDir, "plain.js"),
+            resourceType: "agent"
+          }],
+          discoveryPolicy: { exclude: [] }
+        }
+      });
+
+      expect(registry.get("plain-agent")).toBeDefined();
+    });
+
+    it("precollected wins over candidateFiles, discovery, and dir, and collector is not called", async () => {
+      const agentsDir = join(tempDir, "agents");
+      await mkdir(agentsDir, { recursive: true });
+      await writeFile(join(agentsDir, "agent-a.js"), `export default defineAgent({ id: "agent-a", run: async () => ({ ok: true }) });`);
+      await writeFile(join(agentsDir, "agent-b.js"), `export default defineAgent({ id: "agent-b", run: async () => ({ ok: true }) });`);
+
+      const registry = await loadSharedAgentRegistry({
+        cwd: tempDir,
+        candidateFiles: ["agents/agent-b.js"],
+        dir: "non-existent-dir",
+        discovery: {
+          include: ["non-existent-pattern"],
+          exclude: [],
+          compatibilityMode: "new-suffix-specific"
+        },
+        precollected: {
+          candidateFiles: [{
+            relativePath: "agents/agent-a.js",
+            absolutePath: join(agentsDir, "agent-a.js"),
+            resourceType: "agent"
+          }],
+          discoveryPolicy: { exclude: [] }
+        }
+      });
+
+      expect(registry.get("agent-a")).toBeDefined();
+      expect(registry.get("agent-b")).toBeUndefined();
+    });
+
+    it("precollected candidates are sorted by relativePath", async () => {
+      const agentsDir = join(tempDir, "agents");
+      await mkdir(agentsDir, { recursive: true });
+      await writeFile(join(agentsDir, "z.js"), `export default defineAgent({ id: "z-agent", run: async () => ({ ok: true }) });`);
+      await writeFile(join(agentsDir, "a.js"), `export default defineAgent({ id: "a-agent", run: async () => ({ ok: true }) });`);
+
+      const registry = await loadSharedAgentRegistry({
+        cwd: tempDir,
+        precollected: {
+          candidateFiles: [
+            { relativePath: "agents/z.js", absolutePath: join(agentsDir, "z.js"), resourceType: "agent" },
+            { relativePath: "agents/a.js", absolutePath: join(agentsDir, "a.js"), resourceType: "agent" }
+          ],
+          discoveryPolicy: { exclude: [] }
+        }
+      });
+
+      const list = registry.list();
+      expect(list).toHaveLength(2);
+      expect(list[0].id).toBe("a-agent");
+      expect(list[1].id).toBe("z-agent");
+    });
+
+    it("maxDefinitions still applies to precollected candidates", async () => {
+      const agentsDir = join(tempDir, "agents");
+      await mkdir(agentsDir, { recursive: true });
+      await writeFile(join(agentsDir, "a.js"), `export default defineAgent({ id: "a-agent", run: async () => ({ ok: true }) });`);
+      await writeFile(join(agentsDir, "b.js"), `export default defineAgent({ id: "b-agent", run: async () => ({ ok: true }) });`);
+
+      const action = () => loadSharedAgentRegistry({
+        cwd: tempDir,
+        maxDefinitions: 1,
+        precollected: {
+          candidateFiles: [
+            { relativePath: "agents/a.js", absolutePath: join(agentsDir, "a.js"), resourceType: "agent" },
+            { relativePath: "agents/b.js", absolutePath: join(agentsDir, "b.js"), resourceType: "agent" }
+          ],
+          discoveryPolicy: { exclude: [] }
+        }
+      });
+
+      await expect(action).rejects.toThrow(/exceeds the limit/);
+    });
+
+    it("outside-workspace and symlink-escape precollected candidates throw SHARED_AGENT_SECURITY_POLICY_VIOLATION", async () => {
+      const baseTemp = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-outside-"));
+      const outsideDir = await realpath(baseTemp);
+      const outsideFile = join(outsideDir, "outside.js");
+      await writeFile(outsideFile, `export default defineAgent({ id: "outside", run: async () => ({ ok: true }) });`);
+
+      try {
+        const action = () => loadSharedAgentRegistry({
+          cwd: tempDir,
+          precollected: {
+            candidateFiles: [{
+              relativePath: "../outside.js",
+              absolutePath: outsideFile,
+              resourceType: "agent"
+            }],
+            discoveryPolicy: { exclude: [] }
+          }
+        });
+
+        await expect(action).rejects.toThrow(/points outside the workspace/);
+        try {
+          await action();
+        } catch (err: any) {
+          expect(err.code).toBe(ErrorCode.SHARED_AGENT_SECURITY_POLICY_VIOLATION);
+        }
+      } finally {
+        await rm(outsideDir, { recursive: true, force: true });
+      }
+    });
+  });
 });

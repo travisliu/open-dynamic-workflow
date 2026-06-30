@@ -281,5 +281,111 @@ describe("list-command integration", () => {
       expect(process.exitCode).toBe(ExitCode.WorkflowInvalid);
     });
   });
+
+  describe("strict JSON and JSONL reporting with non-fatal warning", () => {
+    const STRICT_TEMP_DIR = path.resolve(process.cwd(), "tests/temp-list-strict-json-integration");
+
+    beforeEach(async () => {
+      await fs.rm(STRICT_TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(STRICT_TEMP_DIR, { recursive: true });
+      await fs.mkdir(path.join(STRICT_TEMP_DIR, ".open-dynamic-workflow"), { recursive: true });
+      await fs.mkdir(path.join(STRICT_TEMP_DIR, ".open-dynamic-workflow/agents"), { recursive: true });
+      await fs.mkdir(path.join(STRICT_TEMP_DIR, ".open-dynamic-workflow/tools"), { recursive: true });
+      await fs.mkdir(path.join(STRICT_TEMP_DIR, "workflows"), { recursive: true });
+      await fs.writeFile(
+        path.join(STRICT_TEMP_DIR, ".open-dynamic-workflow/config.yaml"),
+        `workflow:
+  include:
+    - "workflows/*.ts"
+`
+      );
+    });
+
+    afterEach(async () => {
+      await fs.rm(STRICT_TEMP_DIR, { recursive: true, force: true });
+    });
+
+    it("runs list --strict --report json, returning success exit code and partial success JSON", async () => {
+      let output = "";
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((msg: any) => {
+        output += msg;
+        return true;
+      });
+
+      try {
+        await main([
+          "node",
+          "open-dynamic-workflow",
+          "list",
+          "--cwd",
+          STRICT_TEMP_DIR,
+          "--strict",
+          "--report",
+          "json",
+        ]);
+      } catch (err) {
+        // expect no error thrown from main, but exitCode set
+      }
+
+      spy.mockRestore();
+
+      expect(process.exitCode).toBe(ExitCode.Success);
+
+      const parsed = JSON.parse(output);
+      expect(parsed.status).not.toBe("succeeded");
+      expect(typeof parsed.summary.warningCount).toBe("number");
+      expect(typeof parsed.summary.errorCount).toBe("number");
+      expect(typeof parsed.summary.configWarningCount).toBe("number");
+      expect(typeof parsed.summary.configErrorCount).toBe("number");
+      expect(parsed.summary.warningCount).toBeGreaterThan(0);
+    });
+
+    it("runs list --strict --report jsonl, returning success exit code and partial success JSONL lines", async () => {
+      let output = "";
+      const spy = vi.spyOn(process.stdout, "write").mockImplementation((msg: any) => {
+        output += msg;
+        return true;
+      });
+
+      try {
+        await main([
+          "node",
+          "open-dynamic-workflow",
+          "list",
+          "--cwd",
+          STRICT_TEMP_DIR,
+          "--strict",
+          "--report",
+          "jsonl",
+        ]);
+      } catch (err) {
+      }
+
+      spy.mockRestore();
+
+      expect(process.exitCode).toBe(ExitCode.Success);
+
+      const lines = output.trim().split("\n");
+      expect(lines.length).toBeGreaterThan(0);
+
+      // Parse each line as JSON
+      const parsedLines = lines.map(line => JSON.parse(line));
+      
+      // Since the JSONL reporter has no status record, we assert on the summary record and the warning record.
+      const summaryLine = parsedLines.find(p => p.type === "list.summary");
+      expect(summaryLine).toBeDefined();
+      expect(summaryLine.summary.warningCount).toBeGreaterThan(0);
+      expect(typeof summaryLine.summary.warningCount).toBe("number");
+      expect(typeof summaryLine.summary.errorCount).toBe("number");
+      expect(typeof summaryLine.summary.configWarningCount).toBe("number");
+      expect(typeof summaryLine.summary.configErrorCount).toBe("number");
+
+      // Verify the include matched nothing warning diagnostic is printed
+      const warningLine = parsedLines.find(
+        p => p.type === "list.configDiagnostic" && p.diagnostic?.code === "CONFIG_PATH_INCLUDE_MATCHED_NOTHING"
+      );
+      expect(warningLine).toBeDefined();
+    });
+  });
 });
 

@@ -193,10 +193,18 @@ defaultProvider: mock
     // Arrange
     const outsideDir = path.resolve(TEMP_DIR, "..", "outside-acceptance-" + Date.now());
     await fs.mkdir(outsideDir, { recursive: true });
-    await fs.writeFile(path.join(outsideDir, "outside.yaml"), "id: outside\ndescription: d\nagentPrompt: p");
+    const outsideFile = path.join(outsideDir, "outside.agent.js");
+    await fs.writeFile(
+      outsideFile,
+      `export default defineAgent({
+        id: "outside",
+        description: "d",
+        run: async (ctx, runtime) => { return {}; }
+      });`
+    );
     
-    const symlinkPath = path.join(TEMP_DIR, ".open-dynamic-workflow/agents/outside-link");
-    await fs.symlink(outsideDir, symlinkPath, "dir");
+    const symlinkPath = path.join(TEMP_DIR, ".open-dynamic-workflow/agents/outside.agent.js");
+    await fs.symlink(outsideFile, symlinkPath, "file");
 
     const workflow = `
 export const meta = { name: "test", description: "test" };

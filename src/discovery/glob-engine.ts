@@ -1,4 +1,5 @@
 import { glob, type GlobOptions } from "tinyglobby";
+import picomatch from "picomatch";
 
 export interface ExpandIncludePatternInput {
   cwd: string;
@@ -32,3 +33,13 @@ export async function expandIncludePattern(input: ExpandIncludePatternInput): Pr
   normalizedResults.sort((a, b) => a.localeCompare(b));
   return normalizedResults;
 }
+
+export function matchesDiscoveryPattern(relativePath: string, pattern: string): boolean {
+  let normalizedPattern = pattern.replace(/\\/g, "/");
+  if (normalizedPattern.startsWith("./")) {
+    normalizedPattern = normalizedPattern.slice(2);
+  }
+  const normalizedPath = relativePath.replace(/\\/g, "/");
+  return picomatch.isMatch(normalizedPath, normalizedPattern, { dot: true });
+}
+
