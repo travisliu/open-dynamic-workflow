@@ -58,6 +58,9 @@ describe("Workflow Validation", () => {
   beforeEach(async () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
     await fs.mkdir(TEMP_DIR, { recursive: true });
+    await fs.mkdir(path.join(TEMP_DIR, "workflows"), { recursive: true });
+    await fs.mkdir(path.join(TEMP_DIR, ".open-dynamic-workflow/agents"), { recursive: true });
+    await fs.mkdir(path.join(TEMP_DIR, ".open-dynamic-workflow/tools"), { recursive: true });
   });
 
   afterEach(async () => {

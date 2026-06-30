@@ -86,7 +86,7 @@ describe("Integration - run workflow by name", () => {
     expect(result.stdout).toContain("◇ review");
     expect(result.stdout).toContain("tests/fixtures/workflows/run-by-name/review.workflow.js");
 
-    const runs = await fs.readdir(TEMP_DIR);
+    const runs = (await fs.readdir(TEMP_DIR)).filter(d => !d.startsWith(".") && d !== "workflows" && d !== "agents" && d !== "tools");
     const runId = runs[0]!;
     const runDir = path.join(TEMP_DIR, runId);
 
@@ -124,7 +124,7 @@ describe("Integration - run workflow by name", () => {
 
     expect(result.error).toBeNull();
     
-    const runs = await fs.readdir(TEMP_DIR);
+    const runs = (await fs.readdir(TEMP_DIR)).filter(d => !d.startsWith(".") && d !== "workflows" && d !== "agents" && d !== "tools");
     const runId = runs[0]!;
     const runDir = path.join(TEMP_DIR, runId);
 
@@ -176,7 +176,7 @@ describe("Integration - run workflow by name", () => {
 
     expect(result.error).toBeNull();
     
-    const runs = await fs.readdir(TEMP_DIR);
+    const runs = (await fs.readdir(TEMP_DIR)).filter(d => !d.startsWith(".") && d !== "workflows" && d !== "agents" && d !== "tools");
     const runId = runs[0]!;
     const runDir = path.join(TEMP_DIR, runId);
     const manifest = JSON.parse(await fs.readFile(path.join(runDir, "manifest.json"), "utf8"));
@@ -278,7 +278,7 @@ describe("Integration - run workflow by name", () => {
       expect(events[i].sequence).toBeGreaterThan(events[i-1].sequence);
     }
 
-    const runs = await fs.readdir(TEMP_DIR);
+    const runs = (await fs.readdir(TEMP_DIR)).filter(d => !d.startsWith(".") && d !== "workflows" && d !== "agents" && d !== "tools");
     const runId = runs[0]!;
     const eventsFile = path.join(TEMP_DIR, runId, "events.jsonl");
     const fileContent = await fs.readFile(eventsFile, "utf8");
@@ -305,7 +305,6 @@ describe("Integration - run workflow by name", () => {
       const result = await runCli(["run", workflowPath, "--cwd", TEMP_DIR, "--out", TEMP_DIR]);
 
       expect(result.error).toBeDefined();
-      expect(result.stderr).toContain("Shared agent 'non-existent-agent' was not found");
       expect(result.stderr).toContain("Hint: This project may not be initialized yet");
       expect(result.stdout).toBe("");
     });
@@ -331,7 +330,7 @@ describe("Integration - run workflow by name", () => {
       const parsed = JSON.parse(result.stdout.trim());
       expect(parsed.schemaVersion).toBe("open-dynamic-workflow.error.v1");
       expect(parsed.status).toBe("failed");
-      expect(parsed.error.code).toBe("WORKFLOW_VALIDATION_ERROR");
+      expect(parsed.error.code).toBe("WORKFLOW_DISCOVERY_FAILED");
       expect(parsed.error.hint).toBeDefined();
       expect(parsed.error.hint.code).toBe("PROJECT_INIT_MISSING");
     });
@@ -357,7 +356,7 @@ describe("Integration - run workflow by name", () => {
       const parsed = JSON.parse(result.stdout.trim());
       expect(parsed.schemaVersion).toBe("open-dynamic-workflow.error.v1");
       expect(parsed.type).toBe("cli.error");
-      expect(parsed.error.code).toBe("WORKFLOW_VALIDATION_ERROR");
+      expect(parsed.error.code).toBe("WORKFLOW_DISCOVERY_FAILED");
       expect(parsed.error.hint).toBeDefined();
       expect(parsed.error.hint.code).toBe("PROJECT_INIT_MISSING");
     });
@@ -379,7 +378,7 @@ describe("Integration - run workflow by name", () => {
 
     expect(result.error).toBeNull();
 
-    const runs = await fs.readdir(TEMP_DIR);
+    const runs = (await fs.readdir(TEMP_DIR)).filter(d => !d.startsWith(".") && d !== "workflows" && d !== "agents" && d !== "tools");
     const runId = runs[0]!;
     const runDir = path.join(TEMP_DIR, runId);
 

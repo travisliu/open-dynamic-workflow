@@ -49,6 +49,8 @@ describe("Shared Agent Workflow Integration", () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
     await fs.mkdir(TEMP_DIR, { recursive: true });
     await fs.mkdir(path.join(TEMP_DIR, ".open-dynamic-workflow/agents"), { recursive: true });
+    await fs.mkdir(path.join(TEMP_DIR, "workflows"), { recursive: true });
+    await fs.mkdir(path.join(TEMP_DIR, ".open-dynamic-workflow/tools"), { recursive: true });
   });
 
   afterEach(async () => {
@@ -115,7 +117,7 @@ providers:
     expect(result.error).toBeNull();
 
     // 5. Verify results
-    const runs = (await fs.readdir(TEMP_DIR)).filter(d => d !== ".open-dynamic-workflow" && d !== "workflow.js" && d !== "open-dynamic-workflow.config.yaml");
+    const runs = (await fs.readdir(TEMP_DIR)).filter(d => d !== ".open-dynamic-workflow" && d !== "workflows" && d !== "agents" && d !== "tools" && d !== "workflow.js" && d !== "open-dynamic-workflow.config.yaml");
     expect(runs.length).toBe(1);
     const runId = runs[0]!;
     const runDir = path.join(TEMP_DIR, runId);

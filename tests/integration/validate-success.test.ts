@@ -49,6 +49,7 @@ describe("Valid metadata passes validation", () => {
   beforeEach(async () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
     await fs.mkdir(TEMP_DIR, { recursive: true });
+    await fs.mkdir(path.join(TEMP_DIR, "workflows"), { recursive: true });
   });
 
   afterEach(async () => {

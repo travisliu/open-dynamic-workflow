@@ -1,7 +1,7 @@
 import type { NormalizedResourceDiscovery, NormalizedDiscoveryConfig, ConfigDiagnosticContext, ConfigDiagnostic } from "../config/types.js";
 import { compileResourceDiscovery } from "./compile-patterns.js";
-import { collectResourceCandidateFiles } from "./collect-files.js";
-import type { PrecollectedResourceLoadInput, DiscoveryCollectionResult, DiscoveryRawResult, DiscoveryRawSummary } from "./types.js";
+import { collectCompiledResourceCandidateFiles } from "./collect-files.js";
+import type { PrecollectedResourceLoadInput, DiscoveryCollectionResult, DiscoveryRawResult, DiscoveryRawSummary, ListedResource } from "./types.js";
 
 export interface PrecollectResourceResult {
   loadInput: PrecollectedResourceLoadInput;
@@ -18,14 +18,9 @@ export interface PrecollectResourceInput {
 export async function precollectResourceForLoad(input: PrecollectResourceInput): Promise<PrecollectResourceResult> {
   const { cwd, resourceType, discovery, strict } = input;
   const compiled = compileResourceDiscovery({ cwd, discovery });
-  const collectionResult = await collectResourceCandidateFiles({
+  const collectionResult = await collectCompiledResourceCandidateFiles({
     cwd,
-    resourceType,
-    include: discovery.include,
-    exclude: discovery.exclude,
-    compatibilityMode: discovery.compatibilityMode,
-    includeSource: discovery.includeSource,
-    excludeSource: discovery.excludeSource,
+    discovery: compiled.discovery,
     strict,
   });
 
@@ -86,7 +81,7 @@ export async function checkDiscoveryPolicy(
   },
   cwd?: string
 ): Promise<void> {
-  const { applyDiscoveryPolicy } = await import("./policy.js");
+  const { evaluateDiscoveryLoadPolicy } = await import("./policy.js");
   const { OpenDynamicWorkflowError } = await import("../errors/types.js");
   const { ErrorCode } = await import("../errors/codes.js");
   const { resolve } = await import("node:path");
@@ -129,27 +124,51 @@ export async function checkDiscoveryPolicy(
     },
   };
 
+  const resources: ListedResource[] = [
+    ...precollected.workflow.collectionResult.files.map(f => ({
+      type: "workflow" as const,
+      name: f.relativePath,
+      description: "",
+      path: f.absolutePath,
+      valid: true as const
+    })),
+    ...precollected.sharedAgents.collectionResult.files.map(f => ({
+      type: "agent" as const,
+      id: f.relativePath,
+      description: "",
+      path: f.absolutePath,
+      valid: true as const
+    })),
+    ...precollected.tools.collectionResult.files.map(f => ({
+      type: "tool" as const,
+      id: f.relativePath,
+      description: "",
+      path: f.absolutePath,
+      valid: true as const
+    }))
+  ];
+
   const rawResult: DiscoveryRawResult = {
     schemaVersion: "open-dynamic-workflow.list.v1",
     resourceTypes: ["workflow", "agent", "tool"],
-    resources: [],
+    resources,
     warnings: listWarnings,
     errors: listErrors,
     configDiagnostics: collectionDiagnostics,
     summary,
   };
 
-  const policy = applyDiscoveryPolicy({
+  // Evaluate discovery policy load blocking using the centralized policy decision.
+  // Execution contexts (run/validate, strict or non-strict) block loading when the decision is positive.
+  const decision = evaluateDiscoveryLoadPolicy({
     context,
     rawResult,
     configDiagnostics,
     collectionDiagnostics,
   });
 
-  if (policy.shouldFailBeforeLoad) {
-    const allDiags = [...policy.fatalDiagnostics, ...policy.allConfigDiagnostics, ...policy.result.errors];
-    
-    const escapeDiag = allDiags.find((d) => d.code === "CONFIG_PATH_SYMLINK_ESCAPE") as ConfigDiagnostic | undefined;
+  if (decision.shouldBlockLoad) {
+    const escapeDiag = decision.symlinkEscapeDiagnostic;
     if (escapeDiag) {
       const rawVal = escapeDiag.value as string;
       const resolvePath = cwd ? resolve(cwd, rawVal) : rawVal;
@@ -166,7 +185,7 @@ export async function checkDiscoveryPolicy(
       }
     }
 
-    const details = allDiags
+    const details = decision.blockingDiagnostics
       .map((d) => `[${d.severity || "error"}] ${d.code}: ${d.message}`)
       .join("\n");
     throw new OpenDynamicWorkflowError(

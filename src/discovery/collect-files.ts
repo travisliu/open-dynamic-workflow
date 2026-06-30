@@ -78,7 +78,7 @@ async function findSymlinkFilesUnder(
   return symlinks;
 }
 
-async function collectCompiledResourceCandidateFiles(input: {
+export async function collectCompiledResourceCandidateFiles(input: {
   cwd: string;
   discovery: CompiledResourceDiscovery;
   strict: boolean;
