@@ -78,6 +78,25 @@ async function findSymlinkFilesUnder(
   return symlinks;
 }
 
+export function isExcludedByDiscoveryPolicy(
+  relativePath: string,
+  exclude: CompiledDiscoveryPattern[]
+): boolean {
+  const normalizedRelativePath = relativePath.replace(/\\/g, "/");
+
+  for (const excludeObj of exclude) {
+    if (excludeObj.hasGlob) {
+      if (matchesDiscoveryPattern(normalizedRelativePath, excludeObj.normalizedPattern)) {
+        return true;
+      }
+    } else if (normalizedRelativePath === excludeObj.normalizedPattern) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function collectCompiledResourceCandidateFiles(input: {
   cwd: string;
   discovery: CompiledResourceDiscovery;
@@ -97,22 +116,12 @@ export async function collectCompiledResourceCandidateFiles(input: {
   // 1. Precompute Excludes
   const excludeTrackers: {
     excludeObj: CompiledDiscoveryPattern;
-    paths: Set<string>;
     usedCount: number;
   }[] = [];
 
   for (const excludeObj of discovery.exclude) {
-    const paths = new Set<string>();
-    // Glob exclude patterns are matched dynamically in-memory using matchesDiscoveryPattern,
-    // so we do not need to expand them via filesystem globbing (which is extremely expensive).
-    if (!excludeObj.hasGlob) {
-      const resolvedExcludePath = resolve(absoluteCwd, excludeObj.normalizedPattern);
-      const rel = relative(absoluteCwd, resolvedExcludePath);
-      paths.add(rel.split(sep).join("/"));
-    }
     excludeTrackers.push({
       excludeObj,
-      paths,
       usedCount: 0,
     });
   }
@@ -305,16 +314,9 @@ export async function collectCompiledResourceCandidateFiles(input: {
     // 3. Exclude check.
     let isExcluded = false;
     for (const tracker of excludeTrackers) {
-      if (tracker.excludeObj.hasGlob) {
-        if (matchesDiscoveryPattern(relativePath, tracker.excludeObj.normalizedPattern)) {
-          isExcluded = true;
-          tracker.usedCount++;
-        }
-      } else {
-        if (tracker.paths.has(relativePath)) {
-          isExcluded = true;
-          tracker.usedCount++;
-        }
+      if (isExcludedByDiscoveryPolicy(relativePath, [tracker.excludeObj])) {
+        isExcluded = true;
+        tracker.usedCount++;
       }
     }
     if (isExcluded) {

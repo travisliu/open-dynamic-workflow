@@ -2,7 +2,8 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { promises as fs } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { collectCandidateFiles, collectResourceCandidateFiles } from "../../../src/discovery/collect-files.js";
+import { collectCandidateFiles, collectResourceCandidateFiles, isExcludedByDiscoveryPolicy } from "../../../src/discovery/collect-files.js";
+import { compileResourceDiscovery } from "../../../src/discovery/compile-patterns.js";
 import { DiscoveryDirectories, PatternMatchMetrics } from "../../../src/discovery/types.js";
 import { ConfigDiagnostic } from "../../../src/config/types.js";
 
@@ -464,6 +465,36 @@ describe("collect-files", () => {
       expect(relPaths).toContain("my.tool.helpers/real.tool.ts");
 
       await fs.rm(unitTempDir, { recursive: true, force: true });
+    });
+
+    it("isExcludedByDiscoveryPolicy follows discovery glob semantics for compiled excludes", async () => {
+      const compiled = compileResourceDiscovery({
+        cwd: tempDir,
+        discovery: {
+          resource: "tools",
+          include: [],
+          exclude: [
+            "tools/helpers/*.{ts,js}",
+            "tools/private/tool.ts",
+          ],
+          source: "new",
+          includeSource: "new",
+          excludeSource: "new",
+          compatibilityMode: "new-suffix-specific",
+          sourcePaths: ["tools.exclude"],
+          rawInclude: [],
+          rawExclude: [
+            "tools/helpers/*.{ts,js}",
+            "tools/private/tool.ts",
+          ],
+          diagnostics: [],
+        },
+      });
+
+      expect(isExcludedByDiscoveryPolicy("tools\\helpers\\secret.ts", compiled.discovery.exclude)).toBe(true);
+      expect(isExcludedByDiscoveryPolicy("tools/helpers/secret.js", compiled.discovery.exclude)).toBe(true);
+      expect(isExcludedByDiscoveryPolicy("tools/private/tool.ts", compiled.discovery.exclude)).toBe(true);
+      expect(isExcludedByDiscoveryPolicy("tools/private/other.ts", compiled.discovery.exclude)).toBe(false);
     });
   });
 

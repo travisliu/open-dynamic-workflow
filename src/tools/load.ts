@@ -9,7 +9,8 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import type { ResourceDiscoveryPatterns, PrecollectedResourceLoadInput } from "../discovery/types.js";
 import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
-import { matchGlob } from "../discovery/file-patterns.js";
+import { isExcludedByDiscoveryPolicy } from "../discovery/index.js";
+import { compileResourceDiscovery, type CompiledDiscoveryPattern } from "../discovery/compile-patterns.js";
 import type { ConfigDiagnostic } from "../config/types.js";
 
 export interface LoadToolRegistryInput {
@@ -71,11 +72,46 @@ async function assertPathInsideCwd(realCwd: string, candidatePath: string, messa
   return real;
 }
 
+function resolveToolLoadExcludePatterns(input: LoadToolRegistryInput, cwd: string): CompiledDiscoveryPattern[] {
+  if (input.precollected) {
+    return input.precollected.discoveryPolicy.exclude;
+  }
+
+  if (input.candidateFiles) {
+    // Direct candidateFiles is a higher-precedence compatibility path.
+    // Keep lower-precedence discovery excludes from leaking into it.
+    return [];
+  }
+
+  if (input.discovery) {
+    const includeSource = input.discovery.includeSource ?? "new";
+    const excludeSource = input.discovery.excludeSource ?? includeSource;
+    return compileResourceDiscovery({
+      cwd,
+      discovery: {
+        resource: "tools",
+        include: [],
+        exclude: input.discovery.exclude ?? [],
+        source: includeSource,
+        includeSource,
+        excludeSource,
+        compatibilityMode: input.discovery.compatibilityMode,
+        sourcePaths: ["tools.exclude"],
+        rawInclude: [],
+        rawExclude: input.discovery.exclude ?? [],
+        diagnostics: [],
+      },
+    }).discovery.exclude;
+  }
+
+  return [];
+}
+
 async function mirrorDirectory(
   srcDir: string,
   destDir: string,
   cwd: string,
-  excludePatterns: string[]
+  excludePatterns: CompiledDiscoveryPattern[]
 ): Promise<void> {
   const entries = await readdir(srcDir, { withFileTypes: true });
   for (const entry of entries) {
@@ -87,14 +123,7 @@ async function mirrorDirectory(
 
     // Enforce excludes on mirrored helpers
     const relPath = relative(cwd, srcPath).replace(/\\/g, "/");
-    let isExcluded = false;
-    for (const exc of excludePatterns) {
-      if (matchGlob(relPath, exc)) {
-        isExcluded = true;
-        break;
-      }
-    }
-    if (isExcluded) {
+    if (isExcludedByDiscoveryPolicy(relPath, excludePatterns)) {
       continue;
     }
 
@@ -145,6 +174,7 @@ async function mirrorDirectory(
 export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<ToolRegistry> {
   const { cwd, maxDefinitions } = input;
   const realCwd = resolve(cwd);
+  const excludePatterns = resolveToolLoadExcludePatterns(input, realCwd);
 
   const discoveredFiles: string[] = [];
 
@@ -233,10 +263,6 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
     await mkdir(projectTmpDir, { recursive: true });
     tempDir = await mkdtemp(join(projectTmpDir, "tools-"));
 
-    const excludePatterns = input.precollected
-      ? input.precollected.discoveryPolicy.exclude.map((p) => p.normalizedPattern)
-      : (input.discovery?.exclude || []);
-
     const fileExists = async (p: string): Promise<boolean> => {
       try {
         const s = await stat(p);
@@ -311,14 +337,7 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
                 }
 
                 const relPath = relative(realCwd, realTarget).replace(/\\/g, "/");
-                let isExcluded = false;
-                for (const exc of excludePatterns) {
-                  if (matchGlob(relPath, exc)) {
-                    isExcluded = true;
-                    break;
-                  }
-                }
-                if (isExcluded) {
+                if (isExcludedByDiscoveryPolicy(relPath, excludePatterns)) {
                   throw new OpenDynamicWorkflowError(
                     ErrorCode.SECURITY_POLICY_VIOLATION,
                     `Relative import '${specifier}' in '${filePath}' resolves to '${realTarget}' which is excluded by policy.`

@@ -4,6 +4,7 @@ import { join, resolve, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 import { loadToolRegistry } from "../../../src/tools/load.js";
+import { compileResourceDiscovery } from "../../../src/discovery/compile-patterns.js";
 
 describe("Tool Loader Security - Unit Tests", () => {
   let tempBaseDir: string;
@@ -27,36 +28,59 @@ describe("Tool Loader Security - Unit Tests", () => {
     await rm(outsideDir, { recursive: true, force: true });
   });
 
-  it("1. Excluded tool files are not imported (asserting via side-effect marker)", async () => {
+  it("1. Precollected excluded helper imports are blocked before execution (asserting via side-effect marker)", async () => {
     const toolsDir = join(tempBaseDir, "tools");
     await mkdir(toolsDir);
     const markerFile = join(tempBaseDir, "excluded-side-effect.marker");
     const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+    await mkdir(join(toolsDir, "helpers"), { recursive: true });
 
     await writeFile(join(toolsDir, "safe.tool.ts"), `
       import { defineTool } from "${srcToolsPath}";
+      import "./helpers/excluded.js";
       export default defineTool({ id: "safe-tool", description: "d", inputSchema: {}, run: () => {} });
     `);
 
-    await writeFile(join(toolsDir, "excluded.tool.ts"), `
+    await writeFile(join(toolsDir, "helpers", "excluded.ts"), `
       import { defineTool } from "${srcToolsPath}";
       import * as fs from "node:fs";
       fs.writeFileSync(${JSON.stringify(markerFile)}, "run");
       export default defineTool({ id: "excluded-tool", description: "d", inputSchema: {}, run: () => {} });
     `);
 
-    const registry = await loadToolRegistry({
+    const compiledDiscovery = compileResourceDiscovery({
+      cwd: tempBaseDir,
+      discovery: {
+        resource: "tools",
+        include: [],
+        exclude: ["tools/helpers/*.{ts,js}"],
+        source: "new",
+        includeSource: "new",
+        excludeSource: "new",
+        compatibilityMode: "new-suffix-specific",
+        sourcePaths: ["tools.exclude"],
+        rawInclude: [],
+        rawExclude: ["tools/helpers/*.{ts,js}"],
+        diagnostics: [],
+      },
+    });
+
+    const action = () => loadToolRegistry({
       cwd: tempBaseDir,
       maxDefinitions: 10,
-      discovery: {
-        include: ["tools/safe.tool.ts", "tools/excluded.tool.ts"],
-        exclude: ["tools/excluded.tool.ts"],
-        compatibilityMode: "new-suffix-specific",
+      precollected: {
+        candidateFiles: [{
+          relativePath: "tools/safe.tool.ts",
+          absolutePath: join(toolsDir, "safe.tool.ts"),
+          resourceType: "tool"
+        }],
+        discoveryPolicy: {
+          exclude: compiledDiscovery.discovery.exclude,
+        }
       }
     });
 
-    expect(registry.has("safe-tool")).toBe(true);
-    expect(registry.has("excluded-tool")).toBe(false);
+    await expect(action).rejects.toThrow(/excluded by policy/);
     expect(existsSync(markerFile)).toBe(false);
   });
 

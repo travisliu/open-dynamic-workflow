@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { loadToolRegistry } from "../../../src/tools/load.js";
+import { compileResourceDiscovery } from "../../../src/discovery/compile-patterns.js";
 
 describe("loadToolRegistry", () => {
   let tempBaseDir: string;
@@ -322,6 +323,132 @@ describe("loadToolRegistry", () => {
       expect(err.code).toBe("SECURITY_POLICY_VIOLATION");
     }
 
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerFile)).toBe(false);
+  });
+
+  it("candidateFiles do not inherit discovery excludes when both inputs are present", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    await mkdir(join(toolsDir, "helpers"), { recursive: true });
+    const markerFile = join(tempBaseDir, "candidate-files-helper.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "main.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import "./helpers/secret.js";
+      export default defineTool({ id: "candidate-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    await writeFile(join(toolsDir, "helpers", "secret.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerFile)}, "run");
+      export default defineTool({ id: "candidate-helper", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    const registry = await loadToolRegistry({
+      cwd: tempBaseDir,
+      maxDefinitions: 10,
+      candidateFiles: ["tools/main.tool.ts"],
+      discovery: {
+        include: ["tools/main.tool.ts", "tools/helpers/secret.ts"],
+        exclude: ["tools/helpers/*.{ts,js}"],
+        compatibilityMode: "new-suffix-specific",
+      }
+    });
+
+    expect(registry.has("candidate-tool")).toBe(true);
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerFile)).toBe(true);
+  });
+
+  it("legacy discovery excludes with brace expansion still block imported helpers", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    await mkdir(join(toolsDir, "helpers"), { recursive: true });
+    const markerFile = join(tempBaseDir, "discovery-excluded-helper.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "safe.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import "./helpers/excluded.js";
+      export default defineTool({ id: "safe-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    await writeFile(join(toolsDir, "helpers", "excluded.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerFile)}, "run");
+      export default defineTool({ id: "excluded-helper", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    const action = () => loadToolRegistry({
+      cwd: tempBaseDir,
+      maxDefinitions: 10,
+      discovery: {
+        include: ["tools/safe.tool.ts", "tools/helpers/excluded.ts"],
+        exclude: ["tools/helpers/*.{ts,js}"],
+        compatibilityMode: "new-suffix-specific",
+      }
+    });
+
+    await expect(action).rejects.toThrow(/excluded by policy/);
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerFile)).toBe(false);
+  });
+
+  it("precollected discovery policy blocks excluded helper imports with compiled glob semantics", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    await mkdir(join(toolsDir, "helpers"), { recursive: true });
+    const markerFile = join(tempBaseDir, "excluded-helper.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "safe.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import "./helpers/excluded.js";
+      export default defineTool({ id: "safe-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    await writeFile(join(toolsDir, "helpers", "excluded.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerFile)}, "run");
+      export default defineTool({ id: "excluded-tool", description: "d", inputSchema: {}, run: () => {} });
+    `);
+
+    const compiledDiscovery = compileResourceDiscovery({
+      cwd: tempBaseDir,
+      discovery: {
+        resource: "tools",
+        include: [],
+        exclude: ["tools/helpers/*.{ts,js}"],
+        source: "new",
+        includeSource: "new",
+        excludeSource: "new",
+        compatibilityMode: "new-suffix-specific",
+        sourcePaths: ["tools.exclude"],
+        rawInclude: [],
+        rawExclude: ["tools/helpers/*.{ts,js}"],
+        diagnostics: [],
+      },
+    });
+
+    const action = () => loadToolRegistry({
+      cwd: tempBaseDir,
+      maxDefinitions: 10,
+      precollected: {
+        candidateFiles: [{
+          relativePath: "tools/safe.tool.ts",
+          absolutePath: join(toolsDir, "safe.tool.ts"),
+          resourceType: "tool"
+        }],
+        discoveryPolicy: { exclude: compiledDiscovery.discovery.exclude }
+      }
+    });
+
+    await expect(action).rejects.toThrow(/excluded by policy/);
     const { existsSync } = await import("node:fs");
     expect(existsSync(markerFile)).toBe(false);
   });
