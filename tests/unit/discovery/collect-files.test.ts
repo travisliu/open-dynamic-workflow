@@ -467,7 +467,8 @@ describe("collect-files", () => {
       await fs.rm(unitTempDir, { recursive: true, force: true });
     });
 
-    it("isExcludedByDiscoveryPolicy follows discovery glob semantics for compiled excludes", async () => {
+    it("isExcludedByDiscoveryPolicy follows discovery glob semantics for compiled excludes (DISC-001 to DISC-004)", async () => {
+      // DISC-001 to DISC-003: Arrange
       const compiled = compileResourceDiscovery({
         cwd: tempDir,
         discovery: {
@@ -475,6 +476,8 @@ describe("collect-files", () => {
           include: [],
           exclude: [
             "tools/helpers/*.{ts,js}",
+            "tools/private/{secret,blocked}.ts",
+            "tools/private/+(secret|blocked).ts",
             "tools/private/tool.ts",
           ],
           source: "new",
@@ -485,16 +488,65 @@ describe("collect-files", () => {
           rawInclude: [],
           rawExclude: [
             "tools/helpers/*.{ts,js}",
+            "tools/private/{secret,blocked}.ts",
+            "tools/private/+(secret|blocked).ts",
             "tools/private/tool.ts",
           ],
           diagnostics: [],
         },
       });
 
-      expect(isExcludedByDiscoveryPolicy("tools\\helpers\\secret.ts", compiled.discovery.exclude)).toBe(true);
-      expect(isExcludedByDiscoveryPolicy("tools/helpers/secret.js", compiled.discovery.exclude)).toBe(true);
-      expect(isExcludedByDiscoveryPolicy("tools/private/tool.ts", compiled.discovery.exclude)).toBe(true);
+      // DISC-001 to DISC-003: Act & Assert
+      // DISC-001: Brace expansion & path normalization (slashes/backslashes)
+      expect(isExcludedByDiscoveryPolicy("tools\\private\\secret.ts", compiled.discovery.exclude)).toBe(true);
+      expect(isExcludedByDiscoveryPolicy("tools/private/blocked.ts", compiled.discovery.exclude)).toBe(true);
       expect(isExcludedByDiscoveryPolicy("tools/private/other.ts", compiled.discovery.exclude)).toBe(false);
+
+      // DISC-002: Extglob & path normalization
+      expect(isExcludedByDiscoveryPolicy("tools/private/secret.ts", compiled.discovery.exclude)).toBe(true);
+      expect(isExcludedByDiscoveryPolicy("tools\\private\\blocked.ts", compiled.discovery.exclude)).toBe(true);
+
+      // DISC-003: Literal matches & path normalization
+      expect(isExcludedByDiscoveryPolicy("tools/private/tool.ts", compiled.discovery.exclude)).toBe(true);
+      expect(isExcludedByDiscoveryPolicy("tools\\private\\tool.ts", compiled.discovery.exclude)).toBe(true);
+
+      // DISC-004: Candidate collection excludes the matching files and maintains metrics/diagnostics.
+      // Arrange
+      const unitTempDir = await fs.mkdtemp(join(tmpdir(), "collect-files-disc-004-"));
+      await fs.mkdir(join(unitTempDir, "tools/private"), { recursive: true });
+      await fs.writeFile(join(unitTempDir, "tools/private/secret.ts"), "export const meta = {};");
+      await fs.writeFile(join(unitTempDir, "tools/private/blocked.ts"), "export const meta = {};");
+      await fs.writeFile(join(unitTempDir, "tools/private/tool.ts"), "export const meta = {};");
+      await fs.writeFile(join(unitTempDir, "tools/private/allowed.ts"), "export const meta = {};");
+
+      // Act
+      const result = await collectResourceCandidateFiles({
+        cwd: unitTempDir,
+        resourceType: "tool",
+        include: ["tools/private/**/*.ts"],
+        exclude: [
+          "tools/private/{secret,blocked}.ts",
+          "tools/private/tool.ts"
+        ],
+        compatibilityMode: "new-suffix-specific",
+        strict: false
+      });
+
+      // Assert
+      const filePaths = result.files.map(f => f.relativePath);
+      expect(filePaths).toContain("tools/private/allowed.ts");
+      expect(filePaths).not.toContain("tools/private/secret.ts");
+      expect(filePaths).not.toContain("tools/private/blocked.ts");
+      expect(filePaths).not.toContain("tools/private/tool.ts");
+
+      // Verify metrics and diagnostics
+      const metric = result.metrics.find(m => m.pattern === "tools/private/**/*.ts");
+      expect(metric).toBeDefined();
+      expect(metric?.excludedCandidateCount).toBe(3); // secret, blocked, tool
+      expect(metric?.acceptedCandidateCount).toBe(1); // allowed
+      expect(result.configDiagnostics).toHaveLength(0); // Excludes matched successfully, no unused exclude warnings.
+
+      await fs.rm(unitTempDir, { recursive: true, force: true });
     });
   });
 

@@ -7,14 +7,11 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { SharedAgentRegistry } from "./registry.js";
 import { validateSharedAgentDefinition, validateSharedAgentSource } from "./validate.js";
 import { isDefinedSharedAgent } from "./define-agent.js";
-import type { ResourceDiscoveryPatterns, PrecollectedResourceLoadInput } from "../discovery/types.js";
-import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
+import type { PrecollectedResourceLoadInput } from "../discovery/types.js";
 
 export interface LoadSharedAgentRegistryInput {
   cwd: string;
   dir?: string;
-  discovery?: ResourceDiscoveryPatterns;
-  candidateFiles?: string[];
   precollected?: PrecollectedResourceLoadInput;
   maxDefinitions?: number;
   strictPromptTemplateVariables?: boolean;
@@ -54,46 +51,8 @@ export async function loadSharedAgentRegistry(
         discoveredFiles.push(fullPath);
       }
     }
-  } else if (input.candidateFiles) {
-    for (const file of input.candidateFiles) {
-      const fullPath = resolve(realCwd, file);
-      try {
-        const realTarget = await realpath(fullPath);
-        const relativeToCwd = relative(realCwd, realTarget);
-        if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
-          throw new OpenDynamicWorkflowError(
-            ErrorCode.SHARED_AGENT_SECURITY_POLICY_VIOLATION,
-            `Shared agent symlink '${fullPath}' points outside the workspace.`
-          );
-        }
-        discoveredFiles.push(realTarget);
-      } catch (err) {
-        if (err instanceof OpenDynamicWorkflowError) throw err;
-        discoveredFiles.push(fullPath);
-      }
-    }
-  } else if (input.discovery) {
-    const res = await collectResourceCandidateFiles({
-      cwd: input.cwd,
-      resourceType: "agent",
-      include: input.discovery.include,
-      exclude: input.discovery.exclude,
-      compatibilityMode: input.discovery.compatibilityMode,
-      includeSource: input.discovery.includeSource,
-      excludeSource: input.discovery.excludeSource,
-      strict: false,
-    });
-    const escapeDiag = res.configDiagnostics.find(d => d.code === "CONFIG_PATH_SYMLINK_ESCAPE");
-    if (escapeDiag) {
-      throw new OpenDynamicWorkflowError(
-        ErrorCode.SHARED_AGENT_SECURITY_POLICY_VIOLATION,
-        `Shared agent symlink '${resolve(realCwd, escapeDiag.value as string)}' points outside the workspace.`
-      );
-    }
-    for (const file of res.files) {
-      discoveredFiles.push(file.absolutePath);
-    }
   } else if (input.dir) {
+    // Compatibility path: legacy directory scanner
     const absolutePath = resolve(realCwd, input.dir);
 
     try {

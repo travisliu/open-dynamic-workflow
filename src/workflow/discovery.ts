@@ -9,16 +9,13 @@ import type { ToolRegistry } from "../types/tool.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { walk, matchGlob, getGlobBaseDir } from "../discovery/file-patterns.js";
-import type { ResourceDiscoveryPatterns, PrecollectedResourceLoadInput } from "../discovery/types.js";
-import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
+import type { PrecollectedResourceLoadInput } from "../discovery/types.js";
 
 export { walk, matchGlob, getGlobBaseDir };
 
 export interface DiscoverWorkflowRegistryInput {
   rootWorkflowPath: string;
   cwd: string;
-  include?: string[];
-  discovery?: ResourceDiscoveryPatterns;
   sharedAgentRegistry?: SharedAgentRegistry;
   candidatePaths?: string[] | undefined;
   precollected?: PrecollectedResourceLoadInput;
@@ -28,7 +25,7 @@ export interface DiscoverWorkflowRegistryInput {
 }
 
 export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryInput): Promise<WorkflowRegistry> {
-  const { rootWorkflowPath, cwd, include, discovery, sharedAgentRegistry, candidatePaths, precollected, maxLoopRounds } = input;
+  const { rootWorkflowPath, cwd, sharedAgentRegistry, candidatePaths, precollected, maxLoopRounds } = input;
   const absoluteCwd = resolve(cwd);
   const absoluteRootPath = resolve(absoluteCwd, rootWorkflowPath);
 
@@ -67,51 +64,11 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
       }
     }
   } else if (candidatePaths) {
+    // Compatibility path: legacy candidatePaths branch
     for (const p of candidatePaths) {
       const pathToAdd = resolve(absoluteCwd, p);
       pathsToProcess.add(pathToAdd);
       strictPaths.add(pathToAdd);
-    }
-  } else if (discovery) {
-    const res = await collectResourceCandidateFiles({
-      cwd,
-      resourceType: "workflow",
-      include: discovery.include,
-      exclude: discovery.exclude,
-      compatibilityMode: discovery.compatibilityMode,
-      includeSource: discovery.includeSource,
-      excludeSource: discovery.excludeSource,
-      strict: false,
-    });
-    const escapeDiag = res.configDiagnostics.find(d => d.code === "CONFIG_PATH_SYMLINK_ESCAPE");
-    if (escapeDiag) {
-      throw new OpenDynamicWorkflowError(
-        ErrorCode.SECURITY_POLICY_VIOLATION,
-        `Workflow file outside project root: ${resolve(absoluteCwd, escapeDiag.value as string)}`
-      );
-    }
-    for (const file of res.files) {
-      pathsToProcess.add(file.absolutePath);
-    }
-  } else if (include) {
-    for (const pattern of include) {
-      // Basic support for "dir/**/*.ts" or "dir/*.ts"
-      let baseDir = getGlobBaseDir(pattern);
-      if (baseDir.startsWith("./")) {
-        baseDir = baseDir.slice(2);
-      }
-      const absoluteBaseDir = resolve(absoluteCwd, baseDir);
-      
-      const globPattern = isAbsolute(pattern) ? relative(absoluteCwd, pattern) : pattern;
-      
-      for await (const p of walk(absoluteBaseDir)) {
-        if (p.endsWith(".ts") || p.endsWith(".js")) {
-          const relPath = relative(absoluteCwd, p);
-          if (matchGlob(relPath, globPattern)) {
-            pathsToProcess.add(p);
-          }
-        }
-      }
     }
   }
 

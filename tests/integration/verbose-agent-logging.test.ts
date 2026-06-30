@@ -439,6 +439,15 @@ describe("Integration - verbose agent logging", () => {
     const configPath = path.join(TEMP_DIR, "structured.config.json");
     await fs.writeFile(configPath, JSON.stringify({
       defaultProvider: "mock",
+      workflow: {
+        include: []
+      },
+      sharedAgents: {
+        include: []
+      },
+      tools: {
+        include: []
+      },
       providers: {
         mock: {
           command: "mock",
@@ -469,6 +478,8 @@ describe("Integration - verbose agent logging", () => {
       wfPath,
       "--config",
       configPath,
+      "--cwd",
+      TEMP_DIR,
       "--out",
       TEMP_DIR,
       "-v"

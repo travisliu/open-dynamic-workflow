@@ -7,17 +7,14 @@ import { buildToolRegistry } from "./registry.js";
 import { isDefinedTool } from "./define-tool.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
-import type { ResourceDiscoveryPatterns, PrecollectedResourceLoadInput } from "../discovery/types.js";
-import { collectResourceCandidateFiles } from "../discovery/collect-files.js";
+import type { PrecollectedResourceLoadInput } from "../discovery/types.js";
 import { isExcludedByDiscoveryPolicy } from "../discovery/index.js";
-import { compileResourceDiscovery, type CompiledDiscoveryPattern } from "../discovery/compile-patterns.js";
+import type { CompiledDiscoveryPattern } from "../discovery/compile-patterns.js";
 import type { ConfigDiagnostic } from "../config/types.js";
 
 export interface LoadToolRegistryInput {
   cwd: string;
   dir?: string;
-  discovery?: ResourceDiscoveryPatterns;
-  candidateFiles?: string[];
   precollected?: PrecollectedResourceLoadInput;
   maxDefinitions: number;
   configDiagnostics?: ConfigDiagnostic[];
@@ -75,33 +72,6 @@ async function assertPathInsideCwd(realCwd: string, candidatePath: string, messa
 function resolveToolLoadExcludePatterns(input: LoadToolRegistryInput, cwd: string): CompiledDiscoveryPattern[] {
   if (input.precollected) {
     return input.precollected.discoveryPolicy.exclude;
-  }
-
-  if (input.candidateFiles) {
-    // Direct candidateFiles is a higher-precedence compatibility path.
-    // Keep lower-precedence discovery excludes from leaking into it.
-    return [];
-  }
-
-  if (input.discovery) {
-    const includeSource = input.discovery.includeSource ?? "new";
-    const excludeSource = input.discovery.excludeSource ?? includeSource;
-    return compileResourceDiscovery({
-      cwd,
-      discovery: {
-        resource: "tools",
-        include: [],
-        exclude: input.discovery.exclude ?? [],
-        source: includeSource,
-        includeSource,
-        excludeSource,
-        compatibilityMode: input.discovery.compatibilityMode,
-        sourcePaths: ["tools.exclude"],
-        rawInclude: [],
-        rawExclude: input.discovery.exclude ?? [],
-        diagnostics: [],
-      },
-    }).discovery.exclude;
   }
 
   return [];
@@ -174,6 +144,7 @@ async function mirrorDirectory(
 export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<ToolRegistry> {
   const { cwd, maxDefinitions } = input;
   const realCwd = resolve(cwd);
+
   const excludePatterns = resolveToolLoadExcludePatterns(input, realCwd);
 
   const discoveredFiles: string[] = [];
@@ -189,49 +160,8 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
       await assertPathInsideCwd(realCwd, fullPath, `Tool path '${fullPath}' points outside the workspace.`);
       discoveredFiles.push(fullPath);
     }
-  } else if (input.candidateFiles) {
-    for (const f of input.candidateFiles) {
-      const fullPath = resolve(realCwd, f);
-      try {
-        const realTarget = await realpath(fullPath);
-        const relativeToCwd = relative(realCwd, realTarget);
-        if (relativeToCwd.startsWith("..") || isAbsolute(relativeToCwd)) {
-          throw new OpenDynamicWorkflowError(
-            ErrorCode.SECURITY_POLICY_VIOLATION,
-            `Tool symlink '${fullPath}' points outside the workspace.`
-          );
-        }
-        discoveredFiles.push(realTarget);
-      } catch (err) {
-        if (err instanceof OpenDynamicWorkflowError) throw err;
-        discoveredFiles.push(fullPath);
-      }
-    }
-  } else if (input.discovery) {
-    const res = await collectResourceCandidateFiles({
-      cwd,
-      resourceType: "tool",
-      include: input.discovery.include,
-      exclude: input.discovery.exclude,
-      compatibilityMode: input.discovery.compatibilityMode,
-      includeSource: input.discovery.includeSource,
-      excludeSource: input.discovery.excludeSource,
-      strict: false,
-    });
-    if (res.configDiagnostics && input.configDiagnostics) {
-      input.configDiagnostics.push(...res.configDiagnostics);
-    }
-    const escapeDiag = res.configDiagnostics.find(d => d.code === "CONFIG_PATH_SYMLINK_ESCAPE");
-    if (escapeDiag) {
-      throw new OpenDynamicWorkflowError(
-        ErrorCode.SECURITY_POLICY_VIOLATION,
-        `Tool symlink '${resolve(realCwd, escapeDiag.value as string)}' points outside the workspace.`
-      );
-    }
-    for (const file of res.files) {
-      discoveredFiles.push(file.absolutePath);
-    }
   } else if (input.dir) {
+    // Legacy direct API compatibility path: dir input
     const absoluteDir = resolve(realCwd, input.dir);
     try {
       const dirStat = await stat(absoluteDir);

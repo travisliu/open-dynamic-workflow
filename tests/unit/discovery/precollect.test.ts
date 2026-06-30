@@ -219,6 +219,52 @@ describe("Precollect Unit Tests", () => {
     expect(compileCount).toBe(1);
   });
 
+  it("uses the compiled exclude reference for loadInput", async () => {
+    const discovery = createMockResourceDiscovery({
+      include: ["workflows/**/*.js"],
+      exclude: ["workflows/exclude.js"]
+    });
+
+    const result = await precollectResourceForLoad({
+      cwd: tempDir,
+      resourceType: "workflow",
+      discovery,
+      strict: true
+    });
+
+    const { compileResourceDiscovery } = await import("../../../src/discovery/compile-patterns.js");
+    const compiled = compileResourceDiscovery({ cwd: tempDir, discovery });
+    expect(result.loadInput.discoveryPolicy.exclude.map(e => e.normalizedPattern))
+      .toEqual(compiled.discovery.exclude.map(e => e.normalizedPattern));
+  });
+
+  it("loadInput.discoveryPolicy.exclude can be passed directly to isExcludedByDiscoveryPolicy", async () => {
+    const discovery = createMockResourceDiscovery({
+      include: ["workflows/**/*.js"],
+      exclude: ["workflows/exclude.js"]
+    });
+
+    const result = await precollectResourceForLoad({
+      cwd: tempDir,
+      resourceType: "workflow",
+      discovery,
+      strict: true
+    });
+
+    const { isExcludedByDiscoveryPolicy } = await import("../../../src/discovery/index.js");
+    const isExcluded = isExcludedByDiscoveryPolicy(
+      "workflows/exclude.js",
+      result.loadInput.discoveryPolicy.exclude
+    );
+    const isNotExcluded = isExcludedByDiscoveryPolicy(
+      "workflows/target.js",
+      result.loadInput.discoveryPolicy.exclude
+    );
+
+    expect(isExcluded).toBe(true);
+    expect(isNotExcluded).toBe(false);
+  });
+
   it("precollectAllResourcesForLoad returns exactly workflow, sharedAgents, and tools", async () => {
     const discovery: NormalizedDiscoveryConfig = {
       workflow: createMockResourceDiscovery({ resource: "workflow" }),
@@ -237,4 +283,6 @@ describe("Precollect Unit Tests", () => {
     expect(result.tools).toBeDefined();
     expect(Object.keys(result)).toEqual(["workflow", "sharedAgents", "tools"]);
   });
+
+
 });

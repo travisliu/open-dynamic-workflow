@@ -82,15 +82,24 @@ export function isExcludedByDiscoveryPolicy(
   relativePath: string,
   exclude: CompiledDiscoveryPattern[]
 ): boolean {
-  const normalizedRelativePath = relativePath.replace(/\\/g, "/");
+  let normalizedRelativePath = relativePath.replace(/\\/g, "/");
+  if (normalizedRelativePath.startsWith("./")) {
+    normalizedRelativePath = normalizedRelativePath.slice(2);
+  }
 
   for (const excludeObj of exclude) {
     if (excludeObj.hasGlob) {
       if (matchesDiscoveryPattern(normalizedRelativePath, excludeObj.normalizedPattern)) {
         return true;
       }
-    } else if (normalizedRelativePath === excludeObj.normalizedPattern) {
-      return true;
+    } else {
+      let normPattern = excludeObj.normalizedPattern;
+      if (normPattern.startsWith("./")) {
+        normPattern = normPattern.slice(2);
+      }
+      if (normalizedRelativePath === normPattern) {
+        return true;
+      }
     }
   }
 

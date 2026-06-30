@@ -150,9 +150,15 @@ describe("Run Command", () => {
       strict: false
     });
     expect(checkDiscoveryPolicy).toHaveBeenCalledWith("run", [], mockPrecollected, "/mock-cwd");
-    expect(loadSharedAgentRegistry).toHaveBeenCalled();
-    expect(loadToolRegistry).toHaveBeenCalled();
-    expect(discoverWorkflowRegistry).toHaveBeenCalled();
+    expect(loadSharedAgentRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputAgents
+    }));
+    expect(loadToolRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputTools
+    }));
+    expect(discoverWorkflowRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputWorkflow
+    }));
     expect(runSpy).not.toHaveBeenCalled();
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Dry run: valid-simple"));
     logSpy.mockRestore();
@@ -199,6 +205,12 @@ describe("Run Command", () => {
     expect(runSpy).toHaveBeenCalledTimes(1);
     expect(loadSharedAgentRegistry).toHaveBeenCalledWith(expect.objectContaining({
       precollected: mockLoadInputAgents
+    }));
+    expect(loadToolRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputTools
+    }));
+    expect(discoverWorkflowRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputWorkflow
     }));
   });
 
@@ -271,6 +283,15 @@ describe("Run Command", () => {
       strict: true
     });
     expect(checkDiscoveryPolicy).toHaveBeenCalledWith("run-strict", [], mockPrecollected, "/mock-cwd");
+    expect(loadSharedAgentRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputAgents
+    }));
+    expect(loadToolRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputTools
+    }));
+    expect(discoverWorkflowRegistry).toHaveBeenCalledWith(expect.objectContaining({
+      precollected: mockLoadInputWorkflow
+    }));
   });
 
   it("runtime failed result maps to workflow failure", async () => {

@@ -132,15 +132,27 @@ describe("Validate Command", () => {
     expect(checkDiscoveryPolicy).toHaveBeenCalledWith("validate", [], mockPrecollected, "/mock-cwd");
 
     // 3. loaders receive matching precollected.*.loadInput objects
-    expect(loadSharedAgentRegistry).toHaveBeenCalledWith(expect.objectContaining({
-      precollected: mockLoadInputAgents
-    }));
-    expect(loadToolRegistry).toHaveBeenCalledWith(expect.objectContaining({
-      precollected: mockLoadInputTools
-    }));
-    expect(discoverWorkflowRegistry).toHaveBeenCalledWith(expect.objectContaining({
-      precollected: mockLoadInputWorkflow
-    }));
+    expect(loadSharedAgentRegistry).toHaveBeenCalledWith({
+      cwd: "/mock-cwd",
+      precollected: mockLoadInputAgents,
+      maxDefinitions: 100,
+      strictPromptTemplateVariables: undefined
+    });
+    expect(loadToolRegistry).toHaveBeenCalledWith({
+      cwd: "/mock-cwd",
+      precollected: mockLoadInputTools,
+      maxDefinitions: 100
+    });
+    expect(discoverWorkflowRegistry).toHaveBeenCalledWith({
+      rootWorkflowPath: "valid-simple.js",
+      cwd: "/mock-cwd",
+      precollected: mockLoadInputWorkflow,
+      candidatePaths: [],
+      sharedAgentRegistry: { registry: "sharedAgents" },
+      toolRegistry: { registry: "tools" },
+      allowDynamicSharedAgentIds: false,
+      maxLoopRounds: 10
+    });
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("✓ Validated workflow \"valid-simple\" at"));
     logSpy.mockRestore();
