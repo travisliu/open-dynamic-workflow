@@ -126,8 +126,10 @@ describe("Validate Command", () => {
     expect(precollectAllResourcesForLoad).toHaveBeenCalledWith({
       cwd: "/mock-cwd",
       discovery: { workflow: {}, sharedAgents: {}, tools: {} },
-      strict: true
+      strict: false
     });
+
+    expect(checkDiscoveryPolicy).toHaveBeenCalledWith("validate", [], mockPrecollected, "/mock-cwd");
 
     // 3. loaders receive matching precollected.*.loadInput objects
     expect(loadSharedAgentRegistry).toHaveBeenCalledWith(expect.objectContaining({
@@ -168,7 +170,7 @@ describe("Validate Command", () => {
     await expect(
       validateCommand({
         workflowFile: "some-file.js",
-        rawOptions: {}
+        rawOptions: { strict: true }
       })
     ).rejects.toThrow(expect.objectContaining({
       code: "WORKFLOW_DISCOVERY_FAILED"
@@ -178,6 +180,22 @@ describe("Validate Command", () => {
     expect(loadSharedAgentRegistry).not.toHaveBeenCalled();
     expect(loadToolRegistry).not.toHaveBeenCalled();
     expect(discoverWorkflowRegistry).not.toHaveBeenCalled();
+  });
+
+  it("strict-mode validate Command passes strict: true and validate-strict diagnostic context", async () => {
+    await expect(
+      validateCommand({
+        workflowFile: "valid-simple.js",
+        rawOptions: { strict: true, cwd: "/mock-cwd" }
+      })
+    ).resolves.not.toThrow();
+
+    expect(precollectAllResourcesForLoad).toHaveBeenCalledWith({
+      cwd: "/mock-cwd",
+      discovery: { workflow: {}, sharedAgents: {}, tools: {} },
+      strict: true
+    });
+    expect(checkDiscoveryPolicy).toHaveBeenCalledWith("validate-strict", [], mockPrecollected, "/mock-cwd");
   });
 
   describe("initialization hints", () => {

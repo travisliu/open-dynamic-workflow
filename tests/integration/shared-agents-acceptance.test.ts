@@ -228,7 +228,8 @@ defaultProvider: mock
           workflowPath,
           "--config", configPath,
           "--cwd", TEMP_DIR,
-          "--report", "json"
+          "--report", "json",
+          "--strict"
         ]);
 
         // Assert

@@ -251,14 +251,21 @@ export interface ConfigDiagnostic {
   };
 }
 
-export type ConfigDiagnosticContext = "list" | "list-strict" | "validate" | "run" | "doctor";
+export type ConfigDiagnosticContext =
+  | "list"
+  | "list-strict"
+  | "validate"
+  | "validate-strict"
+  | "run"
+  | "run-strict"
+  | "doctor";
 
 export function isStrictConfigDiagnosticContext(
   context: ConfigDiagnosticContext
 ): boolean {
   return context === "list-strict" ||
-    context === "validate" ||
-    context === "run";
+    context === "validate-strict" ||
+    context === "run-strict";
 }
 
 export function getFatalConfigDiagnostics(

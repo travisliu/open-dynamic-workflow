@@ -54,14 +54,20 @@ tools:
       expect(d.severity).toBe("error");
     }
 
-    // Strict context (run) throws
+    // Non-strict run/validate contexts do not throw
+    const runConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(runConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_OUTSIDE_WORKSPACE")).toBe(true);
+    const validateConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" });
+    expect(validateConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_OUTSIDE_WORKSPACE")).toBe(true);
+
+    // Strict context (run-strict) throws
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" })
     ).rejects.toThrow(/CONFIG_PATH_OUTSIDE_WORKSPACE/);
 
-    // Strict context (validate) throws
+    // Strict context (validate-strict) throws
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate-strict" })
     ).rejects.toThrow(/CONFIG_PATH_OUTSIDE_WORKSPACE/);
   });
 
@@ -89,9 +95,13 @@ tools:
       expect(d.severity).toBe("error");
     }
 
-    // Strict context (run) throws
+    // Non-strict run context does not throw
+    const runConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(runConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_ABSOLUTE_CONFIG_PATTERN")).toBe(true);
+
+    // Strict context (run-strict) throws
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" })
     ).rejects.toThrow(/CONFIG_PATH_ABSOLUTE_CONFIG_PATTERN/);
   });
 
@@ -122,12 +132,21 @@ tools:
       );
       expect(outsideDiags.length).toBeGreaterThanOrEqual(1);
 
+      // Non-strict context does not throw
+      const runConfig = await loadConfig({
+        cwd: tempDir,
+        cli: {},
+        diagnosticContext: "run",
+        discoveryCliOverrides: overrides,
+      });
+      expect(runConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_OUTSIDE_WORKSPACE")).toBe(true);
+
       // Strict context throws
       await expect(
         loadConfig({
           cwd: tempDir,
           cli: {},
-          diagnosticContext: "run",
+          diagnosticContext: "run-strict",
           discoveryCliOverrides: overrides,
         })
       ).rejects.toThrow(/CONFIG_PATH_OUTSIDE_WORKSPACE/);
@@ -159,11 +178,11 @@ tools:
     expect(overrideDiags[0].fatalInStrictContext).toBe(false);
     expect(overrideDiags[0].severity).toBe("warning");
 
-    // Strict run context should not throw because it is warning/non-fatal
+    // Strict run-strict context should not throw because it is warning/non-fatal
     const strictConfig = await loadConfig({
       cwd: tempDir,
       cli: {},
-      diagnosticContext: "run",
+      diagnosticContext: "run-strict",
       discoveryCliOverrides: overrides,
     });
     expect(strictConfig._normalizedDiscovery.tools.include).toContain("custom-tools/**/*.js");
@@ -184,14 +203,20 @@ tools:
     expect(dirOnlyDiags.length).toBe(1);
     expect(dirOnlyDiags[0].fatalInStrictContext).toBe(true);
 
-    // Strict context (run) throws
+    // Non-strict run/validate contexts do not throw
+    const runConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(runConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_DIRECTORY_ONLY")).toBe(true);
+    const validateConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" });
+    expect(validateConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_DIRECTORY_ONLY")).toBe(true);
+
+    // Strict context (run-strict) throws
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" })
     ).rejects.toThrow(/CONFIG_PATH_DIRECTORY_ONLY/);
 
-    // Strict context (validate) throws
+    // Strict context (validate-strict) throws
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate-strict" })
     ).rejects.toThrow(/CONFIG_PATH_DIRECTORY_ONLY/);
   });
 
@@ -219,14 +244,20 @@ tools:
       expect(d.severity).toBe("error");
     }
 
-    // Strict context (run) throws
+    // Non-strict run/validate contexts do not throw
+    const runConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(runConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_DIRECTORY_ONLY")).toBe(true);
+    const validateConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" });
+    expect(validateConfig._configDiagnostics.some((d) => d.code === "CONFIG_PATH_DIRECTORY_ONLY")).toBe(true);
+
+    // Strict context (run-strict) throws
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" })
     ).rejects.toThrow(/CONFIG_PATH_DIRECTORY_ONLY/);
 
-    // Strict context (validate) throws
+    // Strict context (validate-strict) throws
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate-strict" })
     ).rejects.toThrow(/CONFIG_PATH_DIRECTORY_ONLY/);
   });
 
@@ -246,8 +277,8 @@ workflow:
     expect(braceDiags[0].fatalInStrictContext).toBe(false);
     expect(braceDiags[0].severity).toBe("warning");
 
-    // Strict context (run) should NOT throw
-    const strictConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    // Strict context (run-strict) should NOT throw
+    const strictConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" });
     expect(strictConfig._normalizedDiscovery.workflow.include).toContain(
       "workflows/**/!foo.js"
     );

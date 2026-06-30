@@ -116,16 +116,14 @@ describe("Phase 3 Path Configuration - AAA Acceptance Tests", () => {
 
     await fs.writeFile(
       filePath,
-      `
-      ${sideEffectCode}
-      export const meta = {
+      `export const meta = {
         name: ${JSON.stringify(name)},
         description: "workflow desc",
         phases: ["planning", "implementation"],
         version: "1.0.0"
       };
-      export default async function workflow() {}
-      `
+      ${sideEffectCode}
+      export default async function workflow() {}`
     );
   }
 
@@ -361,8 +359,8 @@ workflow:
     // ACT: Run CLI list --strict, validate, and run, and loadConfig
     // ----------------------------------------------------
     const listResult = await runCli(["list", "--strict"]);
-    const validateResult = await runCli(["validate", "workflows/safe.workflow.ts"]);
-    const runResult = await runCli(["run", "workflows/safe.workflow.ts", "--provider", "mock"]);
+    const validateResult = await runCli(["validate", "workflows/safe.workflow.ts", "--strict"]);
+    const runResult = await runCli(["run", "workflows/safe.workflow.ts", "--provider", "mock", "--strict"]);
 
     // ----------------------------------------------------
     // ASSERT: Verify all commands failed early, reporting fatal diagnostics, and NO markers were written (proving no evaluation)
@@ -385,5 +383,14 @@ workflow:
     
     // Even the safe target marker should be absent because execution/validation failed early before resource evaluation
     await expect(fs.stat(safeMarker).then(() => true).catch(() => false)).resolves.toBe(false);
+
+    // Now test that without --strict, a clean safe workflow succeeds
+    const cleanWfPath = path.join(tempDir, "workflows/clean.workflow.ts");
+    await writeWorkflow(cleanWfPath, "clean-wf");
+    const nonStrictValidateResult = await runCli(["validate", "workflows/clean.workflow.ts"]);
+    expect(nonStrictValidateResult.exitCode).toBe(ExitCode.Success);
+
+    const nonStrictRunResult = await runCli(["run", "workflows/clean.workflow.ts", "--provider", "mock"]);
+    expect(nonStrictRunResult.exitCode).toBe(ExitCode.Success);
   });
 });

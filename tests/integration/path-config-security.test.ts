@@ -90,16 +90,14 @@ describe("CLI Path Config Security Integration", () => {
 
     await fs.writeFile(
       filePath,
-      `
-      ${sideEffectCode}
-      export const meta = {
+      `export const meta = {
         name: ${JSON.stringify(name)},
         description: ${JSON.stringify(description)},
         phases: ["planning", "implementation"],
         version: "1.0.0"
       };
-      export default async function workflow() {}
-      `
+      ${sideEffectCode}
+      export default async function workflow() {}`
     );
   }
 
@@ -317,8 +315,8 @@ tools:
     const markerFile = path.join(tempDir, "wf-validate-marker.txt");
     await writeWorkflow(path.join(tempDir, "workflows/safe.workflow.ts"), "safe-wf", "desc", markerFile);
 
-    // Run validate
-    const result = await runCli(["validate", "workflows/safe.workflow.ts"]);
+    // Run validate with --strict
+    const result = await runCli(["validate", "workflows/safe.workflow.ts", "--strict"]);
 
     // Non-zero exit code
     expect(result.exitCode).not.toBe(ExitCode.Success);
@@ -326,6 +324,12 @@ tools:
 
     // Marker file is absent
     await expect(fs.stat(markerFile).then(() => true).catch(() => false)).resolves.toBe(false);
+
+    // Now test that without --strict, a clean safe workflow succeeds
+    const cleanWf = path.join(tempDir, "workflows/clean.workflow.ts");
+    await writeWorkflow(cleanWf, "clean-wf", "desc");
+    const nonStrictResult = await runCli(["validate", "workflows/clean.workflow.ts"]);
+    expect(nonStrictResult.exitCode).toBe(ExitCode.Success);
   });
 
   it("6. Run fails before execution for out-of-workspace config patterns", async () => {
@@ -342,8 +346,8 @@ tools:
     const markerFile = path.join(tempDir, "wf-run-marker.txt");
     await writeWorkflow(path.join(tempDir, "workflows/safe.workflow.ts"), "safe-wf", "desc", markerFile);
 
-    // Run command
-    const result = await runCli(["run", "workflows/safe.workflow.ts", "--provider", "mock"]);
+    // Run command with --strict
+    const result = await runCli(["run", "workflows/safe.workflow.ts", "--provider", "mock", "--strict"]);
 
     // Non-zero exit code
     expect(result.exitCode).not.toBe(ExitCode.Success);
@@ -351,6 +355,12 @@ tools:
 
     // Marker file is absent
     await expect(fs.stat(markerFile).then(() => true).catch(() => false)).resolves.toBe(false);
+
+    // Now test that without --strict, a clean safe workflow succeeds
+    const cleanWf = path.join(tempDir, "workflows/clean.workflow.ts");
+    await writeWorkflow(cleanWf, "clean-wf", "desc");
+    const nonStrictResult = await runCli(["run", "workflows/clean.workflow.ts", "--provider", "mock"]);
+    expect(nonStrictResult.exitCode).toBe(ExitCode.Success);
   });
 
   it("7. CLI directory override outside cwd is rejected", async () => {
@@ -393,14 +403,14 @@ workflow:
     expect(listResult.stderr).toContain("CONFIG_PATH_DIRECTORY_ONLY");
     await expect(fs.stat(markerFile).then(() => true).catch(() => false)).resolves.toBe(false);
 
-    // 2. Assert validate fails and mentions CONFIG_PATH_DIRECTORY_ONLY
-    const validateResult = await runCli(["validate", "workflows/safe.workflow.ts"]);
+    // 2. Assert validate --strict fails and mentions CONFIG_PATH_DIRECTORY_ONLY
+    const validateResult = await runCli(["validate", "workflows/safe.workflow.ts", "--strict"]);
     expect(validateResult.exitCode).not.toBe(ExitCode.Success);
     expect(validateResult.stderr).toContain("CONFIG_PATH_DIRECTORY_ONLY");
     await expect(fs.stat(markerFile).then(() => true).catch(() => false)).resolves.toBe(false);
 
-    // 3. Assert run fails and mentions CONFIG_PATH_DIRECTORY_ONLY
-    const runResult = await runCli(["run", "workflows/safe.workflow.ts", "--provider", "mock"]);
+    // 3. Assert run --strict fails and mentions CONFIG_PATH_DIRECTORY_ONLY
+    const runResult = await runCli(["run", "workflows/safe.workflow.ts", "--provider", "mock", "--strict"]);
     expect(runResult.exitCode).not.toBe(ExitCode.Success);
     expect(runResult.stderr).toContain("CONFIG_PATH_DIRECTORY_ONLY");
     await expect(fs.stat(markerFile).then(() => true).catch(() => false)).resolves.toBe(false);

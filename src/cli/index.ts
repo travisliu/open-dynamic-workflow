@@ -115,6 +115,7 @@ Examples:
     .option("--fail-fast", "Stop immediately on first agent step failure")
     .option("-v, --verbose", "Enable verbose logging")
     .option("--thinking-effort <effort>", "Thinking effort level for supported providers (off, minimal, low, medium, high, xhigh)")
+    .option("--strict", "Fail before loading when strict discovery or path diagnostics are present")
     .addHelpText(
       "after",
       `
@@ -158,6 +159,7 @@ Examples:
     .option("-c, --config <path>", "Path to config file")
     .option("--cwd <path>", "Custom working directory")
     .option("-v, --verbose", "Enable verbose logging")
+    .option("--strict", "Fail before loading when strict discovery or path diagnostics are present")
     .addHelpText(
       "after",
       `

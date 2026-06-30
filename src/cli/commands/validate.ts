@@ -29,6 +29,7 @@ export async function validateWorkflowService(
 ): Promise<ValidateWorkflowServiceResult> {
   const rawOptions = input.rawOptions || {};
   const cwd = rawOptions.cwd ?? process.cwd();
+  const strict = !!rawOptions.strict;
 
   const config = await loadConfig({
     cwd,
@@ -36,7 +37,7 @@ export async function validateWorkflowService(
     cli: {
       verbose: rawOptions.verbose
     },
-    diagnosticContext: "validate"
+    diagnosticContext: strict ? "validate-strict" : "validate"
   });
 
   const { precollectAllResourcesForLoad, checkDiscoveryPolicy } = await import("../../discovery/precollect.js");
@@ -45,11 +46,11 @@ export async function validateWorkflowService(
   const precollected = await precollectAllResourcesForLoad({
     cwd: config.cwd,
     discovery: config._normalizedDiscovery,
-    strict: true,
+    strict,
   });
 
   // Apply policy checks
-  await checkDiscoveryPolicy("validate", config._configDiagnostics || [], precollected, config.cwd);
+  await checkDiscoveryPolicy(strict ? "validate-strict" : "validate", config._configDiagnostics || [], precollected, config.cwd);
 
   // Resolve workflow target
   const resolved = await resolveWorkflowTarget({

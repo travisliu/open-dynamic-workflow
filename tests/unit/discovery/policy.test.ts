@@ -138,7 +138,7 @@ describe("Discovery Policy Unit Tests", () => {
     expect(policy.result.status).toBe("failed");
   });
 
-  it("fatalInStrictContext is fatal in list-strict, validate, and run, but not list", () => {
+  it("fatalInStrictContext is fatal in list-strict, validate-strict, and run-strict, but not list, validate, and run", () => {
     const rawResult = createRawResult();
     const configDiagnostics: ConfigDiagnostic[] = [
       { code: "STRICT_FATAL", message: "Fatal in strict", severity: "error", fatalInStrictContext: true }
@@ -163,14 +163,28 @@ describe("Discovery Policy Unit Tests", () => {
       rawResult,
       configDiagnostics
     });
-    expect(validatePolicy.shouldFailBeforeLoad).toBe(true);
+    expect(validatePolicy.shouldFailBeforeLoad).toBe(false);
+
+    const validateStrictPolicy = applyDiscoveryPolicy({
+      context: "validate-strict",
+      rawResult,
+      configDiagnostics
+    });
+    expect(validateStrictPolicy.shouldFailBeforeLoad).toBe(true);
 
     const runPolicy = applyDiscoveryPolicy({
       context: "run",
       rawResult,
       configDiagnostics
     });
-    expect(runPolicy.shouldFailBeforeLoad).toBe(true);
+    expect(runPolicy.shouldFailBeforeLoad).toBe(false);
+
+    const runStrictPolicy = applyDiscoveryPolicy({
+      context: "run-strict",
+      rawResult,
+      configDiagnostics
+    });
+    expect(runStrictPolicy.shouldFailBeforeLoad).toBe(true);
   });
 
   it("preserves existing resources, resource types, warning/error arrays, and computes status", () => {

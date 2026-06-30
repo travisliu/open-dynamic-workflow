@@ -73,6 +73,7 @@ export async function runWorkflowService(
   const thinkingEffort = rawOptions.thinkingEffort !== undefined
     ? parseThinkingEffort(rawOptions.thinkingEffort)
     : undefined;
+  const strict = !!rawOptions.strict;
 
 
   const cliOverrides: any = {};
@@ -90,7 +91,7 @@ export async function runWorkflowService(
     configPath: rawOptions.config,
     outDir: rawOptions.out,
     cli: cliOverrides,
-    diagnosticContext: "run"
+    diagnosticContext: strict ? "run-strict" : "run"
   });
 
   const { precollectAllResourcesForLoad, checkDiscoveryPolicy } = await import("../../discovery/precollect.js");
@@ -99,11 +100,11 @@ export async function runWorkflowService(
   const precollected = await precollectAllResourcesForLoad({
     cwd: config.cwd,
     discovery: config._normalizedDiscovery,
-    strict: true,
+    strict,
   });
 
   // Apply policy checks
-  await checkDiscoveryPolicy("run", config._configDiagnostics || [], precollected, config.cwd);
+  await checkDiscoveryPolicy(strict ? "run-strict" : "run", config._configDiagnostics || [], precollected, config.cwd);
 
   // Resolve workflow target
   const resolved = await resolveWorkflowTarget({
@@ -247,7 +248,8 @@ export async function runWorkflowService(
       noCache: noCache,
       failFast: !!rawOptions.failFast,
       verbose: !!rawOptions.verbose,
-      thinkingEffort: rawOptions.thinkingEffort
+      thinkingEffort: rawOptions.thinkingEffort,
+      strict: strict
     }
   });
 

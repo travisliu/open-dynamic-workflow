@@ -74,7 +74,8 @@ describe("Nested Workflow Security", () => {
       "run",
       parentPath,
       "--config", configPath,
-      "--out", TEMP_DIR
+      "--out", TEMP_DIR,
+      "--strict"
     ]);
 
     expect(error).toBeDefined();
@@ -127,7 +128,8 @@ describe("Nested Workflow Security", () => {
       parentPath,
       "--config", configPath,
       "--out", TEMP_DIR,
-      "--cwd", TEMP_DIR
+      "--cwd", TEMP_DIR,
+      "--strict"
     ]);
 
     expect(error).toBeDefined();

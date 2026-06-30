@@ -5,13 +5,13 @@ import type {
 
 /**
  * Defines whether a configuration diagnostic context enforces strict checking.
- * Strict contexts are 'run', 'validate', and 'list-strict'.
- * Non-strict contexts are 'list' and 'doctor'.
+ * Strict contexts are 'run-strict', 'validate-strict', and 'list-strict'.
+ * Non-strict contexts are 'run', 'validate', 'list', and 'doctor'.
  */
 export function isStrictConfigDiagnosticContext(
   context: ConfigDiagnosticContext
 ): boolean {
-  return context === "run" || context === "validate" || context === "list-strict";
+  return context === "run-strict" || context === "validate-strict" || context === "list-strict";
 }
 
 /**

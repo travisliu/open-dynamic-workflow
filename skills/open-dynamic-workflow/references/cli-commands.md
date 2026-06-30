@@ -96,6 +96,7 @@ Use `open-dynamic-workflow list workflows` to see runnable names and their resol
 | `--cwd <path>` | Current working directory to resolve workflows and configurations. |
 | `--out <path>` | Output directory for artifacts and reports. |
 | `--thinking-effort <effort>` | Override the thinking effort level for all eligible agent calls. Must be one of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. This is an execution preference and does not guarantee identical reasoning depth across different providers. Per-agent `thinkingEffort` values defined in the workflow script override this CLI value. If this resolves to a value unsupported by the selected provider, execution will fail. |
+| `--strict` | Fail before loading when strict discovery or path diagnostics are present. By default, `run` is lenient for path diagnostics. |
 
 ### Examples
 
@@ -112,6 +113,7 @@ open-dynamic-workflow run review --report jsonl
 open-dynamic-workflow run review --fail-fast
 open-dynamic-workflow run review --resume <previous-run-id>
 open-dynamic-workflow run review --thinking-effort high
+open-dynamic-workflow run review --strict
 ```
 
 ---
@@ -147,14 +149,25 @@ Use stable `id` values for loops, such as `id: \`round-${i}\``. Using `Date.now(
 Validates a workflow by name or file path.
 
 ```bash
-open-dynamic-workflow validate <workflow-name-or-file>
+open-dynamic-workflow validate <workflow-name-or-file> [options]
 ```
 
-### Example
+### Common options
+
+| Option | Description |
+| :--- | :--- |
+| `--config <path>` | Path to the YAML configuration file. |
+| `--cwd <path>` | Custom working directory. |
+| `--verbose` | Enable verbose logging. |
+| `--strict` | Fail before loading when strict discovery or path diagnostics are present. By default, `validate` is lenient for path diagnostics. |
+
+### Examples
 
 ```bash
 open-dynamic-workflow validate review
 open-dynamic-workflow validate workflows/review.ts
+open-dynamic-workflow validate review --verbose
+open-dynamic-workflow validate workflows/review.ts --strict
 ```
 
 ### Validation checks include

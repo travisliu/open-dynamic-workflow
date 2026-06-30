@@ -25,6 +25,7 @@ export interface RunCliOptions {
   failFast: boolean;
   verbose: boolean;
   thinkingEffort?: ThinkingEffort;
+  strict: boolean;
 }
 
 export interface ValidateCliOptions {
@@ -32,6 +33,7 @@ export interface ValidateCliOptions {
   configPath?: string;
   cwd: string;
   verbose: boolean;
+  strict: boolean;
 }
 
 export interface DoctorCliOptions {

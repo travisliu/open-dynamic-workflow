@@ -200,14 +200,20 @@ workflow:
     const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
     expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_OUTSIDE_WORKSPACE")).toBe(true);
 
+    // Non-strict run/validate contexts do not throw
+    const runConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(runConfig._configDiagnostics.some(d => d.code === "CONFIG_PATH_OUTSIDE_WORKSPACE")).toBe(true);
+    const validateConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" });
+    expect(validateConfig._configDiagnostics.some(d => d.code === "CONFIG_PATH_OUTSIDE_WORKSPACE")).toBe(true);
+
     // Strict run context throws CONFIG_VALIDATION_ERROR
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" })
     ).rejects.toThrow(/Invalid path configuration/);
 
     // Strict validate context throws CONFIG_VALIDATION_ERROR
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate-strict" })
     ).rejects.toThrow(/Invalid path configuration/);
 
     rmSync(tempDir, { recursive: true, force: true });
@@ -226,7 +232,7 @@ workflow:
     writeFileSync(join(configDir, "config.yaml"), configContent);
 
     // Warnings like negated patterns are non-fatal and should load without throwing
-    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" });
     expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_UNSUPPORTED_GLOB_SYNTAX")).toBe(true);
 
     rmSync(tempDir, { recursive: true, force: true });
@@ -289,10 +295,14 @@ tools:
     expect(codes).toContain("CONFIG_PATH_OUTSIDE_WORKSPACE");
     expect(codes).toContain("CONFIG_PATH_LEGACY_KEY_USED");
 
+    // Act & Assert non-strict run case does not throw
+    const nonStrictRunConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(nonStrictRunConfig).toBeDefined();
+
     // Act & Assert strict case
     let thrownError: any = null;
     try {
-      await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+      await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" });
     } catch (err: any) {
       thrownError = err;
     }
@@ -310,7 +320,7 @@ tools:
     writeFileSync(join(configDir, "config.yaml"), warningOnlyConfigContent);
 
     // Act & Assert (should not throw for warning alone in strict context)
-    const warningOnlyConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    const warningOnlyConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" });
     expect(warningOnlyConfig).toBeDefined();
     expect(warningOnlyConfig._configDiagnostics.map(d => d.code)).toContain("CONFIG_PATH_LEGACY_KEY_USED");
 
@@ -334,9 +344,13 @@ workflow:
     const config = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "list" });
     expect(config._configDiagnostics.some(d => d.code === "CONFIG_PATH_INVALID_TYPE")).toBe(true);
 
+    // Non-strict run context does not throw
+    const runConfig = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    expect(runConfig._configDiagnostics.some(d => d.code === "CONFIG_PATH_INVALID_TYPE")).toBe(true);
+
     // Strict run context throws CONFIG_VALIDATION_ERROR
     await expect(
-      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" })
+      loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" })
     ).rejects.toThrow(/Invalid path configuration/);
 
     rmSync(tempDir, { recursive: true, force: true });

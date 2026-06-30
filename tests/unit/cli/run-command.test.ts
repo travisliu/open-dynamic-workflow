@@ -147,7 +147,7 @@ describe("Run Command", () => {
     expect(precollectAllResourcesForLoad).toHaveBeenCalledWith({
       cwd: "/mock-cwd",
       discovery: { workflow: {}, sharedAgents: {}, tools: {} },
-      strict: true
+      strict: false
     });
     expect(checkDiscoveryPolicy).toHaveBeenCalledWith("run", [], mockPrecollected, "/mock-cwd");
     expect(loadSharedAgentRegistry).toHaveBeenCalled();
@@ -220,7 +220,7 @@ describe("Run Command", () => {
     expect(runSpy).not.toHaveBeenCalled();
   });
 
-  it("policy failure rejects and creates no run artifact and calls no loader", async () => {
+  it("strict policy failure rejects and creates no run artifact and calls no loader", async () => {
     const runSpy = vi.fn();
     const mockRunner: RuntimeRunner = { run: runSpy };
     vi.mocked(checkDiscoveryPolicy).mockRejectedValue(
@@ -230,7 +230,7 @@ describe("Run Command", () => {
     await expect(
       runCommand({
         workflowFile: "valid-simple.js",
-        rawOptions: {},
+        rawOptions: { strict: true },
         deps: { runtimeRunner: mockRunner }
       })
     ).rejects.toThrow(expect.objectContaining({
@@ -246,6 +246,31 @@ describe("Run Command", () => {
     expect(mockStoreInstance.createRun).not.toHaveBeenCalled();
     expect(mockStoreInstance.writeJson).not.toHaveBeenCalled();
     expect(createReporter).not.toHaveBeenCalled();
+  });
+
+  it("strict-mode run Command passes strict: true and run-strict diagnostic context", async () => {
+    const runSpy = vi.fn().mockResolvedValue({
+      schemaVersion: "open-dynamic-workflow.report.v1",
+      runId: "test-run",
+      status: "succeeded",
+      durationMs: 10,
+      artifactsDir: "runs",
+      agents: []
+    } as WorkflowRunResult);
+    const mockRunner: RuntimeRunner = { run: runSpy };
+
+    await runCommand({
+      workflowFile: "valid-simple.js",
+      rawOptions: { strict: true, cwd: "/mock-cwd" },
+      deps: { runtimeRunner: mockRunner }
+    });
+
+    expect(precollectAllResourcesForLoad).toHaveBeenCalledWith({
+      cwd: "/mock-cwd",
+      discovery: { workflow: {}, sharedAgents: {}, tools: {} },
+      strict: true
+    });
+    expect(checkDiscoveryPolicy).toHaveBeenCalledWith("run-strict", [], mockPrecollected, "/mock-cwd");
   });
 
   it("runtime failed result maps to workflow failure", async () => {

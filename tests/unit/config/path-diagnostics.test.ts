@@ -9,8 +9,10 @@ import type { ConfigDiagnostic } from "../../../src/config/types.js";
 
 describe("Path Diagnostics Helpers", () => {
   it("should identify strict and non-strict contexts", () => {
-    expect(isStrictConfigDiagnosticContext("run")).toBe(true);
-    expect(isStrictConfigDiagnosticContext("validate")).toBe(true);
+    expect(isStrictConfigDiagnosticContext("run")).toBe(false);
+    expect(isStrictConfigDiagnosticContext("run-strict")).toBe(true);
+    expect(isStrictConfigDiagnosticContext("validate")).toBe(false);
+    expect(isStrictConfigDiagnosticContext("validate-strict")).toBe(true);
     expect(isStrictConfigDiagnosticContext("list-strict")).toBe(true);
     expect(isStrictConfigDiagnosticContext("list")).toBe(false);
     expect(isStrictConfigDiagnosticContext("doctor")).toBe(false);
@@ -39,10 +41,12 @@ describe("Path Diagnostics Helpers", () => {
     // Non-strict contexts: no fatals
     expect(getFatalConfigDiagnostics(diagnostics, "list")).toEqual([]);
     expect(getFatalConfigDiagnostics(diagnostics, "doctor")).toEqual([]);
+    expect(getFatalConfigDiagnostics(diagnostics, "run")).toEqual([]);
+    expect(getFatalConfigDiagnostics(diagnostics, "validate")).toEqual([]);
 
     // Strict contexts: only the fatal one
-    expect(getFatalConfigDiagnostics(diagnostics, "run")).toEqual([fatalDiag]);
-    expect(getFatalConfigDiagnostics(diagnostics, "validate")).toEqual([fatalDiag]);
+    expect(getFatalConfigDiagnostics(diagnostics, "run-strict")).toEqual([fatalDiag]);
+    expect(getFatalConfigDiagnostics(diagnostics, "validate-strict")).toEqual([fatalDiag]);
     expect(getFatalConfigDiagnostics(diagnostics, "list-strict")).toEqual([fatalDiag]);
   });
 
@@ -64,8 +68,8 @@ describe("Path Diagnostics Helpers", () => {
       fatalInStrictContext: false,
     });
 
-    expect(hasFatalConfigDiagnostics([warningDiag], "run")).toBe(false);
-    expect(hasFatalConfigDiagnostics([fatalDiag], "list")).toBe(false);
-    expect(hasFatalConfigDiagnostics([fatalDiag, warningDiag], "run")).toBe(true);
+    expect(hasFatalConfigDiagnostics([warningDiag], "run-strict")).toBe(false);
+    expect(hasFatalConfigDiagnostics([fatalDiag], "run")).toBe(false);
+    expect(hasFatalConfigDiagnostics([fatalDiag, warningDiag], "run-strict")).toBe(true);
   });
 });

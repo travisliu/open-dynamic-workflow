@@ -196,12 +196,12 @@ workflow:
 `);
 
     // Run context
-    const configRun = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run" });
+    const configRun = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "run-strict" });
     expect(configRun).toBeDefined();
     expect(configRun._configDiagnostics.some(d => d.code === "CONFIG_PATH_LEGACY_KEY_USED")).toBe(true);
 
     // Validate context
-    const configValidate = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate" });
+    const configValidate = await loadConfig({ cwd: tempDir, cli: {}, diagnosticContext: "validate-strict" });
     expect(configValidate).toBeDefined();
     expect(configValidate._configDiagnostics.some(d => d.code === "CONFIG_PATH_LEGACY_KEY_USED")).toBe(true);
   });
