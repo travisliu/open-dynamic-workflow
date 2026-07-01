@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runProcess } from "../../../src/agents/process-runner.js";
+import { ErrorCode } from "../../../src/errors/codes.js";
 
 describe("ProcessRunner", () => {
   it("captures stdout", async () => {
@@ -54,6 +55,49 @@ describe("ProcessRunner", () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("input from stdin");
+  });
+
+  it("rejects oversized argv/env payloads before spawn", async () => {
+    await expect(
+      runProcess({
+        command: "node",
+        args: ["-e", "process.exit(0)"],
+        cwd: process.cwd(),
+        env: {
+          BIG_PAYLOAD: "a".repeat(300 * 1024)
+        },
+        timeoutMs: 5000
+      })
+    ).rejects.toMatchObject({
+      name: "OpenDynamicWorkflowError",
+      code: ErrorCode.CLI_USAGE_ERROR
+    });
+  });
+
+  it("rejects oversized inherited env payloads before spawn", async () => {
+    const envKey = "TEST_E2BIG_INHERITED_ENV";
+    const previousValue = process.env[envKey];
+    process.env[envKey] = "a".repeat(300 * 1024);
+
+    try {
+      await expect(
+        runProcess({
+          command: "node",
+          args: ["-e", "process.exit(0)"],
+          cwd: process.cwd(),
+          timeoutMs: 5000
+        })
+      ).rejects.toMatchObject({
+        name: "OpenDynamicWorkflowError",
+        code: ErrorCode.CLI_USAGE_ERROR
+      });
+    } finally {
+      if (previousValue === undefined) {
+        delete process.env[envKey];
+      } else {
+        process.env[envKey] = previousValue;
+      }
+    }
   });
 
   it("times out long-running process", async () => {

@@ -20,8 +20,8 @@ describe("GeminiCliAdapter", () => {
 
     const cmd = await adapter.buildCommand(input);
     expect(cmd.command).toBe("gemini");
-    expect(cmd.args).toEqual(["-p", "generate a test", "--output-format", "json"]);
-    expect(cmd.stdin).toBeUndefined();
+    expect(cmd.args).toEqual(["--output-format", "json"]);
+    expect(cmd.stdin).toBe("generate a test");
   });
 
   it("default mode builds read-only command (no --approval-mode yolo)", async () => {
@@ -65,7 +65,8 @@ describe("GeminiCliAdapter", () => {
 
     const cmd = await adapter.buildCommand(input);
     expect(cmd.command).toBe("custom-gemini");
-    expect(cmd.args).toEqual(["-p", "generate a test", "--format", "json-pretty", "-m", "gemini-1.5"]);
+    expect(cmd.args).toEqual(["--format", "json-pretty", "-m", "gemini-1.5"]);
+    expect(cmd.stdin).toBe("generate a test");
   });
 
   it("injects schema into the prompt by default when schema is provided", async () => {
@@ -88,9 +89,10 @@ describe("GeminiCliAdapter", () => {
     };
 
     const cmd = await adapter.buildCommand(input);
-    expect(cmd.args[1]).toContain("Return findings as JSON.");
-    expect(cmd.args[1]).toContain("JSON Schema:");
-    expect(cmd.args[1]).toContain('"findings"');
+    expect(cmd.stdin).toContain("Return findings as JSON.");
+    expect(cmd.stdin).toContain("JSON Schema:");
+    expect(cmd.stdin).toContain('"findings"');
+    expect(cmd.args).toEqual(["--output-format", "json"]);
   });
 
   it("does not inject schema when structuredOutput.transport is validate-only", async () => {
@@ -114,7 +116,7 @@ describe("GeminiCliAdapter", () => {
     };
 
     const cmd = await adapter.buildCommand(input);
-    expect(cmd.args[1]).toBe("Return findings as JSON.");
+    expect(cmd.stdin).toBe("Return findings as JSON.");
   });
 
   it("rejects native structured output transport", async () => {
@@ -160,7 +162,8 @@ describe("GeminiCliAdapter", () => {
     };
 
     const cmd = await adapter.buildCommand(input);
-    expect(cmd.args).toEqual(["-p", "generate a test", "--output-format", "json", "--model-id", "gemini-ultra"]);
+    expect(cmd.args).toEqual(["--output-format", "json", "--model-id", "gemini-ultra"]);
+    expect(cmd.stdin).toBe("generate a test");
   });
 
   it("parses JSON stdout with text field", async () => {
@@ -479,6 +482,46 @@ describe("GeminiCliAdapter", () => {
     expect(cmd.command).toBe("gemini");
     expect(cmd.args).toEqual(["--output-format", "json"]);
     expect(cmd.stdin).toBe("generate a test");
+  });
+
+  it("builds command with promptMode arg for small prompts", async () => {
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      promptMode: "arg"
+    });
+
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "gemini",
+      prompt: "generate a test",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
+    };
+
+    const cmd = await adapter.buildCommand(input);
+    expect(cmd.args).toEqual(["-p", "generate a test", "--output-format", "json"]);
+    expect(cmd.stdin).toBeUndefined();
+  });
+
+  it("rejects oversized promptMode arg prompts before spawn", async () => {
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      promptMode: "arg"
+    });
+
+    await expect(
+      adapter.buildCommand({
+        id: "run-1",
+        provider: "gemini",
+        prompt: "a".repeat(70 * 1024),
+        cwd: "/root",
+        timeoutMs: 1000,
+        env: { PATH: "/bin" },
+        permissions: { mode: "default" }
+      })
+    ).rejects.toThrow(/prompt is too large for promptMode="arg"/);
   });
 
   it("parses JSON stdout with response field", async () => {

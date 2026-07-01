@@ -83,6 +83,8 @@ A dictionary mapping provider names to provider config objects.
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Fallback model override for this provider. |
 | `modelArg` | `object \| false`| `undefined` | Must be `false` or object containing `{ flag: string }`. | Dictates how the model option is passed to the provider binary. |
 | `promptMode` | `string` | `undefined` | Must be `"stdin"` or `"arg"`. | `"stdin"` writes prompts to the process stdin. `"arg"` appends it as a final command line argument. |
+
+Several built-in provider defaults prefer `"stdin"` to avoid argv size limits on large prompts. Explicit `"arg"` remains supported for small prompts when the provider allows it.
 | `defaultThinkingEffort` | `string` | `undefined` | `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`. | Default thinking effort level for this provider if not overridden by the script or CLI option. There is no global default. |
 
 #### Built-in Provider Defaults
@@ -123,7 +125,7 @@ providers:
       - "--output-format=json"
     defaultModel: null
     modelArg: { flag: "--model" }
-    promptMode: "arg"
+    promptMode: "stdin"
     promptFlag: "-p"
     dangerouslySkipPermissionsFlag: "--yolo"
     permissionPolicy: "restricted"
@@ -139,7 +141,7 @@ providers:
     args: []
     defaultModel: null
     modelArg: { flag: "--model" }
-    promptMode: "arg"
+    promptMode: "stdin"
     promptFlag: "-p"
     sandboxFlag: "--sandbox"
     dangerouslySkipPermissionsFlag: "--dangerously-skip-permissions"
@@ -150,7 +152,7 @@ providers:
     executionMode: "json"
     defaultModel: null
     modelArg: { flag: "--model" }
-    promptMode: "arg"
+    promptMode: "stdin"
     safeTools: ["read", "grep", "find", "ls"]
     fullAccessTools: ["read", "bash", "edit", "write", "grep", "find", "ls"]
     noSession: true
@@ -164,7 +166,7 @@ providers:
   cursor:
     command: "agent"
     args: []
-    promptMode: "arg"
+    promptMode: "stdin"
     promptFlag: "-p"
     outputFormat: "json"
     outputFormatFlag: "--output-format"
@@ -217,6 +219,8 @@ The following keys are supported by specific provider adapters.
 | `formatFlag` | `string` | `undefined` | Non-empty string. | Flag used to specify the output format. |
 | `format` | `string` | `undefined` | Non-empty string. | Output format value (e.g., `"json"`). |
 | `dangerouslySkipPermissionsFlag` | `string` | `undefined` | Non-empty string. | Flag to skip OpenCode-side permission checks. |
+
+OpenCode is currently arg-only in this repository. The adapter rejects `promptMode: "stdin"` and large prompts must be reduced or sent through a provider that supports stdin prompt transport.
 
 **GitHub Copilot (copilot)**
 | Option | Type | Default | Validation Rules | Description |

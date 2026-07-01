@@ -83,11 +83,9 @@ describe("Cursor Agent Adapter Acceptance Tests (AAA)", () => {
         "json",
         "--trust",
         "--mode",
-        "ask",
-        "-p",
-        "Implement authentication service"
+        "ask"
       ]);
-      expect(resultCommand.stdin).toBeUndefined();
+      expect(resultCommand.stdin).toBe("Implement authentication service");
     });
 
     it("CURSOR-AC-006, CURSOR-AC-008, CURSOR-AC-009: supports model flag, dangerous mode, stdin prompt input and custom flags", async () => {

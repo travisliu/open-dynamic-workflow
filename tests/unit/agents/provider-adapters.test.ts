@@ -66,8 +66,9 @@ describe("Provider adapter execution (Unit)", () => {
     expect(cmd.command).toBe("gemini");
     expect(cmd.args).toContain("--output-format");
     expect(cmd.args).toContain("json");
-    expect(cmd.args).toContain("-p");
-    expect(cmd.args).toContain("generate a test");
+    expect(cmd.args).not.toContain("-p");
+    expect(cmd.args).not.toContain("generate a test");
+    expect(cmd.stdin).toBe("generate a test");
     expect(cmd.cwd).toBe("/work/project");
     expect(cmd.env).toHaveProperty("PATH");
     expect(cmd.env).toHaveProperty("NODE_ENV");

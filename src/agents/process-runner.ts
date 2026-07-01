@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { assertProcessSizeWithinLimits } from "./process-size-guard.js";
 import type { ProcessRunInput, ProcessRunResult } from "./types.js";
 
 export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
@@ -28,6 +29,14 @@ export function runProcess(input: ProcessRunInput): Promise<ProcessRunResult> {
     // Track async output handlers to ensure they complete
     let stdoutChain = Promise.resolve();
     let stderrChain = Promise.resolve();
+
+    const effectiveEnvForSizing = env ?? process.env;
+
+    assertProcessSizeWithinLimits({
+      command,
+      args,
+      env: effectiveEnvForSizing
+    });
 
     const child = spawn(command, args, {
       cwd,

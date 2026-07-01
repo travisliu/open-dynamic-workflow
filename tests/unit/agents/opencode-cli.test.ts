@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { OpenCodeCliAdapter } from "../../../src/agents/opencode-cli.js";
 import type { AgentRunInput, ProviderParseInput } from "../../../src/agents/types.js";
 import * as processRunner from "../../../src/agents/process-runner.js";
+import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
 
 vi.mock("../../../src/agents/process-runner.js", () => ({
   runProcess: vi.fn()
@@ -266,6 +267,49 @@ describe("OpenCodeCliAdapter", () => {
       await expect(adapter.buildCommand(input)).rejects.toThrow(
         "OpenCode does not support promptMode=\"stdin\""
       );
+    });
+
+    it("11b. rejects oversized arg prompts before spawn", async () => {
+      // Arrange
+      const adapter = new OpenCodeCliAdapter();
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "opencode",
+        prompt: "a".repeat(70 * 1024),
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" }
+      };
+
+      // Act & Assert
+      await expect(adapter.buildCommand(input)).rejects.toThrow(
+        /prompt is too large for promptMode="arg"/
+      );
+    });
+
+    it("11c. uses OpenCode-specific remediation for oversized arg prompts", async () => {
+      const adapter = new OpenCodeCliAdapter();
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "opencode",
+        prompt: "a".repeat(70 * 1024),
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" }
+      };
+
+      try {
+        await adapter.buildCommand(input);
+        throw new Error("Expected oversized prompt rejection");
+      } catch (err) {
+        expect(err).toBeInstanceOf(OpenDynamicWorkflowError);
+        const message = (err as Error).message;
+        expect(message).toContain('prompt is too large for promptMode="arg"');
+        expect(message).not.toContain('Use promptMode="stdin" for this provider');
+        expect(message).toContain("Reduce prompt size or use a provider that supports stdin prompt transport.");
+      }
     });
 
     it("12. filters secret-like env vars while preserving safe env vars", async () => {

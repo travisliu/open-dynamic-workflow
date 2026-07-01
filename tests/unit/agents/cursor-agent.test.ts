@@ -86,11 +86,9 @@ describe("CursorAgentAdapter", () => {
         "json",
         "--trust",
         "--mode",
-        "ask",
-        "-p",
-        "generate a test"
+        "ask"
       ]);
-      expect(cmd.stdin).toBeUndefined();
+      expect(cmd.stdin).toBe("generate a test");
     });
 
     it("uses defaultModel if model is not set in input", async () => {
@@ -168,6 +166,21 @@ describe("CursorAgentAdapter", () => {
       expect(cmd.args).not.toContain("generate a test");
     });
 
+    it("supports promptMode arg for small prompts", async () => {
+      const adapter = new CursorAgentAdapter({ promptMode: "arg" });
+      const cmd = await adapter.buildCommand(runInput({ prompt: "generate a test" }));
+      expect(cmd.stdin).toBeUndefined();
+      expect(cmd.args).toContain("-p");
+      expect(cmd.args[cmd.args.indexOf("-p") + 1]).toBe("generate a test");
+    });
+
+    it("rejects oversized promptMode arg prompts before spawn", async () => {
+      const adapter = new CursorAgentAdapter({ promptMode: "arg" });
+      await expect(
+        adapter.buildCommand(runInput({ prompt: "a".repeat(70 * 1024) }))
+      ).rejects.toThrow(/prompt is too large for promptMode="arg"/);
+    });
+
     it("respects workspaceFlag with input.cwd", async () => {
       const adapter = new CursorAgentAdapter({ workspaceFlag: "--workspace" });
       const cmd = await adapter.buildCommand(runInput({ cwd: "/workspace-path" }));
@@ -199,8 +212,9 @@ describe("CursorAgentAdapter", () => {
         schema: { type: "object", properties: { age: { type: "number" } } }
       });
       const cmd = await adapter.buildCommand(input);
-      expect(cmd.args[cmd.args.length - 1]).toContain("JSON Schema");
-      expect(cmd.args[cmd.args.length - 1]).toContain("age");
+      expect(cmd.stdin).toContain("JSON Schema");
+      expect(cmd.stdin).toContain("age");
+      expect(cmd.args).not.toContain("JSON Schema");
     });
   });
 

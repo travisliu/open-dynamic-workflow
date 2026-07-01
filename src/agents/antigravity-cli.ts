@@ -14,6 +14,7 @@ import { extractJson } from "../structured/extract-json.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { buildPromptTransport } from "./prompt-transport.js";
 
 export interface AntigravityProviderConfig extends ProviderConfig {
   promptFlag?: string;
@@ -30,7 +31,7 @@ const DEFAULT_ANTIGRAVITY_CONFIG: AntigravityProviderConfig = {
   command: "agy",
   args: [],
   defaultModel: null,
-  promptMode: "arg",
+  promptMode: "stdin",
   promptFlag: "-p",
   modelArg: { flag: "--model" },
   sandboxFlag: "--sandbox",
@@ -94,14 +95,14 @@ export class AntigravityCliAdapter implements AgentAdapter {
       );
     }
 
-    const promptMode = this.config.promptMode ?? "arg";
-    let stdin: string | undefined = undefined;
-
-    if (promptMode === "stdin") {
-      stdin = structuredPrompt.prompt;
-    } else {
-      args.push(this.config.promptFlag ?? "-p", structuredPrompt.prompt);
-    }
+    const { stdin } = buildPromptTransport({
+      provider: "antigravity",
+      prompt: structuredPrompt.prompt,
+      promptMode: this.config.promptMode ?? "stdin",
+      promptFlag: this.config.promptFlag ?? "-p",
+      args,
+      style: "flag-value"
+    });
 
     appendModelArg(
       args,

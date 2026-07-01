@@ -142,6 +142,25 @@ describe("CodexExecAdapter", () => {
     expect(cmd.stdin).toBeUndefined();
   });
 
+  it("rejects oversized arg prompt mode prompts before spawn", async () => {
+    const adapter = new CodexExecAdapter({
+      command: "codex",
+      promptMode: "arg"
+    });
+
+    const input: AgentRunInput = {
+      id: "run-1",
+      provider: "codex",
+      prompt: "a".repeat(70 * 1024),
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
+    };
+
+    await expect(adapter.buildCommand(input)).rejects.toThrow(/prompt is too large for promptMode="arg"/);
+  });
+
   it("supports model argument passed in run input", async () => {
     const adapter = new CodexExecAdapter({
       command: "codex"

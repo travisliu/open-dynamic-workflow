@@ -14,6 +14,7 @@ import { resolveStructuredOutputPrompt } from "../structured/structured-output.j
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { assertThinkingEffortSupported } from "./thinking-effort-support.js";
+import { buildPromptTransport } from "./prompt-transport.js";
 
 export interface CodexProviderConfig extends ProviderConfig {
   promptMode?: "stdin" | "arg";
@@ -92,14 +93,13 @@ export class CodexExecAdapter implements AgentAdapter {
       args.push("-c", `model_reasoning_effort="${input.thinkingEffort}"`);
     }
 
-    const promptMode = this.config.promptMode ?? "stdin";
-    let stdin: string | undefined = undefined;
-
-    if (promptMode === "stdin") {
-      stdin = structuredPrompt.prompt;
-    } else {
-      args.push(structuredPrompt.prompt);
-    }
+    const { stdin } = buildPromptTransport({
+      provider: "codex",
+      prompt: structuredPrompt.prompt,
+      promptMode: this.config.promptMode ?? "stdin",
+      args,
+      style: "positional"
+    });
 
     const filteredEnv: Record<string, string> = {};
     for (const [key, value] of Object.entries(input.env)) {

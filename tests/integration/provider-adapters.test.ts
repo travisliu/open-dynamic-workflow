@@ -5,6 +5,7 @@ import { main } from "../../src/cli/index.js";
 import { exitCodeForError } from "../../src/errors/exit-codes.js";
 
 const TEMP_DIR = path.resolve("tests/temp-provider-adapters-integration");
+const FAKE_STDIN_PROVIDER = path.resolve("tests/fixtures/providers/fake-stdin-provider-cli.mjs");
 
 async function runCli(args: string[]) {
   const stdoutData: string[] = [];
@@ -434,5 +435,215 @@ describe("Provider adapter execution", () => {
     const agent = report.agents.find((a: any) => a.id === "opencode-thinking-conflict");
     expect(agent.ok).toBe(false);
     expect(agent.error.code).toBe("THINKING_EFFORT_CONFLICT");
+  });
+
+  it("76. routes large stdin-capable prompts through stdin", async () => {
+    await fs.rm(TEMP_DIR, { recursive: true, force: true });
+    await fs.mkdir(TEMP_DIR, { recursive: true });
+
+    const configPath = path.join(TEMP_DIR, "stdin-config.yaml");
+    const workflowPath = path.join(TEMP_DIR, "stdin-workflow.js");
+    const prompt = "stdin-transport ".repeat(5000);
+
+    await fs.writeFile(
+      configPath,
+      `
+defaultProvider: codex
+concurrency: 1
+providers:
+  codex:
+    command: node
+    args:
+      - ${JSON.stringify(FAKE_STDIN_PROVIDER)}
+    promptMode: stdin
+security:
+  passEnv: []
+tools:
+  dir: tests/fixtures/non-existent-tools
+`,
+      "utf8"
+    );
+    await fs.writeFile(
+      workflowPath,
+      `
+export const meta = { name: "stdin-large-prompt", description: "stdin prompt transport" };
+export default async (ctx) => {
+  const prompt = ${JSON.stringify(prompt)};
+  return await ctx.agent({
+    id: "stdin-large-prompt",
+    provider: "codex",
+    prompt
+  });
+};
+`,
+      "utf8"
+    );
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json"
+    ]);
+
+    expect(result.error).toBeNull();
+
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs.find(r => r !== "stdin-config.yaml" && r !== "stdin-workflow.js")!);
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    const agent = report.agents.find((a: any) => a.id === "stdin-large-prompt");
+    expect(agent.ok).toBe(true);
+    expect(agent.json.stdin_received_length).toBe(prompt.length);
+    expect(agent.json.stdin_received_preview).toBe(prompt.slice(0, 64));
+    expect(agent.json.argv_received).not.toContain(prompt);
+  });
+
+  it("77. routes small arg prompts through argv for arg-only providers", async () => {
+    await fs.rm(TEMP_DIR, { recursive: true, force: true });
+    await fs.mkdir(TEMP_DIR, { recursive: true });
+
+    const configPath = path.join(TEMP_DIR, "arg-config.yaml");
+    const workflowPath = path.join(TEMP_DIR, "arg-workflow.js");
+    const prompt = "arg-transport small";
+
+    await fs.writeFile(
+      configPath,
+      `
+defaultProvider: opencode
+concurrency: 1
+providers:
+  opencode:
+    command: node
+    args:
+      - ${JSON.stringify(FAKE_STDIN_PROVIDER)}
+    promptMode: arg
+security:
+  passEnv: []
+tools:
+  dir: tests/fixtures/non-existent-tools
+`,
+      "utf8"
+    );
+    await fs.writeFile(
+      workflowPath,
+      `
+export const meta = { name: "arg-small-prompt", description: "arg prompt transport" };
+export default async (ctx) => {
+  const prompt = ${JSON.stringify(prompt)};
+  return await ctx.agent({
+    id: "arg-small-prompt",
+    provider: "opencode",
+    prompt
+  });
+};
+`,
+      "utf8"
+    );
+
+    const result = await runCli([
+      "run",
+      workflowPath,
+      "--config",
+      configPath,
+      "--out",
+      TEMP_DIR,
+      "--report",
+      "json"
+    ]);
+
+    const runs = await fs.readdir(TEMP_DIR);
+    const runDir = path.join(TEMP_DIR, runs.find(r => r !== "arg-config.yaml" && r !== "arg-workflow.js")!);
+    const stderrLog = await fs.readFile(path.join(runDir, "agents/arg-small-prompt/stderr.log"), "utf8");
+    const manifest = JSON.parse(await fs.readFile(path.join(runDir, "manifest.json"), "utf8"));
+    const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+    expect(manifest.status).toBe("succeeded");
+    expect(stderrLog).toContain(prompt);
+    const agent = report.agents.find((a: any) => a.id === "arg-small-prompt");
+    expect(agent.ok).toBe(true);
+    expect(agent.json.stdin_received_length).toBe(0);
+    expect(agent.json.argv_received).toContain(prompt);
+    expect(JSON.stringify(report)).toContain(prompt);
+  });
+
+  it("78. routes large prompts through stdin for stdin-default providers", async () => {
+    const prompt = "stdin-default regression ".repeat(5000);
+    const cases = [
+      { provider: "copilot", id: "copilot-stdin-default" },
+      { provider: "antigravity", id: "antigravity-stdin-default" },
+      { provider: "pi", id: "pi-stdin-default" },
+      { provider: "cursor", id: "cursor-stdin-default" }
+    ] as const;
+
+    for (const testCase of cases) {
+      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_DIR, { recursive: true });
+
+      const configPath = path.join(TEMP_DIR, `${testCase.provider}.config.yaml`);
+      const workflowPath = path.join(TEMP_DIR, `${testCase.provider}.workflow.js`);
+
+      await fs.writeFile(
+        configPath,
+        `
+concurrency: 1
+timeoutMs: 10000
+providers:
+  ${testCase.provider}:
+    command: node
+    args:
+      - ${JSON.stringify(FAKE_STDIN_PROVIDER)}
+`,
+        "utf8"
+      );
+      await fs.writeFile(
+        workflowPath,
+        `
+export const meta = {
+  name: ${JSON.stringify(`${testCase.provider}-stdin-default`)},
+  description: "stdin-default prompt transport"
+};
+
+export default async (ctx) => {
+  const prompt = ${JSON.stringify(prompt)};
+  return await ctx.agent({
+    id: ${JSON.stringify(testCase.id)},
+    provider: ${JSON.stringify(testCase.provider)},
+    prompt
+  });
+};
+`,
+        "utf8"
+      );
+
+      const result = await runCli([
+        "run",
+        workflowPath,
+        "--config",
+        configPath,
+        "--out",
+        TEMP_DIR,
+        "--report",
+        "json"
+      ]);
+
+      expect(result.error).toBeNull();
+
+      const runs = await fs.readdir(TEMP_DIR);
+      const runDir = path.join(
+        TEMP_DIR,
+        runs.find((entry) => entry !== `${testCase.provider}.config.yaml` && entry !== `${testCase.provider}.workflow.js`)!
+      );
+      const report = JSON.parse(await fs.readFile(path.join(runDir, "report.json"), "utf8"));
+      const agent = report.agents.find((entry: any) => entry.id === testCase.id);
+      const stderrLog = await fs.readFile(path.join(runDir, `agents/${testCase.id}/stderr.log`), "utf8");
+      const stderr = JSON.parse(stderrLog);
+
+      expect(agent.ok).toBe(true);
+      expect(stderr.stdin_received_length).toBe(prompt.length);
+      expect(stderr.argv).not.toContain(prompt);
+    }
   });
 });

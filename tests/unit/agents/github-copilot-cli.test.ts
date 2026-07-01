@@ -101,11 +101,9 @@ describe("GitHubCopilotCliAdapter", () => {
         "-s",
         "--no-ask-user",
         "--no-auto-update",
-        "--output-format=json",
-        "-p",
-        "Review src/index.ts"
+        "--output-format=json"
       ]);
-      expect(cmd.stdin).toBeUndefined();
+      expect(cmd.stdin).toBe("Review src/index.ts");
       expect(cmd.env).toBeDefined();
     });
 
@@ -119,7 +117,7 @@ describe("GitHubCopilotCliAdapter", () => {
 
       expect(cmd.command).toBe("copilot-dev");
       expect(cmd.args.slice(0, 3)).toEqual(["-s", "--output-format=json", "--allow-tool=read"]);
-      expect(cmd.args.slice(-2)).toEqual(["-p", "Analyze only"]);
+      expect(cmd.stdin).toBe("Analyze only");
     });
 
     it("appends input model with default --model before prompt", async () => {
@@ -133,10 +131,9 @@ describe("GitHubCopilotCliAdapter", () => {
         "--no-auto-update",
         "--output-format=json",
         "--model",
-        "gpt-5-copilot",
-        "-p",
-        "Review"
+        "gpt-5-copilot"
       ]);
+      expect(cmd.stdin).toBe("Review");
     });
 
     it("uses configured default model when input model is omitted", async () => {
@@ -167,11 +164,12 @@ describe("GitHubCopilotCliAdapter", () => {
     });
 
     it("uses custom prompt flag", async () => {
-      const adapter = new GitHubCopilotCliAdapter({ promptFlag: "--prompt" });
+      const adapter = new GitHubCopilotCliAdapter({ promptMode: "arg", promptFlag: "--prompt" });
       const input = runInput({ prompt: "Review" });
       const cmd = await adapter.buildCommand(input);
 
       expect(cmd.args.slice(-2)).toEqual(["--prompt", "Review"]);
+      expect(cmd.stdin).toBeUndefined();
     });
 
     it("supports stdin prompt mode", async () => {
@@ -182,6 +180,15 @@ describe("GitHubCopilotCliAdapter", () => {
       expect(cmd.args).not.toContain("-p");
       expect(cmd.args).not.toContain("--prompt");
       expect(cmd.stdin).toBe("Review from stdin");
+    });
+
+    it("rejects oversized promptMode arg prompts before spawn", async () => {
+      const adapter = new GitHubCopilotCliAdapter({ promptMode: "arg" });
+      const input = runInput({ prompt: "a".repeat(70 * 1024) });
+
+      await expect(adapter.buildCommand(input)).rejects.toThrow(
+        /prompt is too large for promptMode="arg"/
+      );
     });
 
     it("injects schema instructions for prompt-based structured output", async () => {
@@ -195,10 +202,10 @@ describe("GitHubCopilotCliAdapter", () => {
       });
       const cmd = await adapter.buildCommand(input);
 
-      const promptArg = cmd.args[cmd.args.indexOf("-p") + 1];
-      expect(promptArg).toContain("Return findings");
-      expect(promptArg).toContain("JSON Schema:");
-      expect(promptArg).toContain("findings");
+      expect(cmd.stdin).toContain("Return findings");
+      expect(cmd.stdin).toContain("JSON Schema:");
+      expect(cmd.stdin).toContain("findings");
+      expect(cmd.args).not.toContain("-p");
     });
 
     it("does not inject schema instructions for validate-only structured output", async () => {
@@ -212,7 +219,7 @@ describe("GitHubCopilotCliAdapter", () => {
       });
       const cmd = await adapter.buildCommand(input);
 
-      expect(cmd.args[cmd.args.indexOf("-p") + 1]).toBe("Return findings");
+      expect(cmd.stdin).toBe("Return findings");
     });
 
     it("throws error for native structured output", async () => {

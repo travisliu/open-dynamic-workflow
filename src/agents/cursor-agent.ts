@@ -14,6 +14,7 @@ import { extractJson } from "../structured/extract-json.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { buildPromptTransport } from "./prompt-transport.js";
 
 export interface CursorAgentProviderConfig extends ProviderConfig {
   promptMode?: "arg" | "stdin";
@@ -31,7 +32,7 @@ export interface CursorAgentProviderConfig extends ProviderConfig {
 const DEFAULT_CURSOR_AGENT_CONFIG: CursorAgentProviderConfig = {
   command: "agent",
   args: [],
-  promptMode: "arg",
+  promptMode: "stdin",
   promptFlag: "-p",
   outputFormat: "json",
   outputFormatFlag: "--output-format",
@@ -131,13 +132,14 @@ export class CursorAgentAdapter implements AgentAdapter {
       args.push(this.config.workspaceFlag, input.cwd);
     }
 
-    let stdin: string | undefined;
-    const promptMode = this.config.promptMode ?? "arg";
-    if (promptMode === "stdin") {
-      stdin = structuredPrompt.prompt;
-    } else {
-      args.push(this.config.promptFlag ?? "-p", structuredPrompt.prompt);
-    }
+    const { stdin } = buildPromptTransport({
+      provider: "cursor",
+      prompt: structuredPrompt.prompt,
+      promptMode: this.config.promptMode ?? "stdin",
+      promptFlag: this.config.promptFlag ?? "-p",
+      args,
+      style: "flag-value"
+    });
 
     const filteredEnv: Record<string, string> = {};
     if (input.env) {

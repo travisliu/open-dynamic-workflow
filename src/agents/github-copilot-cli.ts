@@ -14,6 +14,7 @@ import { extractJson } from "../structured/extract-json.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { buildPromptTransport } from "./prompt-transport.js";
 
 export interface GitHubCopilotProviderConfig extends Partial<ProviderConfig> {
   promptFlag?: string;
@@ -28,7 +29,7 @@ const DEFAULT_COPILOT_CONFIG: GitHubCopilotProviderConfig = {
   args: ["-s", "--no-ask-user", "--no-auto-update", "--output-format=json"],
   defaultModel: null,
   modelArg: { flag: "--model" },
-  promptMode: "arg",
+  promptMode: "stdin",
   promptFlag: "-p",
   dangerouslySkipPermissionsFlag: "--yolo",
   permissionPolicy: "restricted"
@@ -106,14 +107,14 @@ export class GitHubCopilotCliAdapter implements AgentAdapter {
       args.push(this.config.dangerouslySkipPermissionsFlag ?? "--yolo");
     }
 
-    const promptMode = this.config.promptMode ?? "arg";
-    let stdin: string | undefined = undefined;
-
-    if (promptMode === "stdin") {
-      stdin = structuredPrompt.prompt;
-    } else {
-      args.push(this.config.promptFlag ?? "-p", structuredPrompt.prompt);
-    }
+    const { stdin } = buildPromptTransport({
+      provider: "copilot",
+      prompt: structuredPrompt.prompt,
+      promptMode: this.config.promptMode ?? "stdin",
+      promptFlag: this.config.promptFlag ?? "-p",
+      args,
+      style: "flag-value"
+    });
 
     const filteredEnv = filterProviderEnv(input.env);
 

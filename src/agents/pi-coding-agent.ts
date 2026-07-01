@@ -15,6 +15,7 @@ import { resolveStructuredOutputPrompt } from "../structured/structured-output.j
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { assertThinkingEffortSupported } from "./thinking-effort-support.js";
+import { buildPromptTransport } from "./prompt-transport.js";
 
 export type PiExecutionMode = "json" | "print";
 export type PiApprovalMode = "approve" | "no-approve" | "omit";
@@ -82,7 +83,6 @@ export class PiCodingAgentAdapter implements AgentAdapter {
   async buildCommand(input: AgentRunInput): Promise<ProviderCommand> {
     const command = this.config.command ?? "pi";
     const executionMode = this.config.executionMode ?? "json";
-    const promptMode = this.config.promptMode ?? "arg";
     const defaultModelFlag = this.config.modelFlag ?? "--model";
     const providerFlag = this.config.providerFlag ?? "--provider";
 
@@ -144,12 +144,13 @@ export class PiCodingAgentAdapter implements AgentAdapter {
       args.push("--tools", tools.join(","));
     }
 
-    let stdin: string | undefined;
-    if (promptMode === "stdin") {
-      stdin = structuredPrompt.prompt;
-    } else {
-      args.push(structuredPrompt.prompt);
-    }
+    const { stdin } = buildPromptTransport({
+      provider: "pi",
+      prompt: structuredPrompt.prompt,
+      promptMode: this.config.promptMode ?? "stdin",
+      args,
+      style: "positional"
+    });
 
     const env = filterAndAugmentEnv(input.env, this.config);
 

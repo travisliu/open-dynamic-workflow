@@ -14,6 +14,7 @@ import { extractJson } from "../structured/extract-json.js";
 import { resolveStructuredOutputPrompt } from "../structured/structured-output.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { buildPromptTransport } from "./prompt-transport.js";
 
 export interface GeminiProviderConfig extends ProviderConfig {
   promptFlag?: string;
@@ -68,7 +69,6 @@ export class GeminiCliAdapter implements AgentAdapter {
     const command = this.config.command ?? "gemini";
     const promptFlag = this.config.promptFlag ?? "-p";
     const defaultFlag = this.config.modelFlag ?? "-m";
-    const promptMode = this.config.promptMode ?? "arg";
     const structuredPrompt = resolveStructuredOutputPrompt({
       prompt: input.prompt,
       schema: input.schema,
@@ -83,13 +83,14 @@ export class GeminiCliAdapter implements AgentAdapter {
     }
 
     const args: string[] = [];
-    let stdin: string | undefined = undefined;
-
-    if (promptMode === "stdin") {
-      stdin = structuredPrompt.prompt;
-    } else {
-      args.push(promptFlag, structuredPrompt.prompt);
-    }
+    const { stdin } = buildPromptTransport({
+      provider: "gemini",
+      prompt: structuredPrompt.prompt,
+      promptMode: this.config.promptMode ?? "stdin",
+      promptFlag,
+      args,
+      style: "flag-value"
+    });
 
     const baseArgs = this.config.args ?? ["--output-format", "json"];
     const resolvedBaseArgs =

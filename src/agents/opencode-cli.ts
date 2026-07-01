@@ -15,6 +15,7 @@ import { resolveStructuredOutputPrompt } from "../structured/structured-output.j
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { assertThinkingEffortSupported, mapOpenCodeThinkingEffort } from "./thinking-effort-support.js";
+import { buildPromptTransport } from "./prompt-transport.js";
 
 export interface OpenCodeProviderConfig extends ProviderConfig {
   modelFlag?: string;
@@ -86,7 +87,7 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       );
     }
 
-    if (config.promptMode === "stdin") {
+    if ((config.promptMode ?? "arg") === "stdin") {
       throw new OpenDynamicWorkflowError(
         ErrorCode.CLI_USAGE_ERROR,
         'OpenCode does not support promptMode="stdin". Use "arg".'
@@ -133,7 +134,14 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       args.push(config.dangerouslySkipPermissionsFlag ?? "--dangerously-skip-permissions");
     }
 
-    args.push(structuredPrompt.prompt);
+    buildPromptTransport({
+      provider: "opencode",
+      prompt: structuredPrompt.prompt,
+      promptMode: "arg",
+      args,
+      style: "positional",
+      remediationMessage: "Reduce prompt size or use a provider that supports stdin prompt transport."
+    });
 
     const permissionPolicy = config.permissionPolicy ?? "read-only";
     const env = buildFilteredEnv(input.env, {

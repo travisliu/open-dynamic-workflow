@@ -34,7 +34,8 @@ describe("PiCodingAgentAdapter", () => {
       expect(cmd.args).toContain("--no-approve");
       expect(cmd.args).toContain("--tools");
       expect(cmd.args[cmd.args.indexOf("--tools") + 1]).toBe("read,grep,find,ls");
-      expect(cmd.args[cmd.args.length - 1]).toBe("review");
+      expect(cmd.args).not.toContain("review");
+      expect(cmd.stdin).toBe("review");
     });
 
     it("38. omits resource-disabling flags only when explicitly false", async () => {
@@ -127,6 +128,21 @@ describe("PiCodingAgentAdapter", () => {
       // Assert
       expect(cmd.stdin).toBe("long prompt");
       expect(cmd.args[cmd.args.length - 1]).not.toBe("long prompt");
+    });
+
+    it("42b. supports arg prompt mode for small prompts", async () => {
+      const adapter = new PiCodingAgentAdapter({ promptMode: "arg" });
+      const cmd = await adapter.buildCommand({ ...defaultInput, prompt: "short prompt" });
+
+      expect(cmd.stdin).toBeUndefined();
+      expect(cmd.args[cmd.args.length - 1]).toBe("short prompt");
+    });
+
+    it("42c. rejects oversized arg prompt mode prompts before spawn", async () => {
+      const adapter = new PiCodingAgentAdapter({ promptMode: "arg" });
+      await expect(
+        adapter.buildCommand({ ...defaultInput, prompt: "a".repeat(70 * 1024) })
+      ).rejects.toThrow(/prompt is too large for promptMode="arg"/);
     });
 
     it("43. rejects native structured output", async () => {

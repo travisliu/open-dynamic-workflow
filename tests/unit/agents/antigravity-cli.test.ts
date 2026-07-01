@@ -23,8 +23,8 @@ describe("AntigravityCliAdapter", () => {
       // Assert
       expect(adapter.name).toBe("antigravity");
       expect(cmd.command).toBe("agy");
-      expect(cmd.args).toEqual(["-p", "hello", "--sandbox"]);
-      expect(cmd.stdin).toBeUndefined();
+      expect(cmd.args).toEqual(["--sandbox"]);
+      expect(cmd.stdin).toBe("hello");
     });
 
     it("24. preserves configured base args before prompt args", async () => {
@@ -50,7 +50,8 @@ describe("AntigravityCliAdapter", () => {
       const cmd = await adapter.buildCommand(input);
 
       // Assert
-      expect(cmd.args).toEqual(["--some-flag", "-p", "hello", "--sandbox"]);
+      expect(cmd.args).toEqual(["--some-flag", "--sandbox"]);
+      expect(cmd.stdin).toBe("hello");
     });
 
     it("25. maps input model and custom model flag", async () => {
@@ -142,6 +143,54 @@ describe("AntigravityCliAdapter", () => {
       expect(cmd.stdin).toBe("long prompt");
       expect(cmd.args).not.toContain("-p");
       expect(cmd.args).toContain("--sandbox");
+    });
+
+    it("28b. supports explicit arg prompt mode for small prompts", async () => {
+      // Arrange
+      const adapter = new AntigravityCliAdapter({
+        promptMode: "arg",
+        useSandboxByDefault: true,
+        permissionPolicy: "sandbox"
+      });
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "antigravity",
+        prompt: "short prompt",
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" }
+      };
+
+      // Act
+      const cmd = await adapter.buildCommand(input);
+
+      // Assert
+      expect(cmd.args).toEqual(["-p", "short prompt", "--sandbox"]);
+      expect(cmd.stdin).toBeUndefined();
+    });
+
+    it("28c. rejects oversized arg prompt mode prompts before spawn", async () => {
+      // Arrange
+      const adapter = new AntigravityCliAdapter({
+        promptMode: "arg",
+        useSandboxByDefault: true,
+        permissionPolicy: "sandbox"
+      });
+      const input: AgentRunInput = {
+        id: "run-1",
+        provider: "antigravity",
+        prompt: "a".repeat(70 * 1024),
+        cwd: "/repo",
+        timeoutMs: 1000,
+        env: {},
+        permissions: { mode: "default" }
+      };
+
+      // Act & Assert
+      await expect(adapter.buildCommand(input)).rejects.toThrow(
+        /prompt is too large for promptMode="arg"/
+      );
     });
 
     it("29. rejects unsafe default execution without sandbox or native policy", async () => {
