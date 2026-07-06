@@ -127,13 +127,19 @@ describe("CLI Options Parsing Helpers", () => {
 
   describe("parseRetryCliOptions", () => {
     it("parses valid combinations of retry flags", () => {
-      const parsed = parseRetryCliOptions({
+      // Arrange
+      const rawOptions = {
         retryMaxAttempts: "5",
         retryDelayMs: "100",
         retryMaxDelayMs: "5000",
         retryBackoff: "exponential",
         retryDisableDelay: true,
-      });
+      };
+
+      // Act
+      const parsed = parseRetryCliOptions(rawOptions);
+
+      // Assert
       expect(parsed).toEqual({
         retryMaxAttempts: 5,
         retryDelayMs: 100,
@@ -143,17 +149,60 @@ describe("CLI Options Parsing Helpers", () => {
       });
     });
 
-    it("represents --no-retry correctly", () => {
-      const parsed1 = parseRetryCliOptions({ retry: false });
-      expect(parsed1).toEqual({ noRetry: true });
+    it("rejects malformed retry values with CLI_USAGE_ERROR", () => {
+      // Arrange
+      const invalidNumeric = { retryMaxAttempts: "abc" };
+      const invalidBackoff = { retryBackoff: "linear" };
 
-      const parsed2 = parseRetryCliOptions({ noRetry: true });
-      expect(parsed2).toEqual({ noRetry: true });
+      // Act
+      const parseNumeric = () => parseRetryCliOptions(invalidNumeric);
+      const parseBackoff = () => parseRetryCliOptions(invalidBackoff);
+
+      // Assert
+      expect(parseNumeric).toThrow(OpenDynamicWorkflowError);
+      expect(() => parseNumeric()).toThrow(expect.objectContaining({ code: "CLI_USAGE_ERROR" }));
+      expect(parseBackoff).toThrow(OpenDynamicWorkflowError);
+      expect(() => parseBackoff()).toThrow(expect.objectContaining({ code: "CLI_USAGE_ERROR" }));
     });
 
-    it("throws CLI_USAGE_ERROR on conflict with --no-retry", () => {
-      expect(() => parseRetryCliOptions({ retry: false, retryMaxAttempts: "3" })).toThrow(OpenDynamicWorkflowError);
-      expect(() => parseRetryCliOptions({ noRetry: true, retryDelayMs: "100" })).toThrow(OpenDynamicWorkflowError);
+    it("captures --retry-disable-delay as a toggle", () => {
+      // Arrange
+      const rawOptions = { retryDisableDelay: true };
+
+      // Act
+      const parsed = parseRetryCliOptions(rawOptions);
+
+      // Assert
+      expect(parsed).toEqual({ retryDisableDelay: true });
+    });
+
+    it("rejects combinations that mix --no-retry with other retry flags", () => {
+      // Arrange
+      const rawOptions = {
+        noRetry: true,
+        retryDelayMs: "100"
+      };
+
+      // Act
+      const parse = () => parseRetryCliOptions(rawOptions);
+
+      // Assert
+      expect(parse).toThrow(OpenDynamicWorkflowError);
+      expect(() => parse()).toThrow(expect.objectContaining({ code: "CLI_USAGE_ERROR" }));
+    });
+
+    it("captures --no-retry as a disabled marker", () => {
+      // Arrange
+      const fromCommander = { retry: false };
+      const fromBooleanToggle = { noRetry: true };
+
+      // Act
+      const parsedFromCommander = parseRetryCliOptions(fromCommander);
+      const parsedFromBooleanToggle = parseRetryCliOptions(fromBooleanToggle);
+
+      // Assert
+      expect(parsedFromCommander).toEqual({ noRetry: true });
+      expect(parsedFromBooleanToggle).toEqual({ noRetry: true });
     });
   });
 });

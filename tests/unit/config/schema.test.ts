@@ -182,22 +182,33 @@ describe("Config Schema Validation", () => {
   });
 
   it("passes when retry is omitted entirely", () => {
-    const config = {
-      ...DEFAULT_CONFIG
-    };
+    // Arrange
+    const config = { ...DEFAULT_CONFIG };
     delete (config as any).retry;
-    expect(() => validateConfig(config)).not.toThrow();
+
+    // Act
+    const validate = () => validateConfig(config);
+
+    // Assert
+    expect(validate).not.toThrow();
   });
 
   it("passes when retry is explicitly disabled", () => {
+    // Arrange
     const config = {
       ...DEFAULT_CONFIG,
       retry: false
     };
-    expect(() => validateConfig(config)).not.toThrow();
+
+    // Act
+    const validate = () => validateConfig(config);
+
+    // Assert
+    expect(validate).not.toThrow();
   });
 
   it("passes when retry is a valid config object", () => {
+    // Arrange
     const config = {
       ...DEFAULT_CONFIG,
       retry: {
@@ -209,77 +220,107 @@ describe("Config Schema Validation", () => {
         disableDelay: false
       }
     };
-    expect(() => validateConfig(config)).not.toThrow();
+
+    // Act
+    const validate = () => validateConfig(config);
+
+    // Assert
+    expect(validate).not.toThrow();
   });
 
   it("fails if retry is not an object", () => {
+    // Arrange
     const nonObjectValues = ["yes", 123, true, [], null];
+
+    // Act & Assert
     for (const val of nonObjectValues) {
       const config = {
         ...DEFAULT_CONFIG,
         retry: val as any
       };
-      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
-      expect(() => validateConfig(config)).toThrow("Config value 'retry' must be an object.");
+      const validate = () => validateConfig(config);
+      expect(validate).toThrow(OpenDynamicWorkflowError);
+      expect(validate).toThrow("Config value 'retry' must be an object.");
     }
   });
 
   it("fails if retry has invalid numeric values", () => {
+    // Arrange
     const invalidAttempts = [0, -1, 1.5, NaN, "3"];
+
+    // Act & Assert
     for (const val of invalidAttempts) {
       const config = {
         ...DEFAULT_CONFIG,
         retry: { maxAttempts: val as any }
       };
-      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
-      expect(() => validateConfig(config)).toThrow("Config value 'retry.maxAttempts' must be a positive integer.");
+      const validate = () => validateConfig(config);
+      expect(validate).toThrow(OpenDynamicWorkflowError);
+      expect(validate).toThrow("Config value 'retry.maxAttempts' must be a positive integer.");
     }
 
     const invalidDelays = [-1, 1.5, NaN, "1000"];
     for (const val of invalidDelays) {
-      const config = {
+      const delayConfig = {
         ...DEFAULT_CONFIG,
         retry: { delayMs: val as any }
       };
-      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
-      expect(() => validateConfig(config)).toThrow("Config value 'retry.delayMs' must be a non-negative integer.");
+      const validateDelay = () => validateConfig(delayConfig);
+      expect(validateDelay).toThrow(OpenDynamicWorkflowError);
+      expect(validateDelay).toThrow("Config value 'retry.delayMs' must be a non-negative integer.");
 
-      const configMax = {
+      const maxDelayConfig = {
         ...DEFAULT_CONFIG,
         retry: { maxDelayMs: val as any }
       };
-      expect(() => validateConfig(configMax)).toThrow(OpenDynamicWorkflowError);
-      expect(() => validateConfig(configMax)).toThrow("Config value 'retry.maxDelayMs' must be a non-negative integer.");
+      const validateMaxDelay = () => validateConfig(maxDelayConfig);
+      expect(validateMaxDelay).toThrow(OpenDynamicWorkflowError);
+      expect(validateMaxDelay).toThrow("Config value 'retry.maxDelayMs' must be a non-negative integer.");
     }
   });
 
   it("fails if retry.backoff is invalid", () => {
+    // Arrange
     const config = {
       ...DEFAULT_CONFIG,
       retry: { backoff: "invalid" as any }
     };
-    expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
-    expect(() => validateConfig(config)).toThrow("Config value 'retry.backoff' must be 'fixed' or 'exponential'.");
+
+    // Act
+    const validate = () => validateConfig(config);
+
+    // Assert
+    expect(validate).toThrow(OpenDynamicWorkflowError);
+    expect(validate).toThrow("Config value 'retry.backoff' must be 'fixed' or 'exponential'.");
   });
 
   it("fails if retry.jitter or retry.disableDelay is not a boolean", () => {
+    // Arrange
     const configJitter = {
       ...DEFAULT_CONFIG,
       retry: { jitter: "true" as any }
     };
-    expect(() => validateConfig(configJitter)).toThrow(OpenDynamicWorkflowError);
-    expect(() => validateConfig(configJitter)).toThrow("Config value 'retry.jitter' must be a boolean.");
-
     const configDisable = {
       ...DEFAULT_CONFIG,
       retry: { disableDelay: "false" as any }
     };
-    expect(() => validateConfig(configDisable)).toThrow(OpenDynamicWorkflowError);
-    expect(() => validateConfig(configDisable)).toThrow("Config value 'retry.disableDelay' must be a boolean.");
+
+    // Act
+    const validateJitter = () => validateConfig(configJitter);
+    const validateDisable = () => validateConfig(configDisable);
+
+    // Assert
+    expect(validateJitter).toThrow(OpenDynamicWorkflowError);
+    expect(validateJitter).toThrow("Config value 'retry.jitter' must be a boolean.");
+    expect(validateDisable).toThrow(OpenDynamicWorkflowError);
+    expect(validateDisable).toThrow("Config value 'retry.disableDelay' must be a boolean.");
   });
 
   it("fails and explicitly rejects banned public error-selection fields", () => {
+    // Arrange
     const bannedFields = ["retryOn", "retryReasons", "retryOnErrors", "errorCategories"];
+
+    // Act & Assert
     for (const field of bannedFields) {
       const config = {
         ...DEFAULT_CONFIG,
@@ -288,8 +329,9 @@ describe("Config Schema Validation", () => {
           [field]: ["provider_error"]
         }
       };
-      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
-      expect(() => validateConfig(config)).toThrow(
+      const validate = () => validateConfig(config);
+      expect(validate).toThrow(OpenDynamicWorkflowError);
+      expect(validate).toThrow(
         `${field} is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only.`
       );
     }

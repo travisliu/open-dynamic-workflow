@@ -193,4 +193,14 @@ describe("Model Config Validation", () => {
     config.defaultProvider = 123;
     expect(() => validateConfig(config)).toThrow();
   });
+
+  it("accepts valid retry config and rejects banned retryOn field in validateConfig", () => {
+    const configAccept = getValidBaseConfig();
+    configAccept.retry = { maxAttempts: 3, delayMs: 1000 };
+    expect(() => validateConfig(configAccept)).not.toThrow();
+
+    const configReject = getValidBaseConfig();
+    configReject.retry = { retryOn: ["provider_error"] } as any;
+    expect(() => validateConfig(configReject)).toThrow(/retryOn/);
+  });
 });

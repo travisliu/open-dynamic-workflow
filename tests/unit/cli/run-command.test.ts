@@ -7,6 +7,7 @@ import { ErrorCode } from "../../../src/errors/codes.js";
 import type { RuntimeRunner, WorkflowRunResult } from "../../../src/runtime/public.js";
 import * as fs from "node:fs";
 import { validateConfig } from "../../../src/config/schema.js";
+import { parseRetryCliOptions } from "../../../src/cli/args.js";
 
 // Mock imports
 import { precollectAllResourcesForLoad, checkDiscoveryPolicy } from "../../../src/discovery/precollect.js";
@@ -365,7 +366,16 @@ describe("Run Command", () => {
   });
 
   describe("CLI retry overrides plumbing", () => {
-    it("forwards parsed retry overrides to loadConfig", async () => {
+    it("forwards the parsed retry override object into loadConfig unchanged", async () => {
+      // Arrange
+      const rawRetryOptions = {
+        retryMaxAttempts: "3",
+        retryDelayMs: "500",
+        retryMaxDelayMs: "2000",
+        retryBackoff: "exponential",
+        retryDisableDelay: true
+      };
+      const expectedRetryOverrides = parseRetryCliOptions(rawRetryOptions);
       const runSpy = vi.fn().mockResolvedValue({
         schemaVersion: "open-dynamic-workflow.report.v1",
         runId: "test-run",
@@ -376,83 +386,17 @@ describe("Run Command", () => {
       } as WorkflowRunResult);
       const mockRunner: RuntimeRunner = { run: runSpy };
 
+      // Act
       await runCommand({
         workflowFile: "valid-simple.js",
-        rawOptions: {
-          retryMaxAttempts: "3",
-          retryDelayMs: "500",
-          retryMaxDelayMs: "2000",
-          retryBackoff: "exponential"
-        },
+        rawOptions: { cwd: "/mock-cwd", ...rawRetryOptions },
         deps: { runtimeRunner: mockRunner }
       });
 
-      expect(loadConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cli: expect.objectContaining({
-            retryMaxAttempts: 3,
-            retryDelayMs: 500,
-            retryMaxDelayMs: 2000,
-            retryBackoff: "exponential"
-          })
-        })
-      );
-    });
-
-    it("forwards --no-retry override as noRetry: true", async () => {
-      const runSpy = vi.fn().mockResolvedValue({
-        schemaVersion: "open-dynamic-workflow.report.v1",
-        runId: "test-run",
-        status: "succeeded",
-        durationMs: 10,
-        artifactsDir: "runs",
-        agents: []
-      } as WorkflowRunResult);
-      const mockRunner: RuntimeRunner = { run: runSpy };
-
-      await runCommand({
-        workflowFile: "valid-simple.js",
-        rawOptions: {
-          retry: false
-        },
-        deps: { runtimeRunner: mockRunner }
-      });
-
-      expect(loadConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cli: expect.objectContaining({
-            noRetry: true
-          })
-        })
-      );
-    });
-
-    it("forwards --retry-disable-delay override as retryDisableDelay: true", async () => {
-      const runSpy = vi.fn().mockResolvedValue({
-        schemaVersion: "open-dynamic-workflow.report.v1",
-        runId: "test-run",
-        status: "succeeded",
-        durationMs: 10,
-        artifactsDir: "runs",
-        agents: []
-      } as WorkflowRunResult);
-      const mockRunner: RuntimeRunner = { run: runSpy };
-
-      await runCommand({
-        workflowFile: "valid-simple.js",
-        rawOptions: {
-          retryDisableDelay: true
-        },
-        deps: { runtimeRunner: mockRunner }
-      });
-
-      expect(loadConfig).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cli: expect.objectContaining({
-            retryDisableDelay: true
-          })
-        })
-      );
+      // Assert
+      expect(loadConfig).toHaveBeenCalled();
+      const loadConfigInput = vi.mocked(loadConfig).mock.calls[0][0];
+      expect(loadConfigInput.cli).toStrictEqual(expectedRetryOverrides);
     });
   });
 
