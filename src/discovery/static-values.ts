@@ -16,17 +16,23 @@ interface StaticResolutionContext {
   sourceFile: ts.SourceFile;
 }
 
+interface StaticDeclaration {
+  initializer: ts.Expression;
+  initializedAt: number;
+}
+
 interface ResolverState {
-  declarations: Map<string, ts.Expression>;
+  declarations: Map<string, StaticDeclaration>;
   resolving: Set<string>;
+  sourceFile: ts.SourceFile;
 }
 
 export function parseSourceFile(filePath: string, sourceText: string): ts.SourceFile {
   return ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
 }
 
-function collectTopLevelConstDeclarations(sourceFile: ts.SourceFile): Map<string, ts.Expression> {
-  const declarations = new Map<string, ts.Expression>();
+function collectTopLevelConstDeclarations(sourceFile: ts.SourceFile): Map<string, StaticDeclaration> {
+  const declarations = new Map<string, StaticDeclaration>();
 
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) {
@@ -43,7 +49,10 @@ function collectTopLevelConstDeclarations(sourceFile: ts.SourceFile): Map<string
         continue;
       }
 
-      declarations.set(declaration.name.text, declaration.initializer);
+      declarations.set(declaration.name.text, {
+        initializer: declaration.initializer,
+        initializedAt: declaration.initializer.end,
+      });
     }
   }
 
@@ -58,6 +67,7 @@ function createResolverState(context?: StaticResolutionContext): ResolverState |
   return {
     declarations: collectTopLevelConstDeclarations(context.sourceFile),
     resolving: new Set<string>(),
+    sourceFile: context.sourceFile,
   };
 }
 
@@ -105,13 +115,17 @@ function extractStaticValueInternal(
       return { ok: false, message: `Unresolved identifier: ${node.text}` };
     }
 
+    if (declaration.initializedAt > node.getStart(state.sourceFile)) {
+      return { ok: false, message: `Identifier '${node.text}' is referenced before initialization` };
+    }
+
     if (state.resolving.has(node.text)) {
       return { ok: false, message: `Circular identifier reference: ${node.text}` };
     }
 
     state.resolving.add(node.text);
     try {
-      return extractStaticValueInternal(declaration, context, state);
+      return extractStaticValueInternal(declaration.initializer, context, state);
     } finally {
       state.resolving.delete(node.text);
     }

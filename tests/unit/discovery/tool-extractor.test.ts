@@ -269,6 +269,51 @@ describe("tool-extractor", () => {
     }
   });
 
+  it("rejects schema references to later top-level const declarations", async () => {
+    const content = `
+      import { defineTool } from "@travisliu/open-dynamic-workflow";
+
+      const inputSchema = schemaFragment;
+      const schemaFragment = { type: "object" };
+
+      export default defineTool({
+        id: "forward-schema-tool",
+        description: "A tool with a forward schema reference",
+        inputSchema: inputSchema,
+        run: async () => {}
+      });
+    `;
+    const file = await createTestFile("forward-schema.ts", content);
+    const result = await extractTool(file);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.diagnostics[0].message).toContain("Tool inputSchema must be a static object literal");
+    }
+  });
+
+  it("rejects defineTool metadata that references const declarations defined later", async () => {
+    const content = `
+      import { defineTool } from "@travisliu/open-dynamic-workflow";
+
+      export default defineTool({
+        id: "later-schema-tool",
+        description: "A tool with a later schema declaration",
+        inputSchema: schema,
+        run: async () => {}
+      });
+
+      const schema = { type: "object" };
+    `;
+    const file = await createTestFile("later-schema.ts", content);
+    const result = await extractTool(file);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.diagnostics[0].message).toContain("Tool inputSchema must be a static object literal");
+    }
+  });
+
   it("accepts the quality-gate example tool metadata", async () => {
     const file: CandidateFile = {
       resourceType: "tool",

@@ -71,6 +71,48 @@ describe("static-values", () => {
     });
   });
 
+  it("resolves earlier same-file const references with context", () => {
+    const source = `
+      const fragment = { type: "object" };
+      const schema = fragment;
+    `;
+    const sf = parseSourceFile("test.ts", source);
+    // @ts-ignore
+    const result = extractStaticValue(sf.statements[1].declarationList.declarations[0].initializer, { sourceFile: sf });
+
+    expect(result).toEqual({ ok: true, value: { type: "object" } });
+  });
+
+  it("resolves earlier declarations in the same const statement", () => {
+    const source = `const fragment = { type: "object" }, schema = fragment;`;
+    const sf = parseSourceFile("test.ts", source);
+    // @ts-ignore
+    const result = extractStaticValue(sf.statements[0].declarationList.declarations[1].initializer, { sourceFile: sf });
+
+    expect(result).toEqual({ ok: true, value: { type: "object" } });
+  });
+
+  it("rejects later same-file const references with context", () => {
+    const source = `
+      const schema = fragment;
+      const fragment = { type: "object" };
+    `;
+    const sf = parseSourceFile("test.ts", source);
+    // @ts-ignore
+    const result = extractStaticValue(sf.statements[0].declarationList.declarations[0].initializer, { sourceFile: sf });
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects later declarations in the same const statement", () => {
+    const source = `const schema = fragment, fragment = { type: "object" };`;
+    const sf = parseSourceFile("test.ts", source);
+    // @ts-ignore
+    const result = extractStaticValue(sf.statements[0].declarationList.declarations[0].initializer, { sourceFile: sf });
+
+    expect(result.ok).toBe(false);
+  });
+
   it("rejects non-static values", () => {
     const testCases = [
       "const x = someVar;",
