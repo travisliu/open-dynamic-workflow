@@ -180,4 +180,118 @@ describe("Config Schema Validation", () => {
     };
     expect(() => validateConfig(config)).not.toThrow();
   });
+
+  it("passes when retry is omitted entirely", () => {
+    const config = {
+      ...DEFAULT_CONFIG
+    };
+    delete (config as any).retry;
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("passes when retry is explicitly disabled", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      retry: false
+    };
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("passes when retry is a valid config object", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      retry: {
+        maxAttempts: 3,
+        delayMs: 1000,
+        maxDelayMs: 5000,
+        backoff: "exponential",
+        jitter: true,
+        disableDelay: false
+      }
+    };
+    expect(() => validateConfig(config)).not.toThrow();
+  });
+
+  it("fails if retry is not an object", () => {
+    const nonObjectValues = ["yes", 123, true, [], null];
+    for (const val of nonObjectValues) {
+      const config = {
+        ...DEFAULT_CONFIG,
+        retry: val as any
+      };
+      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+      expect(() => validateConfig(config)).toThrow("Config value 'retry' must be an object.");
+    }
+  });
+
+  it("fails if retry has invalid numeric values", () => {
+    const invalidAttempts = [0, -1, 1.5, NaN, "3"];
+    for (const val of invalidAttempts) {
+      const config = {
+        ...DEFAULT_CONFIG,
+        retry: { maxAttempts: val as any }
+      };
+      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+      expect(() => validateConfig(config)).toThrow("Config value 'retry.maxAttempts' must be a positive integer.");
+    }
+
+    const invalidDelays = [-1, 1.5, NaN, "1000"];
+    for (const val of invalidDelays) {
+      const config = {
+        ...DEFAULT_CONFIG,
+        retry: { delayMs: val as any }
+      };
+      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+      expect(() => validateConfig(config)).toThrow("Config value 'retry.delayMs' must be a non-negative integer.");
+
+      const configMax = {
+        ...DEFAULT_CONFIG,
+        retry: { maxDelayMs: val as any }
+      };
+      expect(() => validateConfig(configMax)).toThrow(OpenDynamicWorkflowError);
+      expect(() => validateConfig(configMax)).toThrow("Config value 'retry.maxDelayMs' must be a non-negative integer.");
+    }
+  });
+
+  it("fails if retry.backoff is invalid", () => {
+    const config = {
+      ...DEFAULT_CONFIG,
+      retry: { backoff: "invalid" as any }
+    };
+    expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+    expect(() => validateConfig(config)).toThrow("Config value 'retry.backoff' must be 'fixed' or 'exponential'.");
+  });
+
+  it("fails if retry.jitter or retry.disableDelay is not a boolean", () => {
+    const configJitter = {
+      ...DEFAULT_CONFIG,
+      retry: { jitter: "true" as any }
+    };
+    expect(() => validateConfig(configJitter)).toThrow(OpenDynamicWorkflowError);
+    expect(() => validateConfig(configJitter)).toThrow("Config value 'retry.jitter' must be a boolean.");
+
+    const configDisable = {
+      ...DEFAULT_CONFIG,
+      retry: { disableDelay: "false" as any }
+    };
+    expect(() => validateConfig(configDisable)).toThrow(OpenDynamicWorkflowError);
+    expect(() => validateConfig(configDisable)).toThrow("Config value 'retry.disableDelay' must be a boolean.");
+  });
+
+  it("fails and explicitly rejects banned public error-selection fields", () => {
+    const bannedFields = ["retryOn", "retryReasons", "retryOnErrors", "errorCategories"];
+    for (const field of bannedFields) {
+      const config = {
+        ...DEFAULT_CONFIG,
+        retry: {
+          maxAttempts: 3,
+          [field]: ["provider_error"]
+        }
+      };
+      expect(() => validateConfig(config)).toThrow(OpenDynamicWorkflowError);
+      expect(() => validateConfig(config)).toThrow(
+        `${field} is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only.`
+      );
+    }
+  });
 });

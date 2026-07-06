@@ -116,6 +116,12 @@ Examples:
     .option("-v, --verbose", "Enable verbose logging")
     .option("--thinking-effort <effort>", "Thinking effort level for supported providers (off, minimal, low, medium, high, xhigh)")
     .option("--strict", "Fail before loading when strict discovery or path diagnostics are present")
+    .option("--retry-max-attempts <number>", "Maximum retry attempts")
+    .option("--retry-delay-ms <ms>", "Initial retry delay in milliseconds")
+    .option("--retry-max-delay-ms <ms>", "Maximum retry delay in milliseconds")
+    .option("--retry-backoff <type>", "Retry backoff type (fixed, exponential)")
+    .option("--retry-disable-delay", "Disable retry delay (run attempts immediately)")
+    .option("--no-retry", "Disable retries")
     .addHelpText(
       "after",
       `

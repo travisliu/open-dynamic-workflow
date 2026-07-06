@@ -1,5 +1,6 @@
 import type { JsonObject, ProviderName, ReporterMode } from "./common.js";
 import type { ThinkingEffort } from "./thinking-effort.js";
+import type { ResolvedRetryPolicy, RetryBackoff, RetryConfigInput } from "./retry.js";
 
 
 export interface ProviderModelArgConfig {
@@ -103,6 +104,7 @@ export interface OpenDynamicWorkflowConfig {
   maxAgentCalls?: number | undefined;
   defaultModel?: string | null;
   failFast?: boolean;
+  retry?: false | RetryConfigInput | ResolvedRetryPolicy | undefined;
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
   reporting: ReportingConfig;
@@ -116,6 +118,7 @@ export interface ResolvedConfig extends OpenDynamicWorkflowConfig {
   outDir: string;
   configPath?: string;
   cliArgs: Record<string, string | boolean | number>;
+  retry?: ResolvedRetryPolicy | undefined;
 }
 
 export interface CliRunOptions {
@@ -136,4 +139,10 @@ export interface CliRunOptions {
   failFast: boolean;
   verbose: boolean;
   thinkingEffort?: ThinkingEffort | undefined;
+  retryMaxAttempts?: number | undefined;
+  retryDelayMs?: number | undefined;
+  retryMaxDelayMs?: number | undefined;
+  retryBackoff?: RetryBackoff | undefined;
+  retryDisableDelay?: boolean | undefined;
+  noRetry?: boolean | undefined;
 }

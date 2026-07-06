@@ -1,9 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { runCommand } from "../../../src/cli/commands/run.js";
 import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
+import { loadConfig } from "../../../src/config/load.js";
+import { DEFAULT_CONFIG } from "../../../src/config/defaults.js";
 import { ErrorCode } from "../../../src/errors/codes.js";
 import type { RuntimeRunner, WorkflowRunResult } from "../../../src/runtime/public.js";
 import * as fs from "node:fs";
+import { validateConfig } from "../../../src/config/schema.js";
 
 // Mock imports
 import { precollectAllResourcesForLoad, checkDiscoveryPolicy } from "../../../src/discovery/precollect.js";
@@ -34,20 +37,29 @@ const mockPrecollected = {
 };
 
 vi.mock("../../../src/config/load.js", () => ({
-  loadConfig: vi.fn().mockImplementation(async (input: any) => ({
-    cwd: "/mock-cwd",
-    configPath: "/mock-config.yaml",
-    outDir: "/mock-out",
-    defaultProvider: input?.cli?.provider ?? "mock-provider",
-    defaultModel: input?.cli?.model ?? "mock-model",
-    providers: {},
-    reporting: { mode: "silent", verbose: false },
-    workflow: { maxLoopRounds: 10 },
-    sharedAgents: { maxDefinitions: 100, allowDynamicIds: false },
-    tools: { maxDefinitions: 100 },
-    _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} },
-    _configDiagnostics: []
-  }))
+  loadConfig: vi.fn().mockImplementation(async (input: any) => {
+    const resolvedConfig: any = {
+      ...DEFAULT_CONFIG,
+      cwd: "/mock-cwd",
+      configPath: "/mock-config.yaml",
+      outDir: "/mock-out",
+      defaultProvider: input?.cli?.provider ?? DEFAULT_CONFIG.defaultProvider,
+      defaultModel: input?.cli?.model ?? DEFAULT_CONFIG.defaultModel,
+      workflow: {
+        ...DEFAULT_CONFIG.workflow,
+        maxLoopRounds: 10
+      },
+      _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} },
+      _configDiagnostics: []
+    };
+
+    if (input?.cli?.noRetry) {
+      resolvedConfig.retry = false;
+    }
+
+    validateConfig(resolvedConfig);
+    return resolvedConfig;
+  })
 }));
 
 vi.mock("../../../src/discovery/precollect.js", () => ({
@@ -350,6 +362,98 @@ describe("Run Command", () => {
       }),
       expect.anything()
     );
+  });
+
+  describe("CLI retry overrides plumbing", () => {
+    it("forwards parsed retry overrides to loadConfig", async () => {
+      const runSpy = vi.fn().mockResolvedValue({
+        schemaVersion: "open-dynamic-workflow.report.v1",
+        runId: "test-run",
+        status: "succeeded",
+        durationMs: 10,
+        artifactsDir: "runs",
+        agents: []
+      } as WorkflowRunResult);
+      const mockRunner: RuntimeRunner = { run: runSpy };
+
+      await runCommand({
+        workflowFile: "valid-simple.js",
+        rawOptions: {
+          retryMaxAttempts: "3",
+          retryDelayMs: "500",
+          retryMaxDelayMs: "2000",
+          retryBackoff: "exponential"
+        },
+        deps: { runtimeRunner: mockRunner }
+      });
+
+      expect(loadConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cli: expect.objectContaining({
+            retryMaxAttempts: 3,
+            retryDelayMs: 500,
+            retryMaxDelayMs: 2000,
+            retryBackoff: "exponential"
+          })
+        })
+      );
+    });
+
+    it("forwards --no-retry override as noRetry: true", async () => {
+      const runSpy = vi.fn().mockResolvedValue({
+        schemaVersion: "open-dynamic-workflow.report.v1",
+        runId: "test-run",
+        status: "succeeded",
+        durationMs: 10,
+        artifactsDir: "runs",
+        agents: []
+      } as WorkflowRunResult);
+      const mockRunner: RuntimeRunner = { run: runSpy };
+
+      await runCommand({
+        workflowFile: "valid-simple.js",
+        rawOptions: {
+          retry: false
+        },
+        deps: { runtimeRunner: mockRunner }
+      });
+
+      expect(loadConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cli: expect.objectContaining({
+            noRetry: true
+          })
+        })
+      );
+    });
+
+    it("forwards --retry-disable-delay override as retryDisableDelay: true", async () => {
+      const runSpy = vi.fn().mockResolvedValue({
+        schemaVersion: "open-dynamic-workflow.report.v1",
+        runId: "test-run",
+        status: "succeeded",
+        durationMs: 10,
+        artifactsDir: "runs",
+        agents: []
+      } as WorkflowRunResult);
+      const mockRunner: RuntimeRunner = { run: runSpy };
+
+      await runCommand({
+        workflowFile: "valid-simple.js",
+        rawOptions: {
+          retryDisableDelay: true
+        },
+        deps: { runtimeRunner: mockRunner }
+      });
+
+      expect(loadConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cli: expect.objectContaining({
+            retryDisableDelay: true
+          })
+        })
+      );
+    });
   });
 
   describe("initialization hints", () => {

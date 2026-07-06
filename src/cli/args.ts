@@ -2,7 +2,7 @@ import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import type { ListCliResourceType } from "../discovery/types.js";
 import type { InitCliOptions, InitReportMode } from "./init/types.js";
-import type { ThinkingEffort } from "../types/index.js";
+import type { ThinkingEffort, RetryBackoff } from "../types/index.js";
 import { isThinkingEffort, THINKING_EFFORT_VALUES } from "../types/index.js";
 
 
@@ -137,4 +137,86 @@ export function parseInitOptions(raw: any): InitCliOptions {
   }
 
   return options;
+}
+
+export interface RetryCliOptions {
+  retryMaxAttempts?: number;
+  retryDelayMs?: number;
+  retryMaxDelayMs?: number;
+  retryBackoff?: RetryBackoff;
+  retryDisableDelay?: boolean;
+  noRetry?: boolean;
+}
+
+export function parseNonNegativeInteger(value: string | number, optionName: string): number {
+  const num = Number(value);
+  if (!Number.isInteger(num) || num < 0 || String(num) !== String(value)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      `Invalid option value for '${optionName}': '${value}'. Must be a non-negative integer.`
+    );
+  }
+  return num;
+}
+
+export function parseRetryBackoff(value: string): RetryBackoff {
+  if (value !== "fixed" && value !== "exponential") {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      `Invalid option value for '--retry-backoff': '${value}'. Must be one of: fixed, exponential.`
+    );
+  }
+  return value as RetryBackoff;
+}
+
+export function parseRetryCliOptions(rawOptions: any): RetryCliOptions {
+  const result: RetryCliOptions = {};
+
+  if (rawOptions.retryMaxAttempts !== undefined) {
+    result.retryMaxAttempts = parsePositiveInteger(rawOptions.retryMaxAttempts, "--retry-max-attempts");
+  }
+
+  if (rawOptions.retryDelayMs !== undefined) {
+    result.retryDelayMs = parseNonNegativeInteger(rawOptions.retryDelayMs, "--retry-delay-ms");
+  }
+
+  if (rawOptions.retryMaxDelayMs !== undefined) {
+    result.retryMaxDelayMs = parseNonNegativeInteger(rawOptions.retryMaxDelayMs, "--retry-max-delay-ms");
+  }
+
+  if (rawOptions.retryBackoff !== undefined) {
+    if (typeof rawOptions.retryBackoff !== "string") {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CLI_USAGE_ERROR,
+        `Invalid option value for '--retry-backoff': '${rawOptions.retryBackoff}'. Must be one of: fixed, exponential.`
+      );
+    }
+    result.retryBackoff = parseRetryBackoff(rawOptions.retryBackoff);
+  }
+
+  if (rawOptions.retryDisableDelay !== undefined) {
+    result.retryDisableDelay = !!rawOptions.retryDisableDelay;
+  }
+
+  const noRetry = rawOptions.retry === false || rawOptions.noRetry === true;
+  if (noRetry) {
+    result.noRetry = true;
+  }
+
+  if (result.noRetry) {
+    if (
+      result.retryMaxAttempts !== undefined ||
+      result.retryDelayMs !== undefined ||
+      result.retryMaxDelayMs !== undefined ||
+      result.retryBackoff !== undefined ||
+      result.retryDisableDelay !== undefined
+    ) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CLI_USAGE_ERROR,
+        "Cannot combine --no-retry with other retry configuration flags."
+      );
+    }
+  }
+
+  return result;
 }

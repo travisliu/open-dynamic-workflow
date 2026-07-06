@@ -8,6 +8,12 @@ export interface ConfigCliOverrides {
   maxAgentCalls?: number | undefined;
   report?: "pretty" | "json" | "jsonl" | undefined;
   verbose?: boolean | undefined;
+  retryMaxAttempts?: number | undefined;
+  retryDelayMs?: number | undefined;
+  retryMaxDelayMs?: number | undefined;
+  retryBackoff?: "fixed" | "exponential" | undefined;
+  retryDisableDelay?: boolean | undefined;
+  noRetry?: boolean | undefined;
 }
 
 export function mergeConfig(
@@ -66,6 +72,30 @@ export function mergeConfig(
   if (cli.maxAgentCalls !== undefined) merged.maxAgentCalls = cli.maxAgentCalls;
   if (cli.report) merged.reporting.mode = cli.report;
   if (cli.verbose !== undefined) merged.reporting.verbose = cli.verbose;
+
+  if (cli.noRetry) {
+    merged.retry = false;
+  } else {
+    const hasRetryOverrides =
+      cli.retryMaxAttempts !== undefined ||
+      cli.retryDelayMs !== undefined ||
+      cli.retryMaxDelayMs !== undefined ||
+      cli.retryBackoff !== undefined ||
+      cli.retryDisableDelay !== undefined;
+
+    if (hasRetryOverrides) {
+      const existingRetry = typeof merged.retry === "object" && merged.retry !== null ? merged.retry : {};
+      const newRetry: any = {
+        ...existingRetry,
+      };
+      if (cli.retryMaxAttempts !== undefined) newRetry.maxAttempts = cli.retryMaxAttempts;
+      if (cli.retryDelayMs !== undefined) newRetry.delayMs = cli.retryDelayMs;
+      if (cli.retryMaxDelayMs !== undefined) newRetry.maxDelayMs = cli.retryMaxDelayMs;
+      if (cli.retryBackoff !== undefined) newRetry.backoff = cli.retryBackoff;
+      if (cli.retryDisableDelay !== undefined) newRetry.disableDelay = cli.retryDisableDelay;
+      merged.retry = newRetry;
+    }
+  }
 
   return merged;
 }

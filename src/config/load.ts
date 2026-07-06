@@ -137,6 +137,7 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
     outDir: resolvedOutDir,
     _normalizedDiscovery: discovery,
     _configDiagnostics: diagnostics,
+    retry: merged.retry as any,
   };
   if (resolvedConfigPath !== undefined) {
     result.configPath = resolvedConfigPath;

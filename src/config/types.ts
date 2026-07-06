@@ -2,6 +2,7 @@ export type ProviderName = "codex" | "gemini" | "mock" | "copilot" | "opencode" 
 export type ReporterMode = "pretty" | "json" | "jsonl";
 
 import type { ThinkingEffort } from "../types/thinking-effort.js";
+import type { RetryConfigInput, ResolvedRetryPolicy } from "../types/retry.js";
 
 export interface ProviderModelArgConfig {
   flag: string;
@@ -107,6 +108,7 @@ export interface OpenDynamicWorkflowConfig {
     verbose: boolean;
   };
   failFast?: boolean;
+  retry?: false | RetryConfigInput | ResolvedRetryPolicy | undefined;
 }
 
 // --- Resolved Runtime Configuration Types ---
@@ -155,6 +157,7 @@ export interface ResolvedOpenDynamicWorkflowConfig extends Omit<OpenDynamicWorkf
 
   _normalizedDiscovery: NormalizedDiscoveryConfig;
   _configDiagnostics: ConfigDiagnostic[];
+  retry?: ResolvedRetryPolicy | undefined;
 }
 
 // --- Normalized Discovery Types ---

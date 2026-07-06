@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseKeyValueArgs, parsePositiveInteger, parseReportMode } from "../../../src/cli/args.js";
+import { parseKeyValueArgs, parsePositiveInteger, parseReportMode, parseNonNegativeInteger, parseRetryBackoff, parseRetryCliOptions } from "../../../src/cli/args.js";
 import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
 import { Command } from "commander";
 
@@ -98,6 +98,62 @@ describe("CLI Options Parsing Helpers", () => {
       program.parse(["node", "open-dynamic-workflow", "run", "workflow.js"], { from: "node" });
       const options = program.commands.find(c => c.name() === "run")?.opts();
       expect(options?.verbose).toBeFalsy();
+    });
+  });
+
+  describe("parseNonNegativeInteger", () => {
+    it("parses valid non-negative integer", () => {
+      expect(parseNonNegativeInteger("0", "--retry-delay-ms")).toBe(0);
+      expect(parseNonNegativeInteger("100", "--retry-delay-ms")).toBe(100);
+    });
+
+    it("throws CLI_USAGE_ERROR on non-integer or negative", () => {
+      expect(() => parseNonNegativeInteger("3.14", "--retry-delay-ms")).toThrow(OpenDynamicWorkflowError);
+      expect(() => parseNonNegativeInteger("-1", "--retry-delay-ms")).toThrow(OpenDynamicWorkflowError);
+      expect(() => parseNonNegativeInteger("abc", "--retry-delay-ms")).toThrow(OpenDynamicWorkflowError);
+    });
+  });
+
+  describe("parseRetryBackoff", () => {
+    it("parses valid retry backoff values", () => {
+      expect(parseRetryBackoff("fixed")).toBe("fixed");
+      expect(parseRetryBackoff("exponential")).toBe("exponential");
+    });
+
+    it("throws CLI_USAGE_ERROR on invalid backoff value", () => {
+      expect(() => parseRetryBackoff("linear")).toThrow(OpenDynamicWorkflowError);
+    });
+  });
+
+  describe("parseRetryCliOptions", () => {
+    it("parses valid combinations of retry flags", () => {
+      const parsed = parseRetryCliOptions({
+        retryMaxAttempts: "5",
+        retryDelayMs: "100",
+        retryMaxDelayMs: "5000",
+        retryBackoff: "exponential",
+        retryDisableDelay: true,
+      });
+      expect(parsed).toEqual({
+        retryMaxAttempts: 5,
+        retryDelayMs: 100,
+        retryMaxDelayMs: 5000,
+        retryBackoff: "exponential",
+        retryDisableDelay: true,
+      });
+    });
+
+    it("represents --no-retry correctly", () => {
+      const parsed1 = parseRetryCliOptions({ retry: false });
+      expect(parsed1).toEqual({ noRetry: true });
+
+      const parsed2 = parseRetryCliOptions({ noRetry: true });
+      expect(parsed2).toEqual({ noRetry: true });
+    });
+
+    it("throws CLI_USAGE_ERROR on conflict with --no-retry", () => {
+      expect(() => parseRetryCliOptions({ retry: false, retryMaxAttempts: "3" })).toThrow(OpenDynamicWorkflowError);
+      expect(() => parseRetryCliOptions({ noRetry: true, retryDelayMs: "100" })).toThrow(OpenDynamicWorkflowError);
     });
   });
 });

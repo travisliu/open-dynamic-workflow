@@ -2,6 +2,7 @@ import type { AgentArtifacts } from "./artifacts.js";
 import type { JsonSchema, ProviderName } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { ThinkingEffort } from "./thinking-effort.js";
+import type { RetryMetadata, RetryPolicyInput } from "./retry.js";
 
 
 export type StructuredOutputTransport = "validate-only" | "prompt" | "native" | "auto";
@@ -31,6 +32,7 @@ export interface DirectAgentCallInput {
   permissions?: AgentPermissionsInput | undefined;
   metadata?: Record<string, unknown> | undefined;
   thinkingEffort?: ThinkingEffort | undefined;
+  retry?: RetryPolicyInput | undefined;
 }
 
 export interface DefinitionAgentCallInput {
@@ -47,6 +49,7 @@ export interface DefinitionAgentCallInput {
   permissions?: AgentPermissionsInput | undefined;
   metadata?: Record<string, unknown> | undefined;
   thinkingEffort?: ThinkingEffort | undefined;
+  retry?: RetryPolicyInput | undefined;
 }
 
 export type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
@@ -84,6 +87,7 @@ export interface AgentSuccessResult {
   cache?: AgentResultCacheInfo | undefined;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown> | undefined;
+  retry?: RetryMetadata | undefined;
 }
 
 export interface AgentFailureResult {
@@ -102,6 +106,7 @@ export interface AgentFailureResult {
   cache?: AgentResultCacheInfo | undefined;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown> | undefined;
+  retry?: RetryMetadata | undefined;
 }
 
 export interface AgentResultCacheInfo {

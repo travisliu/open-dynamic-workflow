@@ -3,7 +3,7 @@ import { OpenDynamicWorkflowError } from "../../errors/types.js";
 import { loadConfig } from "../../config/load.js";
 import { discoverWorkflowRegistry } from "../../workflow/discovery.js";
 import { resolveWorkflowTarget } from "../../workflow/resolve-target.js";
-import { parseKeyValueArgs, parsePositiveInteger, parseReportMode, parseThinkingEffort } from "../args.js";
+import { parseKeyValueArgs, parsePositiveInteger, parseReportMode, parseThinkingEffort, parseRetryCliOptions } from "../args.js";
 import { printDryRunSummary } from "../print.js";
 import { DefaultRuntimeRunner, type RuntimeRunner } from "../../runtime/public.js";
 import { FileSystemArtifactStore } from "../../artifacts/run-store.js";
@@ -75,6 +75,7 @@ export async function runWorkflowService(
     : undefined;
   const strict = !!rawOptions.strict;
 
+  const retryCliOptions = parseRetryCliOptions(rawOptions);
 
   const cliOverrides: any = {};
   if (rawOptions.provider !== undefined) cliOverrides.provider = rawOptions.provider;
@@ -84,6 +85,13 @@ export async function runWorkflowService(
   if (maxAgentCalls !== undefined) cliOverrides.maxAgentCalls = maxAgentCalls;
   if (reportMode !== undefined) cliOverrides.report = reportMode;
   if (rawOptions.verbose !== undefined) cliOverrides.verbose = !!rawOptions.verbose;
+
+  if (retryCliOptions.retryMaxAttempts !== undefined) cliOverrides.retryMaxAttempts = retryCliOptions.retryMaxAttempts;
+  if (retryCliOptions.retryDelayMs !== undefined) cliOverrides.retryDelayMs = retryCliOptions.retryDelayMs;
+  if (retryCliOptions.retryMaxDelayMs !== undefined) cliOverrides.retryMaxDelayMs = retryCliOptions.retryMaxDelayMs;
+  if (retryCliOptions.retryBackoff !== undefined) cliOverrides.retryBackoff = retryCliOptions.retryBackoff;
+  if (retryCliOptions.retryDisableDelay !== undefined) cliOverrides.retryDisableDelay = retryCliOptions.retryDisableDelay;
+  if (retryCliOptions.noRetry !== undefined) cliOverrides.noRetry = retryCliOptions.noRetry;
 
   // Load config
   const config = await loadConfig({
