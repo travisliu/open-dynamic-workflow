@@ -15,7 +15,7 @@ import { createDsl } from "../../../src/workflow/dsl.js";
 import type { OpenDynamicWorkflowConfig } from "../../../src/config/types.js";
 import type { ResolvedRetryPolicy } from "../../../src/types/retry.js";
 
-describe("Phase 2 retry acceptance coverage", () => {
+describe("Retry policy resolution and cache integration (Phase 2)", () => {
   let tempDir: string;
 
   beforeEach(async () => {
@@ -26,7 +26,7 @@ describe("Phase 2 retry acceptance coverage", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("resolves global precedence and preserves the resolved retry policy through merge/load wiring", async () => {
+  it("should resolve global precedence and preserve resolved retry policy through config load wiring", async () => {
     // Arrange
     const fileRetry: OpenDynamicWorkflowConfig["retry"] = {
       delayMs: 250,
@@ -91,7 +91,7 @@ describe("Phase 2 retry acceptance coverage", () => {
     });
   });
 
-  it("keeps retry:false disabled and prevents inherited retry fields from leaking through", async () => {
+  it("should keep retry:false disabled and prevent inherited retry fields from leaking to disabled agents", async () => {
     // Arrange
     const fileRetry: OpenDynamicWorkflowConfig["retry"] = false;
     const configPath = join(tempDir, "config.yaml");
@@ -129,7 +129,7 @@ describe("Phase 2 retry acceptance coverage", () => {
     expect(disabledAtAgentLevel.policy).not.toEqual(enabledGlobal.policy);
   });
 
-  it("includes resolved retry in the agent fingerprint and keeps semantic identity stable", () => {
+  it("should include the resolved retry policy in the cache fingerprint to ensure semantic consistency", () => {
     // Arrange
     const baseCall = {
       call: { id: "agent-1", prompt: "hello" },
@@ -242,7 +242,7 @@ describe("Phase 2 retry acceptance coverage", () => {
     }
   });
 
-  it("wires resolved retry semantics into the live agent cache fingerprint path", async () => {
+  it("should verify that resolved retry settings are included in runtime agent cache evaluation and hit-detection paths", async () => {
     const globalRetry = resolveGlobalRetryPolicy({
       configRetry: {
         maxAttempts: 3,
@@ -358,7 +358,7 @@ describe("Phase 2 retry acceptance coverage", () => {
     expect(runtime.callCache.prefixCacheUsable).toBe(false);
   });
 
-  it("invalidates the live agent cache path when retry is added without a global retry policy", async () => {
+  it("should invalidate previous agent cache entries if the retry configuration gets modified", async () => {
     const omittedGlobalRetry = resolveGlobalRetryPolicy({});
     const runtimeRetry = resolveAgentRetryPolicy({
       globalPolicy: omittedGlobalRetry,

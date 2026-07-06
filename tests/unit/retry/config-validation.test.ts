@@ -99,7 +99,7 @@ vi.mock("node:fs", async (importOriginal) => {
   };
 });
 
-describe("Phase 1 retry acceptance coverage", () => {
+describe("Retry configuration and CLI overrides validation (Phase 1)", () => {
   beforeEach(() => {
     loadConfigCalls.length = 0;
     runtimeExecutionOrder.length = 0;
@@ -150,7 +150,7 @@ describe("Phase 1 retry acceptance coverage", () => {
     });
   });
 
-  it("accepts omitted retry, valid retry config, and retry:false", () => {
+  it("should successfully validate omitted config, explicit disable, or valid retry config objects", () => {
     // Arrange
     const validRetryConfig: RetryConfigInput = {
       maxAttempts: 3,
@@ -178,7 +178,7 @@ describe("Phase 1 retry acceptance coverage", () => {
     expect(() => validateConfig(validConfig)).not.toThrow();
   });
 
-  it("rejects invalid retry shapes, invalid numeric values, invalid backoff values, and banned selection fields", () => {
+  it("should raise validation errors for incorrect retry types, negative bounds, invalid backoff options, or forbidden keys", () => {
     // Arrange
     const invalidCases = [
       {
@@ -291,7 +291,7 @@ describe("Phase 1 retry acceptance coverage", () => {
     }
   });
 
-  it("rejects invalid retry config through the real loadConfig merge boundary", async () => {
+  it("should fail validation with explicit diagnostics when loaded through config parsing", async () => {
     // Arrange
     const tempDir = join(tmpdir(), "phase-1-retry-load-acceptance-" + Date.now());
     fs.mkdirSync(tempDir, { recursive: true });
@@ -323,7 +323,7 @@ describe("Phase 1 retry acceptance coverage", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("parses retry CLI flags into run-option-compatible overrides and rejects malformed values", () => {
+  it("should parse CLI flags into correct configuration overrides or raise CLI usage errors on bad inputs", () => {
     // Arrange
     const rawOptions = {
       retryMaxAttempts: "4",
@@ -367,7 +367,7 @@ describe("Phase 1 retry acceptance coverage", () => {
     }
   });
 
-  it("resolves global and per-agent retry precedence field by field and keeps explicit disable markers distinct", () => {
+  it("should merge config sources field-by-field and properly resolve precedence between global and agent-level settings", () => {
     // Arrange
     const configRetry = {
       delayMs: 250,
@@ -470,7 +470,7 @@ describe("Phase 1 retry acceptance coverage", () => {
     });
   });
 
-  it("forwards parsed retry overrides through runCommand before workflow execution starts", async () => {
+  it("should pass parsed CLI retry options down into the runtime environment before workflow execution runs", async () => {
     // Arrange
     const runtimeRunner: RuntimeRunner = {
       run: vi.fn().mockImplementation(async () => {

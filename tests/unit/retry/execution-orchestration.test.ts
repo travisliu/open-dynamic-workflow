@@ -12,7 +12,7 @@ import { RunLimitTracker } from "../../../src/workflow/run-limits.js";
 import type { AgentResult } from "../../../src/types/agent.js";
 import type { ResolvedRetryPolicy } from "../../../src/types/retry.js";
 
-describe("Phase 3 retry acceptance coverage", () => {
+describe("Retry execution orchestration and failure classification (Phase 3)", () => {
   let tempDir: string;
 
   beforeEach(async () => {
@@ -111,7 +111,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     return store;
   }
 
-  it("classifies retryable attempt failures as retryable", () => {
+  it("should classify transient failures (e.g. process crashes, schema failures) as retryable", () => {
     // Arrange
     const cases = [
       createAgentResult({
@@ -156,7 +156,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     ]);
   });
 
-  it("classifies terminal attempt failures as non-retryable", () => {
+  it("should classify fatal errors (e.g. timeouts, cancellations, bad config) as non-retryable", () => {
     // Arrange
     const cases = [
       createAgentResult({
@@ -217,7 +217,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     ]);
   });
 
-  it("schedules each live attempt through the scheduler and records retry metadata", async () => {
+  it("should route each attempt execution through the scheduler and capture attempt-level metadata", async () => {
     // Arrange
     const artifactStore = createRecordingArtifactStore();
     const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
@@ -326,7 +326,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     });
   });
 
-  it("persists the logical duration for a retried logical result", async () => {
+  it("should calculate and record the aggregated logical duration across all attempts", async () => {
     const artifactStore = createRecordingArtifactStore();
     const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
     const scheduler = {
@@ -398,7 +398,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     );
   });
 
-  it("stops after a terminal failure and triggers final fail-fast only after the logical result is final", async () => {
+  it("should halt retries upon encountering a terminal failure, deferring scheduler fail-fast until the final outcome", async () => {
     // Arrange
     const artifactStore = createRecordingArtifactStore();
     const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
@@ -480,7 +480,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     );
   });
 
-  it("persists a cancellation-shaped logical result when retry deferral is interrupted", async () => {
+  it("should handle global cancellation signals during the retry delay, returning a cancelled result status", async () => {
     const artifactStore = createRecordingArtifactStore();
     const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
     const scheduler = {
@@ -555,7 +555,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     );
   });
 
-  it("writes attempt-scoped executor artifacts and remains single-attempt", async () => {
+  it("should format and save per-attempt logs/artifacts under nested attempt directories", async () => {
     // Arrange
     const config: any = {
       defaultProvider: "mock",
@@ -634,7 +634,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     await expect(access(join(rootDir, "agents/phase-3-logical/prompt.txt"))).rejects.toThrow();
   });
 
-  it("suppresses deferred fail-fast during intermediate retry attempts", async () => {
+  it("should defer scheduler fail-fast propagation while retry attempts are ongoing", async () => {
     // Arrange
     const scheduler = new DefaultScheduler({ concurrency: 1, failFast: true });
     const order: string[] = [];
@@ -672,7 +672,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     expect(scheduler.getSnapshot().aborted).toBe(false);
   });
 
-  it("keeps a retry-managed logical call alive across a retryable first failure when failFast is enabled", async () => {
+  it("should maintain execution across retryable failures even if general scheduler fail-fast is active", async () => {
     const artifactStore = createRecordingArtifactStore();
     const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
     const scheduler = new DefaultScheduler({ concurrency: 1, failFast: true });
@@ -734,7 +734,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     expect(scheduler.getSnapshot().aborted).toBe(false);
   });
 
-  it("counts each live attempt against maxAgentCalls and surfaces RUN_LIMIT_EXCEEDED when exceeded", async () => {
+  it("should enforce call limits per individual attempt and exit with RUN_LIMIT_EXCEEDED when maxAgentCalls is reached", async () => {
     // Arrange
     const artifactStore = createRecordingArtifactStore();
     const runLimits = new RunLimitTracker({ maxAgentCalls: 2 });
