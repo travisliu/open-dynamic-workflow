@@ -82,7 +82,7 @@ export class DefaultScheduler implements Scheduler {
 
     this.queue.push(internalTask);
 
-    if (this.eventSink) {
+    if (this.eventSink && !options?.suppressLifecycleEvents) {
       this.eventSink.emit("agent.queued", {
         agentId: task.id,
         label: task.label,
@@ -124,7 +124,7 @@ export class DefaultScheduler implements Scheduler {
       queuedTask.status = "skipped";
       const result = this.createSkippedOrCancelledResult(queuedTask.task, "skipped", this.abortReason);
       
-      if (this.eventSink) {
+      if (this.eventSink && !queuedTask.options?.suppressLifecycleEvents) {
         this.eventSink.emit("agent.cancelled", {
           agentId: queuedTask.task.id,
           label: queuedTask.task.label,
@@ -177,7 +177,7 @@ export class DefaultScheduler implements Scheduler {
       this.running.set(internalTask.task.id, internalTask);
       internalTask.status = "running";
 
-      if (this.eventSink) {
+      if (this.eventSink && !internalTask.options?.suppressLifecycleEvents) {
         this.eventSink.emit("agent.started", {
           agentId: internalTask.task.id,
           label: internalTask.task.label,
@@ -209,7 +209,7 @@ export class DefaultScheduler implements Scheduler {
           }
 
           if (isSuccess) {
-            if (this.eventSink) {
+            if (this.eventSink && !internalTask.options?.suppressLifecycleEvents) {
               this.eventSink.emit("agent.completed", {
                 agentId: internalTask.task.id,
                 label: internalTask.task.label,
@@ -231,7 +231,7 @@ export class DefaultScheduler implements Scheduler {
             const error = agentResult?.error || { name: "AgentFailure", message: "Agent failed execution", code: "PROVIDER_PROCESS_FAILED" };
 
             const eventName = this.getEventNameForStatus(agentStatus);
-            if (this.eventSink) {
+            if (this.eventSink && !internalTask.options?.suppressLifecycleEvents) {
               this.eventSink.emit(eventName, {
                 agentId: internalTask.task.id,
                 label: internalTask.task.label,
@@ -297,7 +297,7 @@ export class DefaultScheduler implements Scheduler {
 
           this.completed.set(internalTask.task.id, failureResult);
 
-      if (this.eventSink) {
+      if (this.eventSink && !internalTask.options?.suppressLifecycleEvents) {
         const eventName = isAbort ? "agent.cancelled" : "agent.failed";
         this.eventSink.emit(eventName, {
           agentId: internalTask.task.id,

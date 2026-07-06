@@ -14,10 +14,23 @@ import type {
 } from "../types/retry.js";
 import type { Scheduler } from "../types/scheduler.js";
 import type { RunLimitTracker } from "../workflow/run-limits.js";
-import type { ArtifactStore } from "../types/artifacts.js";
+import type { AgentArtifacts, ArtifactStore } from "../types/artifacts.js";
 import { EventBus } from "../orchestration/event-bus.js";
 import { classifyAttemptFailure } from "./attempt-classifier.js";
+import type {
+  AgentAttemptCompletedPayload,
+  AgentAttemptFailedPayload,
+  AgentAttemptStartedPayload,
+  AgentCancelledPayload,
+  AgentCompletedPayload,
+  AgentFailedPayload,
+  AgentRetryScheduledPayload,
+  AgentRetrySkippedDelayPayload,
+  AgentStartedPayload,
+  AgentTimedOutPayload
+} from "../output/events.js";
 import { redactText, collectSecretValues } from "../security/env.js";
+import { sanitizeMetadata } from "../security/metadata.js";
 import { computeRetryDelay, sleepRetryDelay } from "./retry-delay.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
@@ -25,17 +38,17 @@ import * as path from "node:path";
 
 export interface RetryOrchestratorInput {
   logicalAgentId: string;
-  label?: string;
+  label?: string | undefined;
   provider: ProviderName;
-  model?: string;
+  model?: string | undefined;
   basePrompt: string;
-  schema?: JsonSchema;
-  structuredOutput?: StructuredOutputConfig;
+  schema?: JsonSchema | undefined;
+  structuredOutput?: StructuredOutputConfig | undefined;
   timeoutMs: number;
   cwd: string;
   permissions: AgentPermissions;
-  metadata?: Record<string, unknown>;
-  thinkingEffort?: ThinkingEffort;
+  metadata?: Record<string, unknown> | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
   retry: ResolvedRetryPolicy;
   scheduler: Scheduler;
   runLimits: RunLimitTracker;
@@ -66,9 +79,21 @@ export class RetryOrchestrator {
 
     const logicalDir = `agents/${input.logicalAgentId}`;
     const secretValues = collectSecretValues(process.env);
+    const sanitizedMetadata = sanitizeMetadata(input.metadata);
+    const logicalStartedAtMs = Date.now();
 
     let attemptNum = 1;
     let currentPrompt = input.basePrompt;
+
+    await input.eventBus.emit("agent.started", {
+      agentId: input.logicalAgentId,
+      provider: input.provider,
+      cwd: input.cwd,
+      permissions: input.permissions,
+      metadata: sanitizedMetadata,
+      ...(input.label !== undefined ? { label: input.label } : {}),
+      ...(input.model !== undefined ? { model: input.model } : {})
+    } satisfies AgentStartedPayload);
 
     while (attemptNum <= maxAttempts) {
       if (input.signal.aborted) {
@@ -82,10 +107,12 @@ export class RetryOrchestrator {
       attemptsStarted++;
 
       let runLimitError: any = null;
-      try {
-        input.runLimits.beforeAgentSchedule(input.logicalAgentId);
-      } catch (err: any) {
-        runLimitError = err;
+      if (input.runLimits) {
+        try {
+          input.runLimits.beforeAgentSchedule(input.logicalAgentId);
+        } catch (err: any) {
+          runLimitError = err;
+        }
       }
 
       if (runLimitError) {
@@ -137,13 +164,19 @@ export class RetryOrchestrator {
         break;
       }
 
-      // Emit event: agent.attempt.started
-      await input.eventBus.emit("agent.attempt.started" as any, {
+      await input.eventBus.emit("agent.attempt.started", {
         agentId: input.logicalAgentId,
-        label: input.label,
+        provider: input.provider,
+        cwd: input.cwd,
+        metadata: sanitizedMetadata,
         attempt: attemptNum,
-        maxAttempts
-      });
+        maxAttempts,
+        artifacts: {
+          dir: attemptDir
+        },
+        ...(input.label !== undefined ? { label: input.label } : {}),
+        ...(input.model !== undefined ? { model: input.model } : {})
+      } satisfies AgentAttemptStartedPayload);
 
       const attemptTask: any = {
         id: `${input.logicalAgentId}_attempt_${attemptNum}`,
@@ -182,7 +215,8 @@ export class RetryOrchestrator {
         provider: input.provider,
         timeoutMs: input.timeoutMs,
         cwd: input.cwd,
-        deferFailFastUntilLogicalResult: attemptNum > 1,
+        deferFailFastUntilLogicalResult: true,
+        suppressLifecycleEvents: true,
         attempt: {
           logicalAgentId: input.logicalAgentId,
           attempt: attemptNum,
@@ -250,27 +284,47 @@ export class RetryOrchestrator {
         finalStatus = "succeeded";
         finalResult = attemptResult;
 
-        await input.eventBus.emit("agent.attempt.completed" as any, {
+        await input.eventBus.emit("agent.attempt.completed", {
           agentId: input.logicalAgentId,
+          provider: input.provider,
+          cwd: input.cwd,
+          metadata: sanitizedMetadata,
           attempt: attemptNum,
+          maxAttempts,
           status: "succeeded",
-          durationMs
-        });
+          durationMs,
+          exitCode: attemptResult.exitCode,
+          retryable: false,
+          artifacts: attemptResult.artifacts,
+          ...(input.label !== undefined ? { label: input.label } : {}),
+          ...(input.model !== undefined ? { model: input.model } : {})
+        } satisfies AgentAttemptCompletedPayload);
         break;
       } else {
-        await input.eventBus.emit("agent.attempt.failed" as any, {
+        await input.eventBus.emit("agent.attempt.failed", {
           agentId: input.logicalAgentId,
+          provider: input.provider,
+          cwd: input.cwd,
+          metadata: sanitizedMetadata,
           attempt: attemptNum,
+          maxAttempts,
+          status: attemptResult.status as "failed" | "timed_out" | "cancelled" | "skipped",
+          durationMs,
+          exitCode: attemptResult.exitCode,
+          retryable: classification.retryable,
+          failureReason: classification.reason,
           error: attemptResult.error,
-          reason: classification.reason
-        });
+          artifacts: attemptResult.artifacts,
+          ...(input.label !== undefined ? { label: input.label } : {}),
+          ...(input.model !== undefined ? { model: input.model } : {})
+        } satisfies AgentAttemptFailedPayload);
 
         if (input.signal.aborted) {
           attemptSummary.status = "cancelled";
           attempts.push(attemptSummary);
           finalStatus = "cancelled";
           finalFailureReason = "cancelled";
-          finalResult = attemptResult;
+          finalResult = buildLogicalCancellationResult(input, attemptResult);
           break;
         }
 
@@ -285,23 +339,43 @@ export class RetryOrchestrator {
             attempts.push(attemptSummary);
             finalStatus = "cancelled";
             finalFailureReason = "cancelled";
-            finalResult = attemptResult;
+            finalResult = buildLogicalCancellationResult(input, attemptResult);
             break;
           }
 
           if (policy.disableDelay) {
             attemptSummary.delaySkipped = true;
-            await input.eventBus.emit("agent.retry.skipped_delay" as any, {
+            await input.eventBus.emit("agent.retry.skipped_delay", {
               agentId: input.logicalAgentId,
+              provider: input.provider,
+              cwd: input.cwd,
+              metadata: sanitizedMetadata,
+              failedAttempt: attemptNum,
               nextAttempt: attemptNum + 1,
-              delayMs: delayMetadata.delayMs
-            });
+              maxAttempts,
+              failureReason: classification.reason,
+              computedDelayMs: delayMetadata.delayMs,
+              delaySkipped: true,
+              delayMs: delayMetadata.delayMs,
+              ...(input.label !== undefined ? { label: input.label } : {}),
+              ...(input.model !== undefined ? { model: input.model } : {})
+            } satisfies AgentRetrySkippedDelayPayload);
           } else {
-            await input.eventBus.emit("agent.retry.scheduled" as any, {
+            await input.eventBus.emit("agent.retry.scheduled", {
               agentId: input.logicalAgentId,
+              provider: input.provider,
+              cwd: input.cwd,
+              metadata: sanitizedMetadata,
+              failedAttempt: attemptNum,
               nextAttempt: attemptNum + 1,
-              delayMs: delayMetadata.delayMs
-            });
+              maxAttempts,
+              failureReason: classification.reason,
+              computedDelayMs: delayMetadata.delayMs,
+              delaySkipped: false,
+              delayMs: delayMetadata.delayMs,
+              ...(input.label !== undefined ? { label: input.label } : {}),
+              ...(input.model !== undefined ? { model: input.model } : {})
+            } satisfies AgentRetryScheduledPayload);
 
             try {
               await sleepRetryDelay(delayMetadata.delayMs, input.signal);
@@ -310,7 +384,7 @@ export class RetryOrchestrator {
               attempts.push(attemptSummary);
               finalStatus = "cancelled";
               finalFailureReason = "cancelled";
-              finalResult = attemptResult;
+              finalResult = buildLogicalCancellationResult(input, attemptResult);
               break;
             }
           }
@@ -318,11 +392,11 @@ export class RetryOrchestrator {
           // Build next prompt with schema feedback if schema validation failed
           if (classification.reason === "schema_validation_failed" && attemptResult.ok === false) {
             let validationErrors: any[] = [];
-            if (attemptResult.artifacts.validationErrorPath) {
+            if (attemptResult.artifacts.validationErrorPath && input.artifactStore) {
               try {
                 if (typeof (input.artifactStore as any).readJson === "function") {
                   validationErrors = await (input.artifactStore as any).readJson(attemptResult.artifacts.validationErrorPath) as any[];
-                } else {
+                } else if (typeof input.artifactStore.getRunArtifacts === "function") {
                   const runArtifacts = input.artifactStore.getRunArtifacts();
                   const fullPath = path.resolve(runArtifacts.rootDir, attemptResult.artifacts.validationErrorPath);
                   const fileContent = await fs.readFile(fullPath, "utf8");
@@ -386,6 +460,26 @@ export class RetryOrchestrator {
       finalResult.status = "cancelled";
     }
 
+    if (finalResult) {
+      finalResult.durationMs = Date.now() - logicalStartedAtMs;
+    }
+
+    if (finalResult) {
+      finalResult.artifacts = buildLogicalAgentArtifacts(logicalDir, finalResult.artifacts);
+    }
+
+    const isRetryableExhaustion = exhausted && attempts.length > 0 && !!attempts[attempts.length - 1]?.retryable;
+
+    if (isRetryableExhaustion && finalResult && !finalResult.ok) {
+      const originalError = finalResult.error;
+      finalResult.error = {
+        name: "OpenDynamicWorkflowError",
+        code: "RETRY_EXHAUSTED",
+        message: `Agent retry attempts exhausted: ${originalError?.message || "Execution failed"}`,
+        cause: originalError
+      };
+    }
+
     // Attach retry metadata to final result
     const retryMetadata: RetryMetadata = {
       enabled: resolvedRetry.enabled,
@@ -396,6 +490,18 @@ export class RetryOrchestrator {
       summaryPath: `${logicalDir}/retry-summary.json`,
       attempts
     };
+
+    if (isRetryableExhaustion) {
+      await input.eventBus.emit("agent.retry.exhausted" as any, {
+        agentId: input.logicalAgentId,
+        label: input.label,
+        maxAttempts,
+        attemptsStarted,
+        finalFailureReason: finalFailureReason || "exhausted",
+        error: finalResult?.ok ? undefined : finalResult?.error,
+        retrySummaryPath: retryMetadata.summaryPath
+      });
+    }
     if (finalResult.ok === false && finalFailureReason !== undefined) {
       retryMetadata.finalFailureReason = finalFailureReason;
     }
@@ -418,10 +524,46 @@ export class RetryOrchestrator {
       summaryArtifact.finalFailureReason = retryMetadata.finalFailureReason;
     }
 
-    await input.artifactStore.writeJson(`${logicalDir}/retry-summary.json`, summaryArtifact);
+    if (input.artifactStore) {
+      await input.artifactStore.writeJson(`${logicalDir}/retry-summary.json`, summaryArtifact);
+      await input.artifactStore.writeJson(`${logicalDir}/result.json`, finalResult);
 
-    // Write final result.json to the logical directory
-    await input.artifactStore.writeJson(`${logicalDir}/result.json`, finalResult);
+      if (typeof input.artifactStore.getRunArtifacts === "function") {
+        const runArtifacts = input.artifactStore.getRunArtifacts();
+        const rootDir = runArtifacts.rootDir;
+        if (rootDir) {
+          const finalAttempt = retryMetadata.finalAttempt;
+          const finalAttemptDir = `${logicalDir}/attempts/${finalAttempt}`;
+          const filesToCopy = [
+            "prompt.txt",
+            "stdout.log",
+            "stderr.log",
+            "metadata.json",
+            "permissions.json",
+            "raw-result.json",
+            "normalized-result.json",
+            "schema.json",
+            "validation-error.json"
+          ];
+          for (const filename of filesToCopy) {
+            const srcPath = path.resolve(rootDir, finalAttemptDir, filename);
+            const destPath = path.resolve(rootDir, logicalDir, filename);
+            try {
+              await fs.copyFile(srcPath, destPath);
+            } catch {
+              // Ignore if file doesn't exist
+            }
+          }
+        }
+      }
+    }
+
+    if (finalResult.ok) {
+      await input.eventBus.emit("agent.completed", buildLogicalCompletionEvent(input, finalResult, sanitizedMetadata));
+    } else {
+      const eventType = getLogicalTerminalEventType(finalResult.status);
+      await input.eventBus.emit(eventType, buildLogicalFailureEvent(input, finalResult, sanitizedMetadata));
+    }
 
     // If logical result is failed and failFast is enabled, trigger failFast on scheduler
     if (!finalResult.ok && input.failFast) {
@@ -435,6 +577,133 @@ export class RetryOrchestrator {
 
     return finalResult;
   }
+}
+
+function buildLogicalCancellationResult(
+  input: RetryOrchestratorInput,
+  sourceResult: AgentFailureResult
+): AgentFailureResult {
+  return {
+    ok: false,
+    status: "cancelled",
+    id: input.logicalAgentId,
+    label: sourceResult.label ?? input.label,
+    provider: input.provider,
+    model: sourceResult.model ?? input.model,
+    stdout: sourceResult.stdout,
+    stderr: input.signal.reason ? String(input.signal.reason) : "Execution stopped",
+    exitCode: null,
+    durationMs: sourceResult.durationMs,
+    artifacts: sourceResult.artifacts,
+    error: {
+      name: "CancelledError",
+      message: input.signal.reason ? String(input.signal.reason) : "Execution stopped",
+      code: "USER_CANCELLED"
+    },
+    permissions: input.permissions,
+    ...(sourceResult.metadata !== undefined ? { metadata: sourceResult.metadata } : {})
+  };
+}
+
+function buildLogicalCompletionEvent(
+  input: RetryOrchestratorInput,
+  result: AgentSuccessResult,
+  metadata: Record<string, unknown>
+): AgentCompletedPayload {
+  return {
+    agentId: input.logicalAgentId,
+    provider: input.provider,
+    status: "succeeded",
+    durationMs: result.durationMs,
+    exitCode: result.exitCode,
+    artifacts: result.artifacts,
+    permissions: input.permissions,
+    metadata,
+    ...(input.label !== undefined ? { label: input.label } : {}),
+    ...(input.model !== undefined ? { model: input.model } : {})
+  };
+}
+
+function buildLogicalFailureEvent(
+  input: RetryOrchestratorInput,
+  result: AgentFailureResult,
+  metadata: Record<string, unknown>
+): AgentFailedPayload | AgentTimedOutPayload | AgentCancelledPayload {
+  const base = {
+    agentId: input.logicalAgentId,
+    provider: input.provider,
+    durationMs: result.durationMs,
+    artifacts: result.artifacts,
+    permissions: input.permissions,
+    metadata,
+    ...(input.label !== undefined ? { label: input.label } : {}),
+    ...(input.model !== undefined ? { model: input.model } : {})
+  };
+
+  if (result.status === "timed_out") {
+    return {
+      ...base,
+      status: "timed_out",
+      error: result.error
+    };
+  }
+
+  if (result.status === "cancelled" || result.status === "skipped") {
+    return {
+      ...base,
+      status: "cancelled",
+      error: result.error,
+      artifacts: result.artifacts
+    };
+  }
+
+  return {
+    ...base,
+    status: "failed",
+    exitCode: result.exitCode,
+    error: result.error
+  };
+}
+
+function getLogicalTerminalEventType(status: AgentFailureResult["status"]): "agent.failed" | "agent.timed_out" | "agent.cancelled" {
+  if (status === "timed_out") {
+    return "agent.timed_out";
+  }
+  if (status === "cancelled" || status === "skipped") {
+    return "agent.cancelled";
+  }
+  return "agent.failed";
+}
+
+function buildLogicalAgentArtifacts(logicalDir: string, artifacts: AgentArtifacts): AgentArtifacts {
+  const logicalArtifacts: AgentArtifacts = {
+    ...artifacts,
+    dir: logicalDir,
+    promptPath: `${logicalDir}/prompt.txt`,
+    stdoutPath: `${logicalDir}/stdout.log`,
+    stderrPath: `${logicalDir}/stderr.log`
+  };
+
+  if (artifacts.rawResultPath !== undefined) {
+    logicalArtifacts.rawResultPath = `${logicalDir}/raw-result.json`;
+  }
+  if (artifacts.normalizedResultPath !== undefined) {
+    logicalArtifacts.normalizedResultPath = `${logicalDir}/normalized-result.json`;
+  }
+  if (artifacts.schemaPath !== undefined) {
+    logicalArtifacts.schemaPath = `${logicalDir}/schema.json`;
+  }
+  if (artifacts.validationErrorPath !== undefined) {
+    logicalArtifacts.validationErrorPath = `${logicalDir}/validation-error.json`;
+  }
+  if (artifacts.permissionsPath !== undefined) {
+    logicalArtifacts.permissionsPath = `${logicalDir}/permissions.json`;
+  }
+  if (artifacts.metadataPath !== undefined) {
+    logicalArtifacts.metadataPath = `${logicalDir}/metadata.json`;
+  }
+
+  return logicalArtifacts;
 }
 
 function buildSchemaRetryFeedback(validationErrors: any[]): string {

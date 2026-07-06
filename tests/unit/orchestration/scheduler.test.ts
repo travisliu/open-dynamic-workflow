@@ -298,4 +298,27 @@ describe("DefaultScheduler", () => {
     const rNext = await pNext;
     expect(rNext.ok).toBe(true);
   });
+
+  it("suppresses events when suppressLifecycleEvents is true", async () => {
+    const events: Array<{ type: string; payload: any }> = [];
+    const eventSink = {
+      emit: (type: string, payload: any) => {
+        events.push({ type, payload });
+      }
+    };
+    const scheduler = new DefaultScheduler({ concurrency: 1 }, { eventSink });
+
+    const taskFn = async () => {
+      return { ok: true, status: "succeeded" } as AgentResult;
+    };
+
+    const task = {
+      id: "t1",
+      run: taskFn
+    };
+
+    await scheduler.schedule(task, { suppressLifecycleEvents: true });
+
+    expect(events.length).toBe(0);
+  });
 });

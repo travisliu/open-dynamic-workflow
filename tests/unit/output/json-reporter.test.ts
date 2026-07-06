@@ -147,6 +147,69 @@ describe("JsonReporter", () => {
     expect(parsed.agents[0].permissions).toEqual({ mode: "dangerously-full-access" });
   });
 
+  it("finish() output preserves retry metadata on final agent reports", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new JsonReporter(streams);
+
+    const resultWithRetry = {
+      ...dummyResult,
+      agents: [
+        {
+          id: "agent-1",
+          status: "succeeded",
+          artifacts: {
+            dir: "agents/agent-1",
+            promptPath: "agents/agent-1/prompt.txt",
+            stdoutPath: "agents/agent-1/stdout.log",
+            stderrPath: "agents/agent-1/stderr.log"
+          },
+          retry: {
+            enabled: true,
+            exhausted: false,
+            maxAttempts: 3,
+            attemptsStarted: 2,
+            finalAttempt: 2,
+            summaryPath: "agents/agent-1/retry-summary.json",
+            attempts: [
+              {
+                attempt: 1,
+                status: "failed",
+                retryable: true,
+                failureReason: "provider_error",
+                startedAt: "start-1",
+                completedAt: "finish-1",
+                durationMs: 10,
+                computedDelayBeforeNextAttemptMs: 1000,
+                artifactPath: "agents/agent-1/attempts/1"
+              },
+              {
+                attempt: 2,
+                status: "succeeded",
+                retryable: false,
+                startedAt: "start-2",
+                completedAt: "finish-2",
+                durationMs: 15,
+                artifactPath: "agents/agent-1/attempts/2"
+              }
+            ]
+          }
+        }
+      ]
+    };
+
+    reporter.finish(resultWithRetry as any);
+
+    const output = getStdout();
+    expect(output.trim().split("\n")).toHaveLength(JSON.stringify(resultWithRetry, null, 2).split("\n").length);
+    const parsed = JSON.parse(output.trim());
+    expect(parsed.agents[0].retry.summaryPath).toBe("agents/agent-1/retry-summary.json");
+    expect(parsed.agents[0].retry.attemptsStarted).toBe(2);
+    expect(parsed.agents[0].retry.attempts[0]).toMatchObject({
+      attempt: 1,
+      failureReason: "provider_error"
+    });
+  });
+
   it("finish() output includes workflow summaries", () => {
     const { streams, getStdout } = createMockStreams();
     const reporter = new JsonReporter(streams);

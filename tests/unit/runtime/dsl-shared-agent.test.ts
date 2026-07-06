@@ -38,7 +38,12 @@ describe("DSL shared-agent calls", () => {
       drain: vi.fn()
     } as any,
     agentExecutor: { execute: vi.fn() } as any,
-    eventSink: { emit: vi.fn() } as any,
+    eventSink: {
+      events: [] as Array<{ type: string; payload: unknown }>,
+      emit: vi.fn(function (this: any, type: string, payload: unknown) {
+        this.events.push({ type, payload });
+      })
+    } as any,
     abortController: new AbortController(),
     agentCounter: 0,
     startedAt: new Date().toISOString(),
@@ -268,5 +273,89 @@ describe("DSL shared-agent calls", () => {
     const execInput = executor.execute.mock.calls[0]![0];
     expect(execInput.thinkingEffort).toBe("high");
     expect(execInput.metadata?.thinkingEffortResolutionSource).toBe("agent");
+  });
+
+  it("preserves logical lifecycle events and retry attempt events for shared-agent-backed retry calls", async () => {
+    const registry = new SharedAgentRegistry();
+    registry.register({
+      id: "retry-shared-agent",
+      sourcePath: "retry.agent.js",
+      definition: {
+        id: "retry-shared-agent",
+        description: "Retry wrapper",
+        run: async (_context, runtime) => {
+          return await runtime.agent({
+            id: "retry-shared-agent-call",
+            prompt: "hello from shared agent",
+            retry: {
+              maxAttempts: 2,
+              delayMs: 0,
+              maxDelayMs: 0,
+              backoff: "fixed",
+              jitter: false,
+              disableDelay: true
+            }
+          });
+        }
+      },
+      validatedAt: new Date().toISOString()
+    });
+
+    const executor = {
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: "failed",
+          id: "retry-shared-agent-call",
+          provider: "mock",
+          stdout: "",
+          stderr: "retryable failure",
+          exitCode: 1,
+          durationMs: 5,
+          artifacts: { dir: "agents/retry-shared-agent-call/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+          error: { name: "ProviderProcessFailed", message: "retryable failure", code: "PROVIDER_PROCESS_FAILED" },
+          permissions: { mode: "default" }
+        } as AgentResult)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: "succeeded",
+          id: "retry-shared-agent-call",
+          provider: "mock",
+          stdout: "done",
+          stderr: "",
+          exitCode: 0,
+          durationMs: 5,
+          artifacts: { dir: "agents/retry-shared-agent-call/attempts/2", promptPath: "", stdoutPath: "", stderrPath: "" },
+          permissions: { mode: "default" }
+        } as AgentResult)
+    };
+    const scheduler = {
+      schedule: vi.fn(async (task: any) => {
+        return task.run(new AbortController().signal);
+      }),
+      abort: vi.fn(),
+      drain: vi.fn()
+    };
+
+    const runtime = createMockRuntime(registry);
+    runtime.scheduler = scheduler as any;
+    runtime.agentExecutor = executor as any;
+    const dsl = createDsl(runtime);
+
+    const result = await dsl.agent({ definition: "retry-shared-agent" });
+
+    expect(result.ok).toBe(true);
+    expect(result.artifacts.dir).toBe("agents/retry-shared-agent-call");
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+
+    const eventSink = runtime.eventSink as any;
+    const eventTypes = eventSink.events.map((event: any) => event.type);
+    expect(eventTypes.filter((type) => type === "agent.started")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.completed")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.attempt.started")).toHaveLength(2);
+    expect(eventTypes.filter((type) => type === "agent.attempt.failed")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.attempt.completed")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.retry.skipped_delay")).toHaveLength(1);
   });
 });

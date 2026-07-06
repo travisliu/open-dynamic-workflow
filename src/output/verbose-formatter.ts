@@ -193,7 +193,100 @@ export function formatVerboseLoopTerminal(payload: LoopTerminalPayload, sequence
   return lines.join("\n") + "\n";
 }
 
+export function formatVerboseAgentAttemptStarted(payload: any, sequence?: number, timestamp?: string): string {
+  const label = payload.label ?? payload.agentId;
+  const lines: string[] = [];
+  lines.push(`Agent attempt started: ${label} (attempt ${payload.attempt}/${payload.maxAttempts})`);
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+export function formatVerboseAgentAttemptCompleted(payload: any, sequence?: number, timestamp?: string): string {
+  const label = payload.label ?? payload.agentId;
+  const dur = formatDuration(payload.durationMs);
+  const lines: string[] = [];
+  lines.push(`Agent attempt completed: ${label} (attempt ${payload.attempt}) succeeded in ${dur}`);
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+export function formatVerboseAgentAttemptFailed(payload: any, sequence?: number, timestamp?: string): string {
+  const label = payload.label ?? payload.agentId;
+  const lines: string[] = [];
+  lines.push(`Agent attempt failed: ${label} (attempt ${payload.attempt}) error: ${payload.failureReason ?? payload.reason}`);
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  if (payload.error) {
+    lines.push(`  Error: ${payload.error.message}`);
+    if (payload.error.stack) {
+      lines.push(indentBlock(payload.error.stack, 4));
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
+export function formatVerboseAgentRetryScheduled(payload: any, sequence?: number, timestamp?: string): string {
+  const label = payload.label ?? payload.agentId;
+  const delayMs = payload.computedDelayMs ?? payload.delayMs;
+  const lines: string[] = [];
+  lines.push(`Agent retry scheduled: ${label} next attempt ${payload.nextAttempt} in ${delayMs}ms`);
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+export function formatVerboseAgentRetrySkippedDelay(payload: any, sequence?: number, timestamp?: string): string {
+  const label = payload.label ?? payload.agentId;
+  const delayMs = payload.computedDelayMs ?? payload.delayMs;
+  const lines: string[] = [];
+  lines.push(`Agent retry skipped delay: ${label} next attempt ${payload.nextAttempt} (computed delay ${delayMs}ms)`);
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+export function formatVerboseAgentRetryExhausted(payload: any, sequence?: number, timestamp?: string): string {
+  const label = payload.label ?? payload.agentId;
+  const lines: string[] = [];
+  lines.push(`Agent retry exhausted: ${label} max attempts ${payload.maxAttempts} reached`);
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  if (payload.error) {
+    lines.push(`  Error: ${payload.error.message}`);
+    if (payload.error.stack) {
+      lines.push(indentBlock(payload.error.stack, 4));
+    }
+  }
+  return lines.join("\n") + "\n";
+}
+
 export function renderVerboseEvent(envelope: EventEnvelope): string | undefined {
+  if (envelope.type === "agent.attempt.started") {
+    return formatVerboseAgentAttemptStarted(envelope.payload, envelope.sequence, envelope.timestamp);
+  }
+  if (envelope.type === "agent.attempt.completed") {
+    return formatVerboseAgentAttemptCompleted(envelope.payload, envelope.sequence, envelope.timestamp);
+  }
+  if (envelope.type === "agent.attempt.failed") {
+    return formatVerboseAgentAttemptFailed(envelope.payload, envelope.sequence, envelope.timestamp);
+  }
+  if (envelope.type === "agent.retry.scheduled") {
+    return formatVerboseAgentRetryScheduled(envelope.payload, envelope.sequence, envelope.timestamp);
+  }
+  if (envelope.type === "agent.retry.skipped_delay") {
+    return formatVerboseAgentRetrySkippedDelay(envelope.payload, envelope.sequence, envelope.timestamp);
+  }
+  if (envelope.type === "agent.retry.exhausted") {
+    return formatVerboseAgentRetryExhausted(envelope.payload, envelope.sequence, envelope.timestamp);
+  }
   if (envelope.type === "agent.verbose.command") {
     return formatVerboseCommand(envelope.payload as AgentVerboseCommandPayload, envelope.sequence, envelope.timestamp);
   }

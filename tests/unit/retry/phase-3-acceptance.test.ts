@@ -290,7 +290,7 @@ describe("Phase 3 retry acceptance coverage", () => {
     expect(beforeScheduleSpy.mock.invocationCallOrder[0]).toBeLessThan(scheduler.schedule.mock.invocationCallOrder[0]);
     expect(beforeScheduleSpy.mock.invocationCallOrder[1]).toBeLessThan(scheduler.schedule.mock.invocationCallOrder[1]);
     expect(scheduler.schedule.mock.calls[0][1]).toEqual(
-      expect.objectContaining({ deferFailFastUntilLogicalResult: false })
+      expect.objectContaining({ deferFailFastUntilLogicalResult: true })
     );
     expect(scheduler.schedule.mock.calls[1][1]).toEqual(
       expect.objectContaining({ deferFailFastUntilLogicalResult: true })
@@ -324,6 +324,78 @@ describe("Phase 3 retry acceptance coverage", () => {
       agentCalls: 2,
       exceeded: false
     });
+  });
+
+  it("persists the logical duration for a retried logical result", async () => {
+    const artifactStore = createRecordingArtifactStore();
+    const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
+    const scheduler = {
+      schedule: vi.fn(async (task: { run: (signal: AbortSignal) => Promise<AgentResult> }) => {
+        return await task.run(new AbortController().signal);
+      }),
+      abort: vi.fn(),
+      drain: vi.fn()
+    };
+    const executor = {
+      execute: vi.fn()
+        .mockResolvedValueOnce(
+          createAgentResult({
+            ok: false,
+            status: "failed",
+            exitCode: 1,
+            errorCode: "PROVIDER_PROCESS_FAILED",
+            errorName: "ProviderProcessFailed"
+          })
+        )
+        .mockResolvedValueOnce(
+          createAgentResult({
+            ok: true,
+            status: "succeeded",
+            exitCode: 0,
+            artifacts: createArtifacts("agents/phase-3-agent/attempts/2")
+          })
+        )
+    };
+    const orchestrator = new RetryOrchestrator({ executor: executor as any });
+
+    const result = await orchestrator.execute({
+      logicalAgentId: "phase-3-agent",
+      label: "Phase 3 Agent",
+      provider: "mock",
+      model: "mock-model",
+      basePrompt: "do the thing",
+      timeoutMs: 1000,
+      cwd: process.cwd(),
+      permissions: { mode: "default" },
+      retry: {
+        enabled: true,
+        source: "agent",
+        policy: {
+          maxAttempts: 2,
+          delayMs: 10,
+          maxDelayMs: 10,
+          backoff: "fixed",
+          jitter: false,
+          disableDelay: false
+        }
+      },
+      scheduler: scheduler as any,
+      runLimits,
+      artifactStore: artifactStore as any,
+      eventBus: { emit: vi.fn().mockResolvedValue(undefined) } as any,
+      signal: new AbortController().signal,
+      failFast: false
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.durationMs).toBeGreaterThan(0);
+    expect(artifactStore.writes.get("agents/phase-3-agent/result.json")).toEqual(
+      expect.objectContaining({
+        ok: true,
+        status: "succeeded",
+        durationMs: result.durationMs
+      })
+    );
   });
 
   it("stops after a terminal failure and triggers final fail-fast only after the logical result is final", async () => {
@@ -405,6 +477,81 @@ describe("Phase 3 retry acceptance coverage", () => {
     );
     expect(artifactStore.writes.get("agents/phase-3-agent/result.json")).toEqual(
       expect.objectContaining({ ok: false, status: "timed_out" })
+    );
+  });
+
+  it("persists a cancellation-shaped logical result when retry deferral is interrupted", async () => {
+    const artifactStore = createRecordingArtifactStore();
+    const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
+    const scheduler = {
+      schedule: vi.fn(async (task: { run: (signal: AbortSignal) => Promise<AgentResult> }) => {
+        return await task.run(new AbortController().signal);
+      }),
+      abort: vi.fn(),
+      drain: vi.fn()
+    };
+    const executor = {
+      execute: vi.fn().mockResolvedValue(
+        createAgentResult({
+          ok: false,
+          status: "failed",
+          exitCode: 1,
+          errorCode: "PROVIDER_PROCESS_FAILED",
+          errorName: "ProviderProcessFailed"
+        })
+      )
+    };
+    const orchestrator = new RetryOrchestrator({ executor: executor as any });
+    const controller = new AbortController();
+    const eventBus = {
+      emit: vi.fn().mockResolvedValue(undefined)
+    };
+
+    const resultPromise = orchestrator.execute({
+      logicalAgentId: "phase-3-agent",
+      label: "Phase 3 Agent",
+      provider: "mock",
+      model: "mock-model",
+      basePrompt: "do the thing",
+      timeoutMs: 1000,
+      cwd: process.cwd(),
+      permissions: { mode: "default" },
+      retry: {
+        enabled: true,
+        source: "agent",
+        policy: {
+          maxAttempts: 3,
+          delayMs: 50,
+          maxDelayMs: 50,
+          backoff: "fixed",
+          jitter: false,
+          disableDelay: false
+        }
+      },
+      scheduler: scheduler as any,
+      runLimits,
+      artifactStore: artifactStore as any,
+      eventBus: eventBus as any,
+      signal: controller.signal,
+      failFast: false
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+
+    const result = await resultPromise;
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("cancelled");
+    expect(result.error.code).toBe(ErrorCode.USER_CANCELLED);
+    expect(result.exitCode).toBeNull();
+    expect(artifactStore.writes.get("agents/phase-3-agent/result.json")).toEqual(
+      expect.objectContaining({
+        ok: false,
+        status: "cancelled",
+        exitCode: null,
+        error: expect.objectContaining({ code: ErrorCode.USER_CANCELLED })
+      })
     );
   });
 
@@ -522,6 +669,68 @@ describe("Phase 3 retry acceptance coverage", () => {
     expect(order).toEqual(["deferred-failure", "success"]);
     expect(deferredResult.ok).toBe(false);
     expect(successResult.ok).toBe(true);
+    expect(scheduler.getSnapshot().aborted).toBe(false);
+  });
+
+  it("keeps a retry-managed logical call alive across a retryable first failure when failFast is enabled", async () => {
+    const artifactStore = createRecordingArtifactStore();
+    const runLimits = new RunLimitTracker({ maxAgentCalls: 10 });
+    const scheduler = new DefaultScheduler({ concurrency: 1, failFast: true });
+    const abortSpy = vi.spyOn(scheduler, "abort");
+    const executor = {
+      execute: vi.fn()
+        .mockResolvedValueOnce(
+          createAgentResult({
+            ok: false,
+            status: "failed",
+            exitCode: 1,
+            errorCode: "PROVIDER_PROCESS_FAILED",
+            errorName: "ProviderProcessFailed"
+          })
+        )
+        .mockResolvedValueOnce(
+          createAgentResult({
+            ok: true,
+            status: "succeeded",
+            exitCode: 0,
+            artifacts: createArtifacts("agents/phase-3-agent/attempts/2")
+          })
+        )
+    };
+    const orchestrator = new RetryOrchestrator({ executor: executor as any });
+
+    const result = await orchestrator.execute({
+      logicalAgentId: "phase-3-agent",
+      label: "Phase 3 Agent",
+      provider: "mock",
+      model: "mock-model",
+      basePrompt: "do the thing",
+      timeoutMs: 1000,
+      cwd: process.cwd(),
+      permissions: { mode: "default" },
+      retry: {
+        enabled: true,
+        source: "agent",
+        policy: {
+          maxAttempts: 2,
+          delayMs: 0,
+          maxDelayMs: 0,
+          backoff: "fixed",
+          jitter: false,
+          disableDelay: true
+        }
+      },
+      scheduler: scheduler as any,
+      runLimits,
+      artifactStore: artifactStore as any,
+      eventBus: { emit: vi.fn().mockResolvedValue(undefined) } as any,
+      signal: new AbortController().signal,
+      failFast: true
+    });
+
+    expect(result.ok).toBe(true);
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+    expect(abortSpy).not.toHaveBeenCalled();
     expect(scheduler.getSnapshot().aborted).toBe(false);
   });
 

@@ -26,6 +26,7 @@ export interface ScheduleOptions {
   failFast?: boolean | undefined;
   cwd?: string | undefined;
   deferFailFastUntilLogicalResult?: boolean | undefined;
+  suppressLifecycleEvents?: boolean | undefined;
 }
 
 export interface Scheduler {

@@ -233,6 +233,63 @@ describe("DSL: agent()", () => {
     );
   });
 
+  it("preserves logical lifecycle events and additive retry events for retry-enabled direct calls", async () => {
+    const executor = {
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce(makeFailureResult("agent-1"))
+        .mockResolvedValueOnce(makeSuccessResult("agent-1"))
+    };
+    const scheduler = makeExecutingScheduler();
+    const runtime = makeRuntimeState({
+      scheduler: scheduler as any,
+      agentExecutor: executor as any
+    });
+    const dsl = createDsl(runtime);
+
+    const result = await dsl.agent({
+      id: "agent-1",
+      prompt: "hello",
+      retry: {
+        maxAttempts: 2,
+        delayMs: 0,
+        maxDelayMs: 0,
+        backoff: "fixed",
+        jitter: false,
+        disableDelay: true
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.artifacts.dir).toBe("agents/agent-1");
+    expect(executor.execute).toHaveBeenCalledTimes(2);
+
+    const eventSink = runtime.eventSink as any;
+    const eventTypes = eventSink.events.map((event: any) => event.type);
+    expect(eventTypes.filter((type) => type === "agent.started")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.completed")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.attempt.started")).toHaveLength(2);
+    expect(eventTypes.filter((type) => type === "agent.attempt.failed")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.attempt.completed")).toHaveLength(1);
+    expect(eventTypes.filter((type) => type === "agent.retry.skipped_delay")).toHaveLength(1);
+
+    const logicalStart = eventSink.events.find((event: any) => event.type === "agent.started");
+    expect(logicalStart?.payload).toMatchObject({
+      agentId: "agent-1",
+      provider: "mock",
+      cwd: "/workspace",
+      permissions: { mode: "default" }
+    });
+
+    const logicalTerminal = eventSink.events.find((event: any) => event.type === "agent.completed");
+    expect(logicalTerminal?.payload).toMatchObject({
+      agentId: "agent-1",
+      status: "succeeded",
+      artifacts: expect.objectContaining({ dir: "agents/agent-1" })
+    });
+    expect((logicalTerminal?.payload as any)?.durationMs).toBe(result.durationMs);
+  });
+
   it("uses explicit provider over config default", async () => {
     const successResult = makeSuccessResult("agent-1", "codex");
     const scheduler = makeSchedulerWithResult(successResult);

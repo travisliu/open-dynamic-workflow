@@ -85,6 +85,177 @@ describe("PrettyReporter", () => {
     expect(output).toContain("  /tmp/run");
   });
 
+  it("renders retry progress compactly without extra top-level logical agent nodes", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new PrettyReporter(streams);
+
+    reporter.start({
+      runId: "run-2",
+      meta: { name: "retry-flow" },
+    } as any);
+
+    reporter.handle({
+      type: "workflow.invocation.started",
+      payload: { workflowInvocationId: "wf-1", workflowName: "retry-flow" }
+    } as any);
+
+    reporter.handle({
+      type: "agent.started",
+      payload: { 
+        workflowInvocationId: "wf-1", 
+        agentId: "my-agent", 
+        label: "My Agent", 
+        provider: "openai",
+        model: "gpt-4",
+        cwd: "/repo",
+        permissions: { mode: "default" },
+        metadata: { modelResolutionSource: "default" }
+      }
+    } as any);
+
+    reporter.handle({
+      type: "agent.attempt.started",
+      payload: {
+        agentId: "my-agent",
+        label: "My Agent",
+        provider: "openai",
+        model: "gpt-4",
+        cwd: "/repo",
+        metadata: { modelResolutionSource: "default" },
+        attempt: 1,
+        maxAttempts: 2,
+        artifacts: { dir: "agents/my-agent/attempts/1" }
+      }
+    } as any);
+
+    reporter.handle({
+      type: "agent.attempt.failed",
+      payload: {
+        agentId: "my-agent",
+        label: "My Agent",
+        provider: "openai",
+        model: "gpt-4",
+        cwd: "/repo",
+        metadata: { modelResolutionSource: "default" },
+        attempt: 1,
+        maxAttempts: 2,
+        status: "failed",
+        durationMs: 250,
+        exitCode: 1,
+        retryable: true,
+        failureReason: "schema_validation_failed",
+        error: {
+          name: "ValidationError",
+          message: "schema validation failed",
+          code: "SCHEMA_VALIDATION_FAILED"
+        },
+        artifacts: {
+          dir: "agents/my-agent/attempts/1",
+          promptPath: "agents/my-agent/attempts/1/prompt.txt",
+          stdoutPath: "agents/my-agent/attempts/1/stdout.log",
+          stderrPath: "agents/my-agent/attempts/1/stderr.log"
+        }
+      }
+    } as any);
+
+    reporter.handle({
+      type: "agent.retry.scheduled",
+      payload: {
+        agentId: "my-agent",
+        label: "My Agent",
+        provider: "openai",
+        model: "gpt-4",
+        cwd: "/repo",
+        metadata: { modelResolutionSource: "default" },
+        failedAttempt: 1,
+        nextAttempt: 2,
+        maxAttempts: 2,
+        failureReason: "schema_validation_failed",
+        computedDelayMs: 1000,
+        delaySkipped: false,
+        delayMs: 1000
+      }
+    } as any);
+
+    reporter.handle({
+      type: "agent.attempt.started",
+      payload: {
+        agentId: "my-agent",
+        label: "My Agent",
+        provider: "openai",
+        model: "gpt-4",
+        cwd: "/repo",
+        metadata: { modelResolutionSource: "default" },
+        attempt: 2,
+        maxAttempts: 2,
+        artifacts: { dir: "agents/my-agent/attempts/2" }
+      }
+    } as any);
+
+    reporter.handle({
+      type: "agent.attempt.completed",
+      payload: {
+        agentId: "my-agent",
+        label: "My Agent",
+        provider: "openai",
+        model: "gpt-4",
+        cwd: "/repo",
+        metadata: { modelResolutionSource: "default" },
+        attempt: 2,
+        maxAttempts: 2,
+        status: "succeeded",
+        durationMs: 500,
+        exitCode: 0,
+        retryable: false,
+        artifacts: {
+          dir: "agents/my-agent/attempts/2",
+          promptPath: "agents/my-agent/attempts/2/prompt.txt",
+          stdoutPath: "agents/my-agent/attempts/2/stdout.log",
+          stderrPath: "agents/my-agent/attempts/2/stderr.log"
+        }
+      }
+    } as any);
+
+    reporter.handle({
+      type: "agent.completed",
+      payload: { 
+        agentId: "my-agent", 
+        label: "My Agent",
+        provider: "openai",
+        model: "gpt-4",
+        status: "succeeded",
+        durationMs: 2000,
+        exitCode: 0,
+        artifacts: {
+          dir: "agents/my-agent",
+          promptPath: "agents/my-agent/prompt.txt",
+          stdoutPath: "agents/my-agent/stdout.log",
+          stderrPath: "agents/my-agent/stderr.log"
+        },
+        permissions: { mode: "default" },
+        metadata: { modelResolutionSource: "default" }
+      }
+    } as any);
+
+    reporter.handle({
+      type: "workflow.invocation.completed",
+      payload: { workflowInvocationId: "wf-1", durationMs: 2500 }
+    } as any);
+
+    reporter.finish({
+      status: "succeeded",
+      durationMs: 2500,
+      artifactsDir: "/tmp/run",
+    } as any);
+
+    const output = getStdout();
+    
+    expect(output).toContain("    attempt 1 failed: schema_validation_failed\n");
+    expect(output).toContain("    retrying in 1000ms\n");
+    expect(output).toContain("    attempt 2 succeeded\n");
+    expect(output).toContain("  agents:    1 succeeded");
+  });
+
   it("verbose mode still streams verbose blocks", () => {
     const { streams, getStdout } = createMockStreams();
     const reporter = new PrettyReporter(streams, { verbose: true });

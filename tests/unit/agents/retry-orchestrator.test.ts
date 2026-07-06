@@ -171,6 +171,71 @@ describe("RetryOrchestrator", () => {
     expect(result.retry?.attempts[1].status).toBe("succeeded");
   });
 
+  it("reports logical duration across retries and on the logical terminal event", async () => {
+    const retryableFailure: AgentResult = {
+      ok: false,
+      status: "failed",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "",
+      stderr: "provider failed",
+      exitCode: 1,
+      durationMs: 20,
+      artifacts: { dir: "agents/my-logical-agent/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+      error: { name: "ProviderProcessFailed", message: "Failed", code: "PROVIDER_PROCESS_FAILED" },
+      permissions: { mode: "default" }
+    };
+
+    const successResult: AgentResult = {
+      ok: true,
+      status: "succeeded",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "recovered",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 30,
+      artifacts: { dir: "agents/my-logical-agent/attempts/2", promptPath: "", stdoutPath: "", stderrPath: "" },
+      permissions: { mode: "default" }
+    };
+
+    vi.mocked(mockExecutor.execute)
+      .mockResolvedValueOnce(retryableFailure)
+      .mockResolvedValueOnce(successResult);
+
+    const input = createInput({
+      policy: {
+        maxAttempts: 2,
+        delayMs: 1000,
+        backoff: "fixed",
+        maxDelayMs: 5000,
+        jitter: false,
+        disableDelay: false
+      }
+    });
+
+    const promise = orchestrator.execute(input);
+
+    await vi.runAllTicks();
+    await vi.runAllTicks();
+    expect(mockExecutor.execute).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(result.durationMs).toBeGreaterThan(30);
+
+    const completedCall = vi.mocked(eventBus.emit).mock.calls.find(([type]) => type === "agent.completed");
+    expect(completedCall?.[1]).toEqual(
+      expect.objectContaining({
+        status: "succeeded",
+        durationMs: result.durationMs
+      })
+    );
+  });
+
   it("stops retrying and returns final failure when attempts are exhausted", async () => {
     const retryableFailure: AgentResult = {
       ok: false,
@@ -278,11 +343,11 @@ describe("RetryOrchestrator", () => {
     await orchestrator.execute(input);
 
     expect(mockScheduler.schedule).toHaveBeenCalledTimes(2);
-    // First attempt: deferFailFastUntilLogicalResult should be false or undefined
+    // Every retry-managed attempt should defer fail-fast until the logical result is final
     expect(mockScheduler.schedule.mock.calls[0][1]).toBeDefined();
-    expect(mockScheduler.schedule.mock.calls[0][1].deferFailFastUntilLogicalResult).toBe(false);
+    expect(mockScheduler.schedule.mock.calls[0][1].deferFailFastUntilLogicalResult).toBe(true);
 
-    // Second attempt: deferFailFastUntilLogicalResult should be true
+    // Subsequent attempts should also defer fail-fast
     expect(mockScheduler.schedule.mock.calls[1][1]).toBeDefined();
     expect(mockScheduler.schedule.mock.calls[1][1].deferFailFastUntilLogicalResult).toBe(true);
   });
@@ -497,10 +562,22 @@ describe("RetryOrchestrator", () => {
 
     expect(result.ok).toBe(false);
     expect(result.status).toBe("cancelled");
+    expect(result.error?.code).toBe("USER_CANCELLED");
+    expect(result.exitCode).toBeNull();
     expect(mockExecutor.execute).toHaveBeenCalledTimes(1);
 
     expect(result.retry?.attemptsStarted).toBe(1);
     expect(result.retry?.attempts[0].status).toBe("cancelled");
+
+    const cancelledCall = vi.mocked(eventBus.emit).mock.calls.find(([type]) => type === "agent.cancelled");
+    expect(cancelledCall?.[1]).toEqual(
+      expect.objectContaining({
+        agentId: "my-logical-agent",
+        status: "cancelled",
+        durationMs: result.durationMs,
+        error: expect.objectContaining({ code: "USER_CANCELLED" })
+      })
+    );
   });
 
   it("computes and passes exponential delay values correctly", async () => {

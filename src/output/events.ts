@@ -1,6 +1,6 @@
 import type { AgentArtifacts } from "../types/artifacts.js";
 import type { SerializedError } from "../types/errors.js";
-import type { AgentPermissions } from "../types/agent.js";
+import type { AgentPermissions, AgentResultStatus } from "../types/agent.js";
 import type { WorkflowRunLimitSummary } from "../types/workflow.js";
 import type { ThinkingEffort } from "../types/thinking-effort.js";
 
@@ -21,6 +21,12 @@ export type EventType =
   | "agent.failed"
   | "agent.timed_out"
   | "agent.cancelled"
+  | "agent.attempt.started"
+  | "agent.attempt.completed"
+  | "agent.attempt.failed"
+  | "agent.retry.scheduled"
+  | "agent.retry.skipped_delay"
+  | "agent.retry.exhausted"
   | "agent.verbose.command"
   | "agent.verbose.result"
   | "pipeline.started"
@@ -208,6 +214,94 @@ export interface AgentCancelledPayload {
   artifacts?: AgentArtifacts;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown>;
+}
+
+export interface AgentAttemptStartedPayload {
+  agentId: string;
+  label?: string | undefined;
+  provider: string;
+  model?: string | undefined;
+  cwd: string;
+  metadata?: Record<string, unknown> | undefined;
+  attempt: number;
+  maxAttempts: number;
+  artifacts: Pick<AgentArtifacts, "dir">;
+}
+
+export interface AgentAttemptCompletedPayload {
+  agentId: string;
+  label?: string | undefined;
+  provider: string;
+  model?: string | undefined;
+  cwd: string;
+  metadata?: Record<string, unknown> | undefined;
+  attempt: number;
+  maxAttempts: number;
+  status: "succeeded";
+  durationMs: number;
+  exitCode: number;
+  retryable: boolean;
+  artifacts: AgentArtifacts;
+}
+
+export interface AgentAttemptFailedPayload {
+  agentId: string;
+  label?: string | undefined;
+  provider: string;
+  model?: string | undefined;
+  cwd: string;
+  metadata?: Record<string, unknown> | undefined;
+  attempt: number;
+  maxAttempts: number;
+  status: Exclude<AgentResultStatus, "succeeded">;
+  durationMs: number;
+  exitCode: number | null;
+  retryable: boolean;
+  failureReason?: string | undefined;
+  error?: SerializedError | undefined;
+  artifacts: AgentArtifacts;
+}
+
+export interface AgentRetryScheduledPayload {
+  agentId: string;
+  label?: string | undefined;
+  provider: string;
+  model?: string | undefined;
+  cwd: string;
+  metadata?: Record<string, unknown> | undefined;
+  failedAttempt: number;
+  nextAttempt: number;
+  maxAttempts: number;
+  failureReason: string;
+  computedDelayMs: number;
+  delaySkipped: boolean;
+  delayMs?: number | undefined;
+}
+
+export interface AgentRetrySkippedDelayPayload {
+  agentId: string;
+  label?: string | undefined;
+  provider: string;
+  model?: string | undefined;
+  cwd: string;
+  metadata?: Record<string, unknown> | undefined;
+  failedAttempt: number;
+  nextAttempt: number;
+  maxAttempts: number;
+  failureReason: string;
+  computedDelayMs: number;
+  delaySkipped: true;
+  delayMs?: number | undefined;
+}
+
+export interface AgentRetryExhaustedPayload {
+  agentId: string;
+  label?: string | undefined;
+  maxAttempts: number;
+  attemptsStarted: number;
+  finalFailureReason: string;
+  error?: SerializedError | undefined;
+  retrySummaryPath: string;
 }
 
 export interface PipelineStartedPayload {

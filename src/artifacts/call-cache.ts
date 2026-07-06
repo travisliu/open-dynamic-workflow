@@ -388,6 +388,16 @@ export async function materializeCachedAgentResult(input: {
     }
   }
 
+  // Recreate retry-summary.json if it existed in the previous run
+  const prevSummaryPath = resolvePreviousRunPath(input.previousRunRoot, `agents/${input.entry.agentId}/retry-summary.json`);
+  try {
+    const prevSummaryContent = await fs.readFile(prevSummaryPath, "utf8");
+    const summaryJson = JSON.parse(prevSummaryContent);
+    await input.store.writeJson(`${agentDir}/retry-summary.json`, summaryJson);
+  } catch {
+    // Ignore if not present
+  }
+
   const workflowResult = buildWorkflowVisibleCachedAgentResult(cachedResult, normalized, {
     currentAgentId: input.currentAgentId,
     label: input.label,
@@ -408,6 +418,19 @@ export async function materializeCachedAgentResult(input: {
     entry: input.entry,
     previousRunId: input.previousRunId
   });
+
+  if (workflowResult.retry) {
+    workflowResult.retry = {
+      ...workflowResult.retry,
+      summaryPath: `${agentDir}/retry-summary.json`
+    };
+  }
+  if (artifactResult.retry) {
+    artifactResult.retry = {
+      ...artifactResult.retry,
+      summaryPath: `${agentDir}/retry-summary.json`
+    };
+  }
 
   await input.store.writeJson(`${agentDir}/raw-result.json`, artifactResult);
   await input.store.writeJson(`${agentDir}/agent-result.json`, artifactResult);

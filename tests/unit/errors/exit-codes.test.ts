@@ -96,6 +96,11 @@ describe("Exit Codes Mapping", () => {
     expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);
   });
 
+  it("maps RETRY_EXHAUSTED to GeneralError (1)", () => {
+    const err = new OpenDynamicWorkflowError(ErrorCode.RETRY_EXHAUSTED, "retry exhausted");
+    expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);
+  });
+
   it("maps TOOL_INVALID_OUTPUT to GeneralError (1)", () => {
     const err = new OpenDynamicWorkflowError(ErrorCode.TOOL_INVALID_OUTPUT, "tool output validation failed");
     expect(exitCodeForError(err)).toBe(ExitCode.GeneralError);

@@ -22,6 +22,7 @@ export type OpenDynamicWorkflowErrorCode =
   | "TOOL_SERIALIZATION_FAILED"
   | "TOOL_ARTIFACT_WRITE_FAILED"
   | "RUN_LIMIT_EXCEEDED"
+  | "RETRY_EXHAUSTED"
   | "INTERNAL_ERROR";
 
 export interface SerializedError {
@@ -69,6 +70,7 @@ export function exitCodeForErrorCode(code: OpenDynamicWorkflowErrorCode): ExitCo
     case "TOOL_INVALID_OUTPUT":
     case "TOOL_SERIALIZATION_FAILED":
     case "RUN_LIMIT_EXCEEDED":
+    case "RETRY_EXHAUSTED":
       return EXIT_CODES.WORKFLOW_FAILED;
     case "TOOL_TIMEOUT":
       return EXIT_CODES.TIMEOUT;

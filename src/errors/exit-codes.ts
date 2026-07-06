@@ -71,6 +71,7 @@ export function exitCodeForError(error: unknown): ExitCode {
       case ErrorCode.TOOL_SERIALIZATION_FAILED:
       case ErrorCode.WORKFLOW_FAILED:
       case ErrorCode.RUN_LIMIT_EXCEEDED:
+      case ErrorCode.RETRY_EXHAUSTED:
         return ExitCode.GeneralError;
 
       default:

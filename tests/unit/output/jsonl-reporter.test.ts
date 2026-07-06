@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { JsonlReporter } from "../../../src/output/jsonl-reporter.js";
-import type { EventEnvelope } from "../../../src/output/events.js";
+import type { AgentRetryScheduledPayload, EventEnvelope } from "../../../src/output/events.js";
 
 function createMockStreams() {
   let stdoutData = "";
@@ -55,6 +55,38 @@ describe("JsonlReporter", () => {
 
     const parsed = JSON.parse(output.trim());
     expect(parsed).toEqual(dummyEvent);
+  });
+
+  it("preserves retry event payloads unchanged across JSONL serialization", () => {
+    const { streams, getStdout } = createMockStreams();
+    const reporter = new JsonlReporter(streams);
+
+    const retryEvent: EventEnvelope<AgentRetryScheduledPayload> = {
+      ...dummyEvent,
+      sequence: 2,
+      type: "agent.retry.scheduled",
+      payload: {
+        agentId: "agent-1",
+        label: "retry-wrapper",
+        provider: "mock",
+        model: "gpt-4",
+        cwd: "/repo",
+        metadata: { modelResolutionSource: "default" },
+        failedAttempt: 1,
+        nextAttempt: 2,
+        maxAttempts: 3,
+        failureReason: "provider_error",
+        computedDelayMs: 1000,
+        delaySkipped: false,
+        delayMs: 1000
+      }
+    };
+
+    reporter.handle(retryEvent);
+
+    const lines = getStdout().trim().split("\n");
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0] as string)).toEqual(retryEvent);
   });
 
   it("start() writes nothing", () => {

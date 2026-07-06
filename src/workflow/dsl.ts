@@ -6,6 +6,8 @@ import { resolveAgentModel } from "../agents/resolve-model.js";
 import { resolveAgentRetryPolicy, resolveGlobalRetryPolicy } from "../config/retry.js";
 import { isThinkingEffort } from "../types/thinking-effort.js";
 import { resolveThinkingEffort } from "../agents/resolve-thinking-effort.js";
+import { RetryOrchestrator, type RetryOrchestratorInput } from "../agents/retry-orchestrator.js";
+import { createLinkedAbortController } from "../orchestration/cancellation.js";
 
 import { InvalidDslCallError } from "./errors.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
@@ -331,6 +333,83 @@ export function createDsl(runtime: RuntimeState) {
         result: artifactResult
       });
       return cachedResult;
+    }
+
+    if (resolvedRetry.enabled) {
+      const orchestrator = new RetryOrchestrator({ executor: runtime.agentExecutor });
+      const activePipeline = getActivePipelineContext();
+      const activeInvocation = getActiveWorkflowInvocation();
+      const activeLoop = getActiveLoopContext();
+      
+      const linkedController = createLinkedAbortController(
+        activeInvocation?.signal,
+        activeLoop?.signal,
+        activePipeline?.stageSignal,
+        runtime.abortController.signal
+      );
+      
+      const originMetadata = activeInvocation ? {
+        workflowInvocationId: activeInvocation.workflowInvocationId,
+        parentWorkflowInvocationId: activeInvocation.parentWorkflowInvocationId,
+        workflowName: activeInvocation.workflowName,
+        workflowDepth: activeInvocation.depth
+      } : {};
+
+      const retryInput: RetryOrchestratorInput = {
+        logicalAgentId: normalizedId,
+        label: input.label,
+        provider: normalizedProvider,
+        model: resolved.model,
+        basePrompt: input.prompt,
+        schema: input.schema,
+        structuredOutput: input.structuredOutput,
+        timeoutMs: normalizedTimeoutMs,
+        cwd: normalizedCwd,
+        permissions: resolvedPermissions,
+        metadata: {
+          ...input.metadata,
+          ...originMetadata,
+          modelResolutionSource: resolved.source,
+          thinkingEffortResolutionSource: resolvedThinking.source,
+          ...(resolvedThinking.thinkingEffort !== undefined ? { thinkingEffort: resolvedThinking.thinkingEffort } : {})
+        },
+        thinkingEffort: resolvedThinking.thinkingEffort,
+        retry: resolvedRetry,
+        scheduler: runtime.scheduler,
+        runLimits: runtime.runLimitTracker!,
+        artifactStore: runtime.artifactStore!,
+        eventBus: runtime.eventSink as any,
+        signal: linkedController.signal,
+        failFast: runtime.failFast ?? false
+      };
+
+      if (activeInvocation?.concurrencyBudget) {
+        await activeInvocation.concurrencyBudget.acquire();
+      }
+      
+      try {
+        const result = await orchestrator.execute(retryInput);
+        runtime.agentResults.push(result);
+        
+        await recordAgentCall({
+          store: runtime.artifactStore!,
+          cache: runtime.callCache,
+          sequence,
+          callId,
+          fingerprint,
+          result
+        });
+
+        if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
+          throw new OpenDynamicWorkflowError(ErrorCode.PROVIDER_UNAVAILABLE, result.error.message);
+        }
+
+        return result;
+      } finally {
+        if (activeInvocation?.concurrencyBudget) {
+          activeInvocation.concurrencyBudget.release();
+        }
+      }
     }
 
     runtime.runLimitTracker?.beforeAgentSchedule(normalizedId);

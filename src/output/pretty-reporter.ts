@@ -129,6 +129,31 @@ export class PrettyReporter implements Reporter {
         return;
       }
 
+      if (
+        event.type === "agent.attempt.failed" ||
+        event.type === "agent.retry.scheduled" ||
+        event.type === "agent.retry.skipped_delay" ||
+        (event.type === "agent.attempt.completed" && (event.payload as any).attempt > 1)
+      ) {
+        const payload = event.payload as any;
+        const depth = payload.agentId ? this.builder.getNodeDepth(payload.agentId) : null;
+        const indent = depth !== null ? "  ".repeat(depth + 2) : "    ";
+        const computedDelayMs = payload.computedDelayMs ?? payload.delayMs;
+        let line = "";
+        if (event.type === "agent.attempt.failed") {
+          line = `attempt ${payload.attempt} failed: ${payload.failureReason ?? payload.reason}`;
+        } else if (event.type === "agent.retry.scheduled") {
+          line = `retrying in ${computedDelayMs}ms`;
+        } else if (event.type === "agent.retry.skipped_delay") {
+          line = `retrying immediately (delay disabled; computed delay ${computedDelayMs}ms)`;
+        } else if (event.type === "agent.attempt.completed") {
+          line = `attempt ${payload.attempt} succeeded`;
+        }
+        if (line && !this.verbose) {
+          this.stdout.write(indent + line + "\n");
+        }
+      }
+
       const nodeId = this.builder.addEvent(event);
 
       if (nodeId) {

@@ -419,6 +419,76 @@ describe("call cache", () => {
     });
   });
 
+  it("materializes cached agent retry summary and updates summaryPath", async () => {
+    const prevRun = path.join(TEMP_DIR, "prev-run-retry");
+    await fs.mkdir(path.join(prevRun, "agents/old-a"), { recursive: true });
+    await fs.writeFile(path.join(prevRun, "agents/old-a/normalized-result.json"), JSON.stringify("ok"), "utf8");
+
+    const fakePrevResult = {
+      ok: true,
+      status: "succeeded",
+      id: "old-a",
+      stdout: "hello stdout",
+      stderr: "hello stderr",
+      durationMs: 1234,
+      retry: {
+        enabled: true,
+        exhausted: false,
+        maxAttempts: 3,
+        attemptsStarted: 2,
+        finalAttempt: 2,
+        summaryPath: "agents/old-a/retry-summary.json",
+        attempts: []
+      },
+      permissions: { mode: "default" }
+    };
+    await fs.writeFile(path.join(prevRun, "agents/old-a/agent-result.json"), JSON.stringify(fakePrevResult), "utf8");
+
+    const fakeRetrySummary = {
+      schemaVersion: "open-dynamic-workflow.retry-summary.v1",
+      enabled: true,
+      exhausted: false,
+      maxAttempts: 3,
+      attemptsStarted: 2,
+      finalAttempt: 2,
+      finalStatus: "succeeded",
+      attempts: []
+    };
+    await fs.writeFile(path.join(prevRun, "agents/old-a/retry-summary.json"), JSON.stringify(fakeRetrySummary), "utf8");
+
+    let writtenFiles: Record<string, any> = {};
+    const store = {
+      writeText: async (relativePath: string, content: string) => { writtenFiles[relativePath] = content; },
+      writeJson: async (relativePath: string, data: any) => { writtenFiles[relativePath] = data; }
+    } as any;
+
+    const result = await materializeCachedAgentResult({
+      store,
+      previousRunRoot: prevRun,
+      previousRunId: "prev-run",
+      entry: {
+        kind: "agent",
+        sequence: 1,
+        fingerprint: "fp",
+        status: "succeeded",
+        resultPath: "agents/old-a/normalized-result.json",
+        agentId: "old-a",
+        agentResultPath: "agents/old-a/agent-result.json"
+      },
+      currentAgentId: "new-a",
+      provider: "codex",
+      permissions: { mode: "default" }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.retry).toBeDefined();
+    expect(result.retry?.summaryPath).toBe("agents/new-a/retry-summary.json");
+    expect(writtenFiles["agents/new-a/retry-summary.json"]).toEqual(fakeRetrySummary);
+
+    const artifactResult = (result as any).__artifactResult;
+    expect(artifactResult.retry?.summaryPath).toBe("agents/new-a/retry-summary.json");
+  });
+
   it("materializes cached tool results into current run root", async () => {
     const prevRun = path.join(TEMP_DIR, "prev-tool-run");
     await fs.mkdir(path.join(prevRun, "tools/old-t"), { recursive: true });
