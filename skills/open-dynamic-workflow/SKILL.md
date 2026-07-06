@@ -1,6 +1,6 @@
 ---
 name: open-dynamic-workflow
-description: Create, review, validate, and improve Open Dynamic Workflow workflow scripts that orchestrate Codex, Gemini, Cursor, and mock provider agents through agent(), parallel(), pipeline(), loop(), phase(), log(), workflow(), and tool().
+description: Create, review, validate, and improve Open Dynamic Workflow workflow scripts that orchestrate Codex, Gemini, Cursor, and mock provider agents through agent(), retry-aware agent calls, parallel(), pipeline(), loop(), phase(), log(), workflow(), and tool().
 ---
 
 # Purpose
@@ -14,6 +14,7 @@ Use this skill for requests such as:
 - Create an Open Dynamic Workflow workflow for code review, CI/CD, finance, accounting, research, migration checks, test triage, documentation review, or other repeatable multi-agent work.
 - Convert an informal workflow idea into an Open Dynamic Workflow workflow file.
 - Review an existing workflow for API correctness, validation errors, concurrency risks, provider selection, structured output, and CI usability.
+- Add or review retry behavior on `agent()` calls, including global retry policy, per-agent overrides, and CLI retry flags.
 - Explain how to run, validate, configure, or troubleshoot an Open Dynamic Workflow workflow.
 - Refactor a workflow to use `parallel()` or `pipeline()` appropriately.
 - Add iterative review/fix/verify behavior with `loop()` when a single stateful process should repeat until accepted, stopped, failed, timed out, or `maxRounds` is reached.
@@ -26,7 +27,7 @@ Consult these files when needed:
 
 - `references/api-document.md`: Syntax reference for workflow file shape, `agent()`, `parallel()`, `pipeline()`, `loop()`, `phase()`, `log()`, `workflow()`, `tool()`, providers, reports, artifacts, exit codes, templates, and common validation mistakes.
 - `references/cli-commands.md`: Command reference for `open-dynamic-workflow run`, `open-dynamic-workflow validate`, and `open-dynamic-workflow doctor`.
-- `references/configuration.md`: Configuration reference for `.open-dynamic-workflow/config.yaml`, provider settings, security settings, reporting settings, and precedence rules.
+- `references/configuration.md`: Configuration reference for `.open-dynamic-workflow/config.yaml`, provider settings, security settings, reporting settings, retry defaults, and precedence rules.
 
 When the user asks for exact syntax, validation constraints, command options, configuration behavior, or troubleshooting, prefer the references over memory.
 
@@ -53,6 +54,7 @@ When using this skill:
 
 4. Write the workflow using only supported DSL primitives.
    - Use `agent()` for provider-backed tasks.
+   - Use `retry` on `agent()` only when you want provider-backed retries for that logical call; use `retry: false` to disable retry for a specific call.
    - Use `parallel()` with task thunks, not already-started promises.
    - Use `pipeline()` with named stage objects.
    - Use `ctx.agent()` inside pipeline stage `run()` functions.
@@ -105,6 +107,7 @@ When using this skill:
    - Check that pipeline stages use `ctx.agent()`.
    - Check that `loop()` has an initial state, a round callback, valid options, and a bounded `maxRounds`.
    - Check that loop rounds use `ctx.agent()` and `ctx.workflow()`, not top-level `agent()` for round-local provider work.
+   - Check that retry is used only for provider-backed `agent()` calls and not for `tool()`, `workflow()`, `pipeline()` stages, or `loop()` rounds.
    - Check that `tool()` is only called at top level or inside child workflows, and uses valid/registered definition IDs.
    - Check that `tool()` is not called or aliased inside `parallel()` callbacks, pipeline stages, loop rounds, or shared-agent definitions.
    - Check for secrets in prompts/logs.
@@ -125,7 +128,7 @@ When using this skill:
 - Do not call global `agent()` from inside a loop round when the work belongs to that round; use `ctx.agent()` and stable IDs such as `ctx.agentId("review")`.
 - Do not call `tool()` inside `parallel()` callbacks, pipeline stages, loop rounds, or `defineAgent.run()`.
 - Do not write unbounded loops. Use `loop()` with explicit, required `maxRounds`; the global ceiling is configured by `workflow.maxLoopRounds` (default 20).
-- Do not assume automatic patch application, automatic commits, automatic merge, approval gates, DAG pipelines, retries, worktree isolation, container isolation, distributed execution, or resumable runs are available unless explicitly implemented.
+- Do not assume automatic patch application, automatic commits, automatic merge, approval gates, DAG pipelines, worktree isolation, container isolation, distributed execution, or resumable runs are available unless explicitly implemented.
 - Do not log secrets, tokens, credentials, full private source dumps, or unnecessary raw provider output.
 - Only set `permissions: { mode: "dangerously-full-access" }` when the workflow explicitly requires autonomous execution without approval prompts. Document the reason in a workflow comment adjacent to the agent call.
 - Prefer explicit, reusable workflow files over vague prompts.

@@ -48,7 +48,7 @@ Open Dynamic Workflow exposes these workflow DSL primitives:
 
 | API          | Purpose                                         |
 | ------------ | ----------------------------------------------- |
-| `agent()`    | Run one provider-backed agent task or a shared agent definition. |
+| `agent()`    | Run one provider-backed agent task or a shared agent definition with optional retry policy. |
 | `parallel()` | Run independent async task thunks concurrently. |
 | `pipeline()` | Process many items through ordered stages.      |
 | `loop()`     | Repeat one stateful round callback until a terminal condition is reached. |
@@ -76,6 +76,19 @@ const result = await agent({
 ### Conceptual input type
 
 ```ts
+type RetryBackoff = "fixed" | "exponential";
+
+type RetryPolicy = {
+  maxAttempts: number;
+  delayMs: number;
+  backoff: RetryBackoff;
+  maxDelayMs: number;
+  jitter: boolean;
+  disableDelay: boolean;
+};
+
+type RetryPolicyInput = false | Partial<RetryPolicy>;
+
 type AgentCallInput = DirectAgentCallInput | DefinitionAgentCallInput;
 
 type DirectAgentCallInput = {
@@ -89,6 +102,7 @@ type DirectAgentCallInput = {
     transport?: "auto" | "prompt" | "validate-only" | "native";
   };
   timeoutMs?: number;
+  retry?: RetryPolicyInput;
   cwd?: string;
   permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
@@ -107,6 +121,7 @@ type DefinitionAgentCallInput = {
     transport?: "auto" | "prompt" | "validate-only" | "native";
   };
   timeoutMs?: number;
+  retry?: RetryPolicyInput;
   cwd?: string;
   permissions?: { mode: "dangerously-full-access" };
   metadata?: Record<string, unknown>;
@@ -127,6 +142,7 @@ type DefinitionAgentCallInput = {
 | `schema`          |       No | JSON Schema used to validate structured output.                                |
 | `structuredOutput`|       No | Controls how a provided schema reaches the provider.                           |
 | `timeoutMs`       |       No | Per-agent timeout in milliseconds.                                             |
+| `retry`           |       No | Retry policy for this logical call. Omit to use the resolved global retry policy; set `false` to disable retry for this call. |
 | `cwd`             |       No | Working directory for the provider call.                                       |
 | `permissions`     |       No | Permission mode for this agent call. Omit for default sandboxed behaviour.    |
 | `metadata`        |       No | Descriptive metadata for reports or artifacts.                                 |
@@ -252,6 +268,27 @@ Thinking effort is resolved according to the following precedence from strongest
 
 #### OpenCode variant conflict
 OpenCode has an optional `metadata.opencodeVariant` parameter. Specifying both an explicit `metadata.opencodeVariant` and a resolved `thinkingEffort` value is a conflict and will fail the agent call.
+
+### Retry
+
+`retry` controls retries for one logical provider-backed `agent()` call.
+
+```ts
+const result = await agent({
+  id: "review-auth",
+  provider: "codex",
+  retry: { maxAttempts: 3 },
+  prompt: "Review src/auth.ts for correctness and security issues."
+});
+```
+
+Use `retry: false` to disable retry for a specific call even when global retry is enabled.
+
+Retry applies to direct `agent()` calls and shared-agent-backed `agent({ definition })` calls. It does not apply to `tool()`, child `workflow()` calls, whole `pipeline()` stages, or whole `loop()` rounds.
+
+When `schema` is present, structured-output validation failures can retry with concise validation feedback instead of raw invalid output. `timeoutMs` still applies per attempt, and timed-out attempts are not retried in v1.
+
+The resolved retry policy is part of the agent-call fingerprint used for resume/cache behavior.
 
 ---
 
@@ -959,7 +996,10 @@ Do not assume these are available unless explicitly implemented or enabled:
 * shell execution
 * worktree isolation
 * container isolation
-* retry policies
+* retry support beyond provider-backed `agent()` calls
+* public retry-reason selector lists
+* provider-specific retry defaults
+* retrying `timed_out`, cancellation, security violations, invalid config, invalid workflow code, or run-limit failures
 
 ---
 
@@ -977,7 +1017,7 @@ Open Dynamic Workflow supports resuming a previous run to reuse cached results f
 To ensure a safe and predictable resume, Open Dynamic Workflow uses a **deterministic replay** model:
 1. The workflow script is executed from the beginning.
 2. Each `agent()` call is compared against the recorded call at the same position (sequence) in the previous run.
-3. If the call's "fingerprint" matches (same ID, prompt, schema, provider, model, etc.), the cached result is reused.
+3. If the call's "fingerprint" matches (same ID, prompt, schema, provider, model, resolved retry policy, etc.), the cached result is reused.
 4. After the first mismatch, all subsequent agents in that run are executed live.
 
 ### Requirements for Workflow Authors

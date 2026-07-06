@@ -88,7 +88,7 @@ Use `open-dynamic-workflow list workflows` to see runnable names and their resol
 | `--model <name>` | Override the default model. |
 | `--concurrency <num>` | Limit maximum parallel agent calls (integer >= 1). |
 | `--timeout-ms <num>` | Timeout in milliseconds for workflow execution. |
-| `--max-agent-calls <num>` | Limit the maximum number of live provider calls allowed. |
+| `--max-agent-calls <num>` | Limit the maximum number of live provider calls allowed, including retry attempts. |
 | `--report <pretty\|json\|jsonl>` | Output formatting mode for stdout. |
 | `--fail-fast` | Abort immediately on the first agent/task failure. |
 | `--resume <run-id>` | Resume a previous run using cache replay. |
@@ -96,6 +96,12 @@ Use `open-dynamic-workflow list workflows` to see runnable names and their resol
 | `--cwd <path>` | Current working directory to resolve workflows and configurations. |
 | `--out <path>` | Output directory for artifacts and reports. |
 | `--thinking-effort <effort>` | Override the thinking effort level for all eligible agent calls. Must be one of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. This is an execution preference and does not guarantee identical reasoning depth across different providers. Per-agent `thinkingEffort` values defined in the workflow script override this CLI value. If this resolves to a value unsupported by the selected provider, execution will fail. |
+| `--retry-max-attempts <number>` | Override the global retry `maxAttempts` value. |
+| `--retry-delay-ms <ms>` | Override the global retry initial delay in milliseconds. |
+| `--retry-max-delay-ms <ms>` | Override the global retry maximum delay in milliseconds. |
+| `--retry-backoff <fixed\|exponential>` | Override the global retry backoff strategy. |
+| `--retry-disable-delay` | Disable retry delays for the run. |
+| `--no-retry` | Disable global retry for the run. |
 | `--strict` | Fail before loading when strict discovery or path diagnostics are present. By default, `run` is lenient for path diagnostics. |
 
 ### Examples
@@ -113,8 +119,13 @@ open-dynamic-workflow run review --report jsonl
 open-dynamic-workflow run review --fail-fast
 open-dynamic-workflow run review --resume <previous-run-id>
 open-dynamic-workflow run review --thinking-effort high
+open-dynamic-workflow run review --retry-max-attempts 3
+open-dynamic-workflow run review --retry-delay-ms 0 --retry-disable-delay
+open-dynamic-workflow run review --no-retry
 open-dynamic-workflow run review --strict
 ```
+
+Retry flags adjust the global retry policy before workflow code runs. Per-agent `retry` settings still take precedence for that call, and `--no-retry` cannot be combined with the other retry flags.
 
 ---
 
@@ -289,4 +300,3 @@ When the default project configuration file (`.open-dynamic-workflow/config.yaml
         *   In `json` and `jsonl` modes, preflight setup failures write exactly one parseable JSON/JSONL error envelope containing `error.hint` to `stdout`, and no human-readable error messages are written to `stdout` or `stderr`.
 
 Initialization is optional: if no config file exists, the system automatically falls back to built-in defaults. Explicitly specifying a custom configuration path using `--config` suppresses the initialization hint unless that path resolves to the default project configuration path.
-

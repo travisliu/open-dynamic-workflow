@@ -54,10 +54,24 @@ Generated configuration is guaranteed to pass schema validation.
 | `concurrency` | `integer` | `4` | Positive integer (>= 1). | Maximum parallel tasks executed concurrently by the scheduler. |
 | `timeoutMs` | `integer` | `900_000` | Positive integer (>= 1) in ms. | Global timeout for workflow execution. |
 | `maxAgentCalls` | `integer` | unset | Positive integer (>= 1). | Maximum live provider agent calls a run may start. Resume cache hits do not count as new live calls. |
+| `retry` | `object \| false` | unset | Must be `false` or a retry policy object. | Global retry policy for provider-backed agent calls. Omit for one attempt and no retry; set `false` to disable retry globally. |
 | `defaultModel` | `string \| null` | `null` | String, null, or undefined. | Global model override fallback for provider execution. |
 | `workflow.maxDepth` | `integer` | `8` | Positive integer (>= 1). | Maximum recursion/invocation depth for nested workflows. |
 | `workflow.maxLoopRounds` | `integer` | `20` | Positive integer (>= 1). | Global ceiling for `loop()` `maxRounds`; static and runtime validation reject loop options above this value. |
 | `failFast` | `boolean` | `false` | Boolean. | If true, aborts execution immediately on the first task failure. |
+
+When retry is enabled, omitted fields inherit the recommended defaults used by the runtime: `maxAttempts: 3`, `delayMs: 1000`, `backoff: exponential`, `maxDelayMs: 30000`, `jitter: true`, and `disableDelay: false`.
+
+Example retry policy:
+```yaml
+retry:
+  maxAttempts: 3
+  delayMs: 1000
+  backoff: exponential
+  maxDelayMs: 30000
+  jitter: true
+  disableDelay: false
+```
 
 ---
 
@@ -313,12 +327,14 @@ Controls visual outputs and terminal formatting.
 
 ## 3. Override Resolution Precedence
 
-When evaluating configuration keys (like `model` or `timeoutMs`), the runtime resolves properties using the following hierarchy (highest precedence first):
+When evaluating configuration keys (like `model`, `timeoutMs`, or `retry`), the runtime resolves properties using the following hierarchy (highest precedence first):
 
 1.  **Agent DSL Parameter**: Options explicitly supplied inside the script code (e.g. `agent({ model: "custom" })`).
 2.  **CLI Flag Overrides**: Arguments provided directly on shell execution (e.g. `open-dynamic-workflow run --model overridden-model`).
 3.  **YAML File Configuration**: Properties declared in `.open-dynamic-workflow/config.yaml`.
 4.  **Built-in Defaults**: Fallback values defined in Open Dynamic Workflow's core engine defaults.
+
+For retry specifically, CLI overrides update the global retry policy before workflow code runs, and `agent({ retry })` can override or disable retry for a specific logical call.
 
 ---
 
