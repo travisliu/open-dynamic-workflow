@@ -1,0 +1,12 @@
+defaultProvider: mock
+concurrency: 2
+sharedAgents:
+  dir: .open-dynamic-workflow/agents
+providers:
+  mock:
+    command: mock
+    responses:
+      implement:1:1:
+        text: "implementation-response-1"
+      implement:1:2:
+        text: "implementation-response-2"

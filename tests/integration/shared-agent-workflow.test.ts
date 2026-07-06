@@ -5,6 +5,35 @@ import * as fs from "node:fs/promises";
 
 const TEMP_DIR = path.resolve("tests/temp-shared-agent");
 
+const REGRESSION_FIXTURE_DIR = path.resolve("tests/fixtures/shared-agent-loop-regression");
+const REGRESSION_WORKFLOW_PATH = path.resolve("tests/fixtures/shared-agent-loop-regression/workflows/shared-agent-loop-cache.workflow.js");
+const REGRESSION_CONFIG_PATH = path.resolve("tests/fixtures/shared-agent-loop-regression/open-dynamic-workflow.config.yaml");
+const REGRESSION_EXPECTED_IDS = ["implement:1:1", "implement:1:2"];
+const REGRESSION_EXPECTED_TEXTS = ["implementation-response-1", "implementation-response-2"];
+const REGRESSION_COLLISION_DIR = "agents/feature-builder-implementation-phases:round-1:developer-subagent";
+
+async function exists(pathname: string): Promise<boolean> {
+  try {
+    await fs.access(pathname);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readJson(pathname: string): Promise<any> {
+  return JSON.parse(await fs.readFile(pathname, "utf8"));
+}
+
+async function readJsonl(pathname: string): Promise<any[]> {
+  const content = await fs.readFile(pathname, "utf8");
+  return content
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
 async function runCli(args: string[]) {
   const stdoutData: string[] = [];
   const stderrData: string[] = [];
@@ -652,5 +681,136 @@ providers:
       const agentResult = report.agents[0];
       expect(agentResult.metadata.sharedAgentId).toBe("security-review-ts");
     });
+  });
+
+  it("uses distinct IDs and artifact directories for parallel shared-agent loop calls", async () => {
+    // Arrange
+    const outDir = path.join(TEMP_DIR, "shared-agent-loop-regression-runs");
+    await fs.mkdir(outDir, { recursive: true });
+
+    // Act
+    const result = await runCli([
+      "run",
+      REGRESSION_WORKFLOW_PATH,
+      "--config", REGRESSION_CONFIG_PATH,
+      "--cwd", REGRESSION_FIXTURE_DIR,
+      "--out", outDir,
+      "--report", "json"
+    ]);
+
+    expect(result.error).toBeNull();
+    const report = JSON.parse(result.stdout);
+
+    // Assert
+    expect(report.status).toBe("succeeded");
+    const runId = report.runId;
+    expect(runId).toBeDefined();
+
+    const runDir = path.join(outDir, runId);
+
+    expect(report.agents).toHaveLength(2);
+    const sortedAgents = [...report.agents].sort((a, b) => a.id.localeCompare(b.id));
+    expect(sortedAgents.map((agent) => agent.id)).toEqual(REGRESSION_EXPECTED_IDS);
+    expect(sortedAgents.map((agent) => agent.text)).toEqual(REGRESSION_EXPECTED_TEXTS);
+
+    expect(await exists(path.join(runDir, "agents", "implement:1:1"))).toBe(true);
+    expect(await exists(path.join(runDir, "agents", "implement:1:2"))).toBe(true);
+    expect(await exists(path.join(runDir, REGRESSION_COLLISION_DIR))).toBe(false);
+
+    const callsPath = path.join(runDir, "calls.jsonl");
+    const calls = await readJsonl(callsPath);
+
+    const agentCalls = calls.filter(
+      (c) => c.kind === "agent" && REGRESSION_EXPECTED_IDS.includes(c.callId)
+    );
+    expect(agentCalls).toHaveLength(2);
+
+    const sortedAgentCalls = [...agentCalls].sort((a, b) => a.callId.localeCompare(b.callId));
+    expect(sortedAgentCalls[0].callId).toBe("implement:1:1");
+    expect(sortedAgentCalls[0].agentId).toBe("implement:1:1");
+    expect(sortedAgentCalls[1].callId).toBe("implement:1:2");
+    expect(sortedAgentCalls[1].agentId).toBe("implement:1:2");
+  });
+
+  it("reuses cached shared-agent loop calls on resume", async () => {
+    // Arrange
+    const outDir = path.join(TEMP_DIR, "shared-agent-loop-resume-runs");
+    await fs.mkdir(outDir, { recursive: true });
+
+    // Act
+    const result1 = await runCli([
+      "run",
+      REGRESSION_WORKFLOW_PATH,
+      "--config", REGRESSION_CONFIG_PATH,
+      "--cwd", REGRESSION_FIXTURE_DIR,
+      "--out", outDir,
+      "--report", "json"
+    ]);
+
+    expect(result1.error).toBeNull();
+    const report1 = JSON.parse(result1.stdout);
+    expect(report1.status).toBe("succeeded");
+    const firstRunId = report1.runId;
+    expect(firstRunId).toBeDefined();
+
+    const result2 = await runCli([
+      "run",
+      REGRESSION_WORKFLOW_PATH,
+      "--config", REGRESSION_CONFIG_PATH,
+      "--cwd", REGRESSION_FIXTURE_DIR,
+      "--out", outDir,
+      "--resume", firstRunId,
+      "--report", "jsonl"
+    ]);
+
+    expect(result2.error).toBeNull();
+
+    // Assert
+    const events = result2.stdout
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    
+    const workflowCompleted = events.find((e) => e.type === "workflow.completed");
+    expect(workflowCompleted).toBeDefined();
+    expect(workflowCompleted.payload.status).toBe("succeeded");
+
+    const cacheHitEvents = events.filter(
+      (e) => e.type === "agent.cache_hit" && REGRESSION_EXPECTED_IDS.includes(e.payload?.callId)
+    );
+    expect(cacheHitEvents).toHaveLength(2);
+
+    const runDirs = (await fs.readdir(outDir)).filter((d) => d !== firstRunId && /^[a-z0-9-]{10,}$/.test(d));
+    expect(runDirs).toHaveLength(1);
+    const secondRunId = runDirs[0];
+    const secondRunDir = path.join(outDir, secondRunId);
+
+    expect(await exists(path.join(secondRunDir, "agents", "implement:1:1", "cache-hit.json"))).toBe(true);
+    expect(await exists(path.join(secondRunDir, "agents", "implement:1:2", "cache-hit.json"))).toBe(true);
+
+    const secondReportPath = path.join(secondRunDir, "report.json");
+    const secondReport = await readJson(secondReportPath);
+
+    const resumedAgentResults = secondReport.agents.filter((a: any) =>
+      REGRESSION_EXPECTED_IDS.includes(a.id)
+    );
+    expect(resumedAgentResults).toHaveLength(2);
+    const sortedResumedAgents = [...resumedAgentResults].sort((a, b) => a.id.localeCompare(b.id));
+    expect(sortedResumedAgents.map((agent) => agent.id)).toEqual(REGRESSION_EXPECTED_IDS);
+    expect(sortedResumedAgents.every((agent) => agent.cache?.hit === true)).toBe(true);
+
+    const secondCallsPath = path.join(secondRunDir, "calls.jsonl");
+    const secondCalls = await readJsonl(secondCallsPath);
+
+    const resumedAgentCalls = secondCalls.filter(
+      (c) => c.kind === "agent" && REGRESSION_EXPECTED_IDS.includes(c.callId)
+    );
+    expect(resumedAgentCalls).toHaveLength(2);
+    const sortedResumedCalls = [...resumedAgentCalls].sort((a, b) => a.callId.localeCompare(b.callId));
+    expect(sortedResumedCalls[0].callId).toBe("implement:1:1");
+    expect(sortedResumedCalls[1].callId).toBe("implement:1:2");
+
+    expect(await exists(path.join(secondRunDir, REGRESSION_COLLISION_DIR))).toBe(false);
   });
 });
