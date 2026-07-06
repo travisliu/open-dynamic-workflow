@@ -472,12 +472,14 @@ export class RetryOrchestrator {
 
     if (isRetryableExhaustion && finalResult && !finalResult.ok) {
       const originalError = finalResult.error;
-      finalResult.error = {
-        name: "OpenDynamicWorkflowError",
-        code: "RETRY_EXHAUSTED",
-        message: `Agent retry attempts exhausted: ${originalError?.message || "Execution failed"}`,
-        cause: originalError
-      };
+      if (originalError?.code !== "PROVIDER_UNAVAILABLE") {
+        finalResult.error = {
+          name: "OpenDynamicWorkflowError",
+          code: "RETRY_EXHAUSTED",
+          message: `Agent retry attempts exhausted: ${originalError?.message || "Execution failed"}`,
+          cause: originalError
+        };
+      }
     }
 
     // Attach retry metadata to final result
@@ -507,6 +509,7 @@ export class RetryOrchestrator {
     }
 
     finalResult.retry = retryMetadata;
+    finalResult = removeUndefinedProperties(finalResult);
 
     // Write retry-summary.json
     const summaryArtifact: RetrySummaryArtifact = {
@@ -722,4 +725,26 @@ function buildSchemaRetryFeedback(validationErrors: any[]): string {
     "",
     "Please fix these errors in your next response. Make sure to return exactly one valid JSON object matching the requested schema. Do not output any thinking or extra text outside the JSON."
   ].join("\n");
+}
+
+function removeUndefinedProperties<T>(obj: T): T {
+  if (obj === null || obj === undefined) {
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map((item) => removeUndefinedProperties(item)) as any;
+  }
+
+  if (typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (value !== undefined) {
+        result[key] = removeUndefinedProperties(value);
+      }
+    }
+    return result as T;
+  }
+
+  return obj;
 }

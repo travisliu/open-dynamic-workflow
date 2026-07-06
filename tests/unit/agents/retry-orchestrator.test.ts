@@ -263,6 +263,35 @@ describe("RetryOrchestrator", () => {
     expect(result.retry?.finalFailureReason).toBe("provider_error");
   });
 
+  it("preserves PROVIDER_UNAVAILABLE on exhausted retries while still finalizing retry metadata", async () => {
+    const providerUnavailable: AgentResult = {
+      ok: false,
+      status: "failed",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "",
+      stderr: "unknown provider",
+      exitCode: 1,
+      durationMs: 20,
+      artifacts: { dir: "agents/my-logical-agent/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+      error: { name: "OpenDynamicWorkflowError", message: "Unknown provider: nope", code: "PROVIDER_UNAVAILABLE" },
+      permissions: { mode: "default" }
+    };
+
+    vi.mocked(mockExecutor.execute).mockResolvedValue(providerUnavailable);
+
+    const input = createInput();
+    const result = await orchestrator.execute(input);
+
+    expect(result.ok).toBe(false);
+    expect(mockExecutor.execute).toHaveBeenCalledTimes(3);
+    expect(result.error?.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(result.retry?.attemptsStarted).toBe(3);
+    expect(result.retry?.exhausted).toBe(true);
+    expect(writtenFiles.has("agents/my-logical-agent/retry-summary.json")).toBe(true);
+    expect(writtenFiles.has("agents/my-logical-agent/result.json")).toBe(true);
+  });
+
   it("does not retry on non-retryable failures", async () => {
     const nonRetryableFailure: AgentResult = {
       ok: false,

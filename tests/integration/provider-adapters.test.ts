@@ -84,10 +84,14 @@ describe("Provider adapter execution", () => {
 
     const agentsDir = path.join(runDir, "agents");
     const agentsDirExists = await fs.access(agentsDir).then(() => true).catch(() => false);
-    if (agentsDirExists) {
-        const agentFolders = await fs.readdir(agentsDir);
-        expect(agentFolders.length).toBe(0);
-    }
+    expect(agentsDirExists).toBe(true);
+
+    const agentFolders = await fs.readdir(agentsDir);
+    expect(agentFolders).toEqual(["unknown-agent"]);
+
+    const logicalAgentDir = path.join(agentsDir, "unknown-agent");
+    const logicalArtifacts = (await fs.readdir(logicalAgentDir)).sort();
+    expect(logicalArtifacts).toEqual(["result.json", "retry-summary.json"]);
   });
 
   it("68. new providers remain behind scheduler/process-runner boundaries", async () => {
