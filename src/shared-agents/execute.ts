@@ -14,6 +14,7 @@ import type {
 } from "./types.js";
 
 export interface ExecuteSharedAgentInput {
+  id?: string | undefined;
   sharedAgentId: string;
   context?: unknown;
   origin: "workflow" | "pipeline-stage";
@@ -47,6 +48,7 @@ export async function executeSharedAgent(
     agent: (innerInput) => {
       const enrichedInput: DirectAgentCallInput = {
         ...innerInput,
+        id: innerInput.id ?? input.id,
         label: innerInput.label || entry.id,
         metadata: {
           ...sanitizeMetadata(definition.metadata || {}),

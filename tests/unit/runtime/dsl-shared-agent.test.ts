@@ -1,12 +1,26 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createDsl } from "../../../src/workflow/dsl.js";
 import { RuntimeState } from "../../../src/workflow/types.js";
 import { SharedAgentRegistry } from "../../../src/shared-agents/registry.js";
 import type { AgentCallInput, AgentResult } from "../../../src/types/agent.js";
 import { ErrorCode } from "../../../src/errors/codes.js";
 import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
+import { executeSharedAgent } from "../../../src/shared-agents/execute.js";
+
+vi.mock("../../../src/shared-agents/execute.js", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/shared-agents/execute.js")>();
+  return {
+    ...actual,
+    executeSharedAgent: vi.fn().mockImplementation((input, deps) => {
+      return actual.executeSharedAgent(input, deps);
+    }),
+  };
+});
 
 describe("DSL shared-agent calls", () => {
+  beforeEach(() => {
+    vi.mocked(executeSharedAgent).mockClear();
+  });
   const createMockRuntime = (registry?: SharedAgentRegistry): RuntimeState => ({
     runId: "run-1",
     parsedWorkflow: {
@@ -357,5 +371,40 @@ describe("DSL shared-agent calls", () => {
     expect(eventTypes.filter((type) => type === "agent.attempt.failed")).toHaveLength(1);
     expect(eventTypes.filter((type) => type === "agent.attempt.completed")).toHaveLength(1);
     expect(eventTypes.filter((type) => type === "agent.retry.skipped_delay")).toHaveLength(1);
+  });
+
+  it("forwards the parent id and other routing fields to executeSharedAgent", async () => {
+    const registry = new SharedAgentRegistry();
+    registry.register({
+      id: "test-agent",
+      sourcePath: "test.agent.js",
+      definition: {
+        id: "test-agent",
+        description: "Test",
+        inputSchema: { type: "object", properties: { name: { type: "string" } } },
+        run: async (context, runtime) => {
+          return await runtime.agent({ prompt: `Hello ${context.name}`, provider: "mock" });
+        }
+      },
+      validatedAt: new Date().toISOString()
+    });
+
+    const runtime = createMockRuntime(registry);
+    const dsl = createDsl(runtime);
+
+    const callInput = { id: "implement:2:1", definition: "test-agent", name: "World" };
+    const result = await dsl.agent(callInput);
+    expect(result.ok).toBe(true);
+
+    expect(executeSharedAgent).toHaveBeenCalledTimes(1);
+    expect(executeSharedAgent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "implement:2:1",
+        sharedAgentId: "test-agent",
+        context: callInput,
+        origin: "workflow"
+      }),
+      expect.any(Object)
+    );
   });
 });

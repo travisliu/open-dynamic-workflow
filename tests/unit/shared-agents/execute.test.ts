@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { executeSharedAgent } from "../../../src/shared-agents/execute.js";
 import { SharedAgentRegistry } from "../../../src/shared-agents/registry.js";
 import type { SharedAgentRegistryEntry } from "../../../src/shared-agents/types.js";
@@ -21,6 +21,11 @@ describe("executeSharedAgent", () => {
     log: vi.fn(),
     artifactsDir: "/repo/.open-dynamic-workflow/runs/run-1",
   };
+
+  beforeEach(() => {
+    mockDeps.agent.mockReset();
+    mockDeps.log.mockReset();
+  });
 
   it("uses custom ID from context if provided", async () => {
     const registry = new SharedAgentRegistry();
@@ -182,5 +187,75 @@ describe("executeSharedAgent", () => {
       context: {},
       origin: "workflow"
     }, { ...mockDeps, registry })).rejects.toThrow(/Cannot render agent prompt because 'agentPrompt' is not defined/);
+  });
+
+  it("propagates parent ID when inner agent call omits ID", async () => {
+    const registry = new SharedAgentRegistry();
+    const entry: SharedAgentRegistryEntry = {
+      id: "test-agent",
+      sourcePath: "test.agent.js",
+      definition: {
+        id: "test-agent",
+        description: "Test Agent",
+        run: async (ctx, runtime) => {
+          return await runtime.agent({ prompt: "Prompt" });
+        }
+      },
+      validatedAt: new Date().toISOString()
+    };
+    registry.register(entry);
+
+    mockDeps.agent.mockResolvedValue({ ok: true, status: "succeeded" } as AgentResult);
+
+    await executeSharedAgent({
+      id: "implement:2:1",
+      sharedAgentId: "test-agent",
+      context: {},
+      origin: "workflow"
+    }, { ...mockDeps, registry });
+
+    expect(mockDeps.agent).toHaveBeenCalledWith(expect.objectContaining({
+      id: "implement:2:1",
+      label: "test-agent",
+      metadata: expect.objectContaining({
+        sharedAgentId: "test-agent",
+        sharedAgentSource: "registry"
+      })
+    }));
+  });
+
+  it("allows inner agent call ID to override parent ID", async () => {
+    const registry = new SharedAgentRegistry();
+    const entry: SharedAgentRegistryEntry = {
+      id: "test-agent",
+      sourcePath: "test.agent.js",
+      definition: {
+        id: "test-agent",
+        description: "Test Agent",
+        run: async (ctx, runtime) => {
+          return await runtime.agent({ id: "custom-inner-id", prompt: "Prompt" });
+        }
+      },
+      validatedAt: new Date().toISOString()
+    };
+    registry.register(entry);
+
+    mockDeps.agent.mockResolvedValue({ ok: true, status: "succeeded" } as AgentResult);
+
+    await executeSharedAgent({
+      id: "implement:2:1",
+      sharedAgentId: "test-agent",
+      context: {},
+      origin: "workflow"
+    }, { ...mockDeps, registry });
+
+    expect(mockDeps.agent).toHaveBeenCalledWith(expect.objectContaining({
+      id: "custom-inner-id",
+      label: "test-agent",
+      metadata: expect.objectContaining({
+        sharedAgentId: "test-agent",
+        sharedAgentSource: "registry"
+      })
+    }));
   });
 });

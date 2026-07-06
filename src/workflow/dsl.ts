@@ -567,6 +567,7 @@ export function createDsl(runtime: RuntimeState) {
       const activeInvocation = getActiveWorkflowInvocation();
       try {
         return await executeSharedAgent({
+          id: input.id,
           sharedAgentId: input.definition,
           context: input,
           origin: activePipeline ? "pipeline-stage" : "workflow",
