@@ -95,13 +95,14 @@ export class DefaultAgentExecutor implements AgentExecutor {
     const adapter = registry.get(input.provider);
     const resolvedPerms = input.permissions || { mode: "default" };
     const sanitizedMetadata = sanitizeMetadata(input.metadata);
+    const baseDir = input.artifacts?.baseDir ?? `agents/${input.id}`;
 
     // 1. Write prompt.txt
-    await this.artifactStore.writeText(`agents/${input.id}/prompt.txt`, input.prompt);
+    await this.artifactStore.writeText(`${baseDir}/prompt.txt`, input.prompt);
 
     // 2. Write schema.json if schema is provided
     if (input.schema) {
-      await this.artifactStore.writeJson(`agents/${input.id}/schema.json`, input.schema);
+      await this.artifactStore.writeJson(`${baseDir}/schema.json`, input.schema);
     }
 
     // Write metadata.json
@@ -116,14 +117,14 @@ export class DefaultAgentExecutor implements AgentExecutor {
     if (input.thinkingEffort !== undefined) {
       metadataJson.thinkingEffort = input.thinkingEffort;
     }
-    await this.artifactStore.writeJson(`agents/${input.id}/metadata.json`, metadataJson);
+    await this.artifactStore.writeJson(`${baseDir}/metadata.json`, metadataJson);
 
     // Write permissions.json
-    await this.artifactStore.writeJson(`agents/${input.id}/permissions.json`, resolvedPerms);
+    await this.artifactStore.writeJson(`${baseDir}/permissions.json`, resolvedPerms);
 
     // Initialize empty log files
-    await this.artifactStore.writeText(`agents/${input.id}/stdout.log`, "");
-    await this.artifactStore.writeText(`agents/${input.id}/stderr.log`, "");
+    await this.artifactStore.writeText(`${baseDir}/stdout.log`, "");
+    await this.artifactStore.writeText(`${baseDir}/stderr.log`, "");
 
     const secretValues = collectSecretValues(process.env, this.config.security?.redactEnv);
 
@@ -138,18 +139,18 @@ export class DefaultAgentExecutor implements AgentExecutor {
     let cancelled = false;
 
     const agentArtifacts: AgentArtifacts = {
-      dir: `agents/${input.id}`,
-      promptPath: `agents/${input.id}/prompt.txt`,
-      stdoutPath: `agents/${input.id}/stdout.log`,
-      stderrPath: `agents/${input.id}/stderr.log`,
-      rawResultPath: `agents/${input.id}/raw-result.json`,
-      normalizedResultPath: `agents/${input.id}/normalized-result.json`,
-      permissionsPath: `agents/${input.id}/permissions.json`,
-      metadataPath: `agents/${input.id}/metadata.json`
+      dir: baseDir,
+      promptPath: `${baseDir}/prompt.txt`,
+      stdoutPath: `${baseDir}/stdout.log`,
+      stderrPath: `${baseDir}/stderr.log`,
+      rawResultPath: `${baseDir}/raw-result.json`,
+      normalizedResultPath: `${baseDir}/normalized-result.json`,
+      permissionsPath: `${baseDir}/permissions.json`,
+      metadataPath: `${baseDir}/metadata.json`
     };
 
     if (input.schema) {
-      agentArtifacts.schemaPath = `agents/${input.id}/schema.json`;
+      agentArtifacts.schemaPath = `${baseDir}/schema.json`;
     }
 
     // Run input
@@ -181,7 +182,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
             stderrInMemory += redactedPart;
           }
         }
-        await this.artifactStore.appendText(`agents/${input.id}/${stream}.log`, redactedPart);
+        await this.artifactStore.appendText(`${baseDir}/${stream}.log`, redactedPart);
         await this.eventBus.emit("agent.output", { agentId: input.id, stream, data: redactedPart });
       }
     };
@@ -211,13 +212,13 @@ export class DefaultAgentExecutor implements AgentExecutor {
       const finalStdout = stdoutRedactor.flush();
       if (finalStdout) {
         if (stdoutInMemory.length < MAX_IN_MEMORY_LOG_SIZE) stdoutInMemory += finalStdout;
-        await this.artifactStore.appendText(`agents/${input.id}/stdout.log`, finalStdout);
+        await this.artifactStore.appendText(`${baseDir}/stdout.log`, finalStdout);
         await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stdout", data: finalStdout });
       }
       const finalStderr = stderrRedactor.flush();
       if (finalStderr) {
         if (stderrInMemory.length < MAX_IN_MEMORY_LOG_SIZE) stderrInMemory += finalStderr;
-        await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, finalStderr);
+        await this.artifactStore.appendText(`${baseDir}/stderr.log`, finalStderr);
         await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stderr", data: finalStderr });
       }
 
@@ -264,7 +265,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         metadata: sanitizedMetadata
       };
 
-      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+      await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
     }
 
@@ -282,13 +283,13 @@ export class DefaultAgentExecutor implements AgentExecutor {
     const finalStdout = stdoutRedactor.flush();
     if (finalStdout) {
       if (stdoutInMemory.length < MAX_IN_MEMORY_LOG_SIZE) stdoutInMemory += finalStdout;
-      await this.artifactStore.appendText(`agents/${input.id}/stdout.log`, finalStdout);
+      await this.artifactStore.appendText(`${baseDir}/stdout.log`, finalStdout);
       await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stdout", data: finalStdout });
     }
     const finalStderr = stderrRedactor.flush();
     if (finalStderr) {
       if (stderrInMemory.length < MAX_IN_MEMORY_LOG_SIZE) stderrInMemory += finalStderr;
-      await this.artifactStore.appendText(`agents/${input.id}/stderr.log`, finalStderr);
+      await this.artifactStore.appendText(`${baseDir}/stderr.log`, finalStderr);
       await this.eventBus.emit("agent.output", { agentId: input.id, stream: "stderr", data: finalStderr });
     }
 
@@ -331,7 +332,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
-      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+      await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
     }
 
@@ -370,7 +371,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
-      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+      await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
     }
 
@@ -413,7 +414,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
-      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+      await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
     }
 
@@ -467,7 +468,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
-      await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, failureResult);
+      await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
     }
 
@@ -486,7 +487,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
         metadata: sanitizedMetadata
       };
     }
-    await this.artifactStore.writeJson(`agents/${input.id}/raw-result.json`, savedRawResult);
+    await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, savedRawResult);
 
     const normalized = await normalizeAgentOutput({
       schema: input.schema,
@@ -496,8 +497,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
 
     if (!normalized.ok) {
       if (normalized.error.errors) {
-        agentArtifacts.validationErrorPath = `agents/${input.id}/validation-error.json`;
-        await this.artifactStore.writeJson(`agents/${input.id}/validation-error.json`, normalized.error.errors);
+        agentArtifacts.validationErrorPath = `${baseDir}/validation-error.json`;
+        await this.artifactStore.writeJson(`${baseDir}/validation-error.json`, normalized.error.errors);
       }
 
       const errPayload = {
@@ -543,7 +544,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    await this.artifactStore.writeJson(`agents/${input.id}/normalized-result.json`, normalized.json ?? normalized.text);
+    await this.artifactStore.writeJson(`${baseDir}/normalized-result.json`, normalized.json ?? normalized.text);
 
     await this.emitVerboseResult({
       agentId: input.id,

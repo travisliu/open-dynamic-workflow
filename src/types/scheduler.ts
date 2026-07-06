@@ -25,6 +25,7 @@ export interface ScheduleOptions {
   timeoutMs?: number | undefined;
   failFast?: boolean | undefined;
   cwd?: string | undefined;
+  deferFailFastUntilLogicalResult?: boolean | undefined;
 }
 
 export interface Scheduler {

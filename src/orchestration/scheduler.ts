@@ -249,7 +249,7 @@ export class DefaultScheduler implements Scheduler {
 
             internalTask.resolve(result);
 
-            if (this.failFast || internalTask.options?.failFast) {
+            if ((this.failFast || internalTask.options?.failFast) && !internalTask.options?.deferFailFastUntilLogicalResult) {
               this.abort({
                 type: "fail-fast",
                 message: `Fail-fast triggered by step ${internalTask.task.id}`,
@@ -315,7 +315,7 @@ export class DefaultScheduler implements Scheduler {
 
           internalTask.resolve(failureResult as any);
 
-          if (this.failFast || internalTask.options?.failFast) {
+          if ((this.failFast || internalTask.options?.failFast) && !internalTask.options?.deferFailFastUntilLogicalResult) {
             this.abort({
               type: "fail-fast",
               message: `Fail-fast triggered by step ${internalTask.task.id} throwing error`,

@@ -986,4 +986,81 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       spy.mockRestore();
     }
   });
+
+  it("writes attempt-scoped artifacts to the specified baseDir", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      concurrency: 1,
+      timeoutMs: 5000,
+      providers: {
+        mock: {
+          command: "mock",
+          args: [],
+          responses: {
+            "test-agent-attempt": {
+              stdout: "mock stdout",
+              stderr: "mock stderr",
+              text: "mock result text",
+              exitCode: 0
+            }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-attempt-artifacts";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    
+    await store.createRun({
+      runId,
+      outDir: runOutDir,
+      workflowPath: "dummy.ts",
+      workflowSource: "",
+      workflowHash: "hash",
+      resolvedConfig: config,
+      openDynamicWorkflowVersion: "1.0.0",
+      cwd: process.cwd()
+    });
+
+    const eventBus = new EventBus({
+      runId,
+      artifactStore: store,
+      subscribers: []
+    });
+
+    const executor = new DefaultAgentExecutor({
+      config,
+      artifactStore: store,
+      eventBus
+    });
+
+    const result = await executor.execute({
+      id: "test-agent-attempt",
+      label: "Test Agent Attempt",
+      provider: "mock",
+      prompt: "test prompt",
+      model: "mock-model",
+      timeoutMs: 5000,
+      cwd: process.cwd(),
+      permissions: { mode: "default" },
+      signal: new AbortController().signal,
+      metadata: {},
+      artifacts: {
+        baseDir: "agents/test-agent-attempt/attempts/2",
+        logicalDir: "agents/test-agent-attempt",
+        attempt: 2
+      }
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.artifacts.dir).toBe("agents/test-agent-attempt/attempts/2");
+    expect(result.artifacts.promptPath).toBe("agents/test-agent-attempt/attempts/2/prompt.txt");
+
+    const attemptDir = path.join(runOutDir, "agents/test-agent-attempt/attempts/2");
+    const promptText = await fs.readFile(path.join(attemptDir, "prompt.txt"), "utf8");
+    expect(promptText).toBe("test prompt");
+    const stdoutLog = await fs.readFile(path.join(attemptDir, "stdout.log"), "utf8");
+    expect(stdoutLog).toBe("mock stdout");
+  });
 });

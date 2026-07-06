@@ -18,6 +18,11 @@ export interface AgentExecutionInput {
   metadata?: Record<string, unknown>;
   signal: AbortSignal;
   thinkingEffort?: ThinkingEffort;
+  artifacts?: {
+    baseDir: string;        // agents/<logicalId>/attempts/<n>
+    logicalDir: string;     // agents/<logicalId>
+    attempt: number;
+  };
 }
 
 export interface AgentExecutor {
