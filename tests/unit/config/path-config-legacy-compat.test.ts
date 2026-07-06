@@ -207,7 +207,7 @@ workflow:
   });
 
   it("8. Existing legacy fixture configs load without CONFIG_VALIDATION_ERROR", async () => {
-    const workspaceRoot = "/root/projects/cadecli";
+    const workspaceRoot = process.cwd();
     const fixtures = [
       "tests/fixtures/config/provider-adapters.config.yaml",
       "tests/fixtures/config/run-by-name.config.yaml",

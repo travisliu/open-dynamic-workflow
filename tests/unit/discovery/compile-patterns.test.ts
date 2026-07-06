@@ -5,7 +5,7 @@ import { compileResourceDiscovery } from "../../../src/discovery/compile-pattern
 import { normalizeResourceDiscovery } from "../../../src/config/path-discovery.js";
 import { DEFAULT_CONFIG } from "../../../src/config/defaults.js";
 
-const cwd = "/root/projects/cadecli";
+const cwd = process.cwd();
 
 function createDiscoveryFixture(
   overrides: Partial<NormalizedResourceDiscovery & { exclude?: string[] }> = {}

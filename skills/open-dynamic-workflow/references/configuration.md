@@ -378,14 +378,14 @@ Legacy keys are supported but superseded by flat resource-local keys:
 
 ### Validation & Diagnostics
 The initialization phase runs validation to ensure sandbox integrity and configuration health:
-*   **Fatal Errors & Strict Mode**: Strict-fatal errors are raised for absolute paths, directory-only patterns (trailing `/`), relative paths escaping the workspace Cwd, and symlink escapes (raises [CONFIG_PATH_SYMLINK_ESCAPE](file:///root/projects/cadecli/src/config/types.ts#L228)). In the CLI, strict validation is enabled via:
+*   **Fatal Errors & Strict Mode**: Strict-fatal errors are raised for absolute paths, directory-only patterns (trailing `/`), relative paths escaping the workspace Cwd, and symlink escapes (raises [CONFIG_PATH_SYMLINK_ESCAPE](../../../src/config/types.ts#L228)). In the CLI, strict validation is enabled via:
     - `list --strict`
     - `validate --strict`
     - `run --strict`
     If strict mode is enabled, any strict-fatal path diagnostics or discovery warnings will immediately halt execution and fail before loading resources. By default, `run` and `validate` are non-strict (lenient) and will proceed for a direct safe target even if warnings or strict-fatal configuration diagnostics exist elsewhere in the workspace configuration.
-*   **Warnings (Non-fatal)**: Emitted for unsupported glob syntax (e.g. brace expansion `{js,ts}`) or zero-match patterns (such as [CONFIG_PATH_INCLUDE_MATCHED_NOTHING](file:///root/projects/cadecli/src/config/types.ts#L224) and `CONFIG_PATH_EXCLUDE_MATCHED_NOTHING`). Warnings become fatal when strict mode is enabled.
+*   **Warnings (Non-fatal)**: Emitted for unsupported glob syntax (e.g. brace expansion `{js,ts}`) or zero-match patterns (such as [CONFIG_PATH_INCLUDE_MATCHED_NOTHING](../../../src/config/types.ts#L224) and `CONFIG_PATH_EXCLUDE_MATCHED_NOTHING`). Warnings become fatal when strict mode is enabled.
 
-See [path-safety.ts](file:///root/projects/cadecli/src/config/path-safety.ts) and [collect-files.ts](file:///root/projects/cadecli/src/discovery/collect-files.ts) for details.
+See [path-safety.ts](../../../src/config/path-safety.ts) and [collect-files.ts](../../../src/discovery/collect-files.ts) for details.
 
 ### Glob Syntax Support
 *   **Supported**: Standard wildcards (`*` single-segment, `**` recursive). Suffix wildcards (e.g., `**/*.workflow.*`) are filtered by runtime-supported extensions (`.ts`, `.js`, `.mjs`, `.cjs`).
