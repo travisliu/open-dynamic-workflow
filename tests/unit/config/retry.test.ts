@@ -296,5 +296,38 @@ describe("Retry Resolver", () => {
         expect(agentRetry.disableDelay).toBe(false);
       });
     });
+
+    it("evaluates explicit agent retry after a global CLI noRetry disable marker", () => {
+      const globalPolicy = resolveGlobalRetryPolicy({
+        configRetry: { maxAttempts: 5 },
+        cliOverrides: { noRetry: true }
+      });
+      expect(globalPolicy.enabled).toBe(false);
+      expect(globalPolicy.disabledBy).toBe("cli");
+
+      const resolved = resolveAgentRetryPolicy({
+        globalPolicy,
+        agentRetry: { maxAttempts: 3 }
+      });
+
+      expect(resolved.enabled).toBe(true);
+      expect(resolved.source).toBe("agent");
+      expect(resolved.policy.maxAttempts).toBe(3);
+    });
+
+    it("evaluates explicit agent retry when global config retry is omitted", () => {
+      const globalPolicy = resolveGlobalRetryPolicy({});
+      expect(globalPolicy.enabled).toBe(false);
+      expect(globalPolicy.disabledBy).toBe("omitted");
+
+      const resolved = resolveAgentRetryPolicy({
+        globalPolicy,
+        agentRetry: { maxAttempts: 4 }
+      });
+
+      expect(resolved.enabled).toBe(true);
+      expect(resolved.source).toBe("agent");
+      expect(resolved.policy.maxAttempts).toBe(4);
+    });
   });
 });

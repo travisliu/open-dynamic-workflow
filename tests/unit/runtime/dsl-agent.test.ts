@@ -6,6 +6,7 @@ import type { ParsedWorkflow } from "../../../src/types/workflow.js";
 import type { ResolvedConfig } from "../../../src/types/config.js";
 import type { AgentResult } from "../../../src/types/agent.js";
 import { computeAgentFingerprint } from "../../../src/artifacts/call-cache.js";
+import { resolveAgentRetryPolicy, resolveGlobalRetryPolicy } from "../../../src/config/retry.js";
 
 // ---- Helpers ----
 
@@ -500,15 +501,165 @@ describe("DSL: agent()", () => {
   });
 
   describe("agent() cache integration", () => {
-    it("returns a materialized result on cache hit and emits agent.cache_hit", async () => {
-      const runRoot = "/workspace/.open-dynamic-workflow/runs/prev-run";
+    it("misses the live cache path when only retry semantics change", async () => {
+      const baseGlobalRetry = resolveGlobalRetryPolicy({
+        configRetry: {
+          maxAttempts: 3,
+          delayMs: 500,
+          backoff: "fixed",
+          maxDelayMs: 5000,
+          jitter: false,
+          disableDelay: false
+        }
+      });
+      const cachedRetry = resolveAgentRetryPolicy({
+        globalPolicy: baseGlobalRetry,
+        agentRetry: {
+          delayMs: 250
+        }
+      });
+      const runtimeRetry = resolveAgentRetryPolicy({
+        globalPolicy: baseGlobalRetry,
+        agentRetry: {
+          delayMs: 750
+        }
+      });
+
       const fingerprint = computeAgentFingerprint({
         call: { id: "call-1", prompt: "hello" },
         provider: "mock",
         model: undefined,
         timeoutMs: 30000,
         cwd: "/workspace",
+        providerConfig: undefined,
+        retry: cachedRetry
+      });
+
+      const cache = {
+        readEnabled: true,
+        previousEntries: new Map([[1, {
+          kind: "agent",
+          sequence: 1,
+          callId: "call-1",
+          fingerprint,
+          status: "succeeded",
+          resultPath: "agents/old/normalized-result.json",
+          agentId: "old-agent"
+        }]]),
+        prefixCacheUsable: true,
+        currentEntries: []
+      };
+
+      const scheduler = makeSchedulerWithResult(makeSuccessResult("agent-1"));
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        callCache: cache as any,
+        callSequence: 0,
+        config: {
+          defaultProvider: "mock",
+          concurrency: 1,
+          timeoutMs: 30000,
+          retry: runtimeRetry,
+          providers: {},
+          security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+          reporting: { mode: "pretty", verbose: false },
+          cwd: "/workspace",
+          outDir: "/workspace/.open-dynamic-workflow/runs",
+          cliArgs: {}
+        }
+      });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        id: "call-1",
+        prompt: "hello",
+        retry: {
+          delayMs: 750
+        }
+      });
+
+      expect(scheduler.schedule).toHaveBeenCalledTimes(1);
+      expect(cache.prefixCacheUsable).toBe(false);
+    });
+
+    it("misses the live cache path when retry is added without a global retry policy", async () => {
+      const omittedGlobalRetry = resolveGlobalRetryPolicy({});
+      const runtimeRetry = resolveAgentRetryPolicy({
+        globalPolicy: omittedGlobalRetry,
+        agentRetry: {
+          delayMs: 750
+        }
+      });
+
+      const cachedFingerprint = computeAgentFingerprint({
+        call: { id: "call-1", prompt: "hello" },
+        provider: "mock",
+        model: undefined,
+        timeoutMs: 30000,
+        cwd: "/workspace",
         providerConfig: undefined
+      });
+      const runtimeFingerprint = computeAgentFingerprint({
+        call: { id: "call-1", prompt: "hello" },
+        provider: "mock",
+        model: undefined,
+        timeoutMs: 30000,
+        cwd: "/workspace",
+        providerConfig: undefined,
+        retry: runtimeRetry
+      });
+
+      expect(runtimeFingerprint).not.toBe(cachedFingerprint);
+
+      const cache = {
+        readEnabled: true,
+        previousEntries: new Map([[1, {
+          kind: "agent",
+          sequence: 1,
+          callId: "call-1",
+          fingerprint: cachedFingerprint,
+          status: "succeeded",
+          resultPath: "agents/old/normalized-result.json",
+          agentId: "old-agent"
+        }]]),
+        prefixCacheUsable: true,
+        currentEntries: []
+      };
+
+      const scheduler = makeSchedulerWithResult(makeSuccessResult("agent-1"));
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        callCache: cache as any,
+        callSequence: 0
+      });
+      const dsl = createDsl(runtime);
+
+      await dsl.agent({
+        id: "call-1",
+        prompt: "hello",
+        retry: {
+          delayMs: 750
+        }
+      });
+
+      expect(scheduler.schedule).toHaveBeenCalledTimes(1);
+      expect(cache.prefixCacheUsable).toBe(false);
+    });
+
+    it("returns a materialized result on cache hit and emits agent.cache_hit", async () => {
+      const runRoot = "/workspace/.open-dynamic-workflow/runs/prev-run";
+      const omittedGlobalRetry = resolveGlobalRetryPolicy({});
+      const resolvedRetry = resolveAgentRetryPolicy({
+        globalPolicy: omittedGlobalRetry
+      });
+      const fingerprint = computeAgentFingerprint({
+        call: { id: "call-1", prompt: "hello" },
+        provider: "mock",
+        model: undefined,
+        timeoutMs: 30000,
+        cwd: "/workspace",
+        providerConfig: undefined,
+        retry: resolvedRetry
       });
 
       const cache = {

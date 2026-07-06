@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -11,6 +11,7 @@ import {
   resolveGlobalRetryPolicy
 } from "../../../src/config/retry.js";
 import { computeAgentFingerprint } from "../../../src/artifacts/call-cache.js";
+import { createDsl } from "../../../src/workflow/dsl.js";
 import type { OpenDynamicWorkflowConfig } from "../../../src/config/types.js";
 import type { ResolvedRetryPolicy } from "../../../src/types/retry.js";
 
@@ -148,6 +149,18 @@ describe("Phase 2 retry acceptance coverage", () => {
         disableDelay: true
       }
     });
+    const cliResolvedRetry: ResolvedRetryPolicy = {
+      enabled: true,
+      policy: {
+        maxAttempts: 2,
+        delayMs: 250,
+        backoff: "fixed",
+        maxDelayMs: 5000,
+        jitter: false,
+        disableDelay: true
+      },
+      source: "cli"
+    };
     const reorderedEnabledRetry: ResolvedRetryPolicy = {
       source: "config",
       enabled: true,
@@ -169,6 +182,10 @@ describe("Phase 2 retry acceptance coverage", () => {
     const enabledFingerprint = computeAgentFingerprint({
       ...baseCall,
       retry: enabledRetry
+    });
+    const cliFingerprint = computeAgentFingerprint({
+      ...baseCall,
+      retry: cliResolvedRetry
     });
     const reorderedFingerprint = computeAgentFingerprint({
       ...baseCall,
@@ -217,10 +234,236 @@ describe("Phase 2 retry acceptance coverage", () => {
     );
 
     // Assert
+    expect(cliFingerprint).toBe(enabledFingerprint);
     expect(reorderedFingerprint).toBe(enabledFingerprint);
     expect(disabledFingerprint).not.toBe(enabledFingerprint);
     for (const fingerprint of semanticVariants) {
       expect(fingerprint).not.toBe(enabledFingerprint);
     }
+  });
+
+  it("wires resolved retry semantics into the live agent cache fingerprint path", async () => {
+    const globalRetry = resolveGlobalRetryPolicy({
+      configRetry: {
+        maxAttempts: 3,
+        delayMs: 500,
+        backoff: "fixed",
+        maxDelayMs: 5000,
+        jitter: false,
+        disableDelay: false
+      }
+    });
+    const cachedRetry = resolveAgentRetryPolicy({
+      globalPolicy: globalRetry,
+      agentRetry: {
+        delayMs: 250
+      }
+    });
+    const runtimeRetry = resolveAgentRetryPolicy({
+      globalPolicy: globalRetry,
+      agentRetry: {
+        delayMs: 750
+      }
+    });
+    const fingerprint = computeAgentFingerprint({
+      call: { id: "call-1", prompt: "hello" },
+      provider: "mock",
+      timeoutMs: 30000,
+      cwd: "/workspace",
+      retry: cachedRetry
+    } as any);
+    const scheduler = {
+      schedule: vi.fn().mockResolvedValue({
+        ok: true,
+        status: "succeeded",
+        id: "call-1",
+        provider: "mock",
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+        durationMs: 1,
+        artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
+        permissions: { mode: "default" }
+      }),
+      drain: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn(),
+      getSnapshot: vi.fn().mockReturnValue({
+        aborted: false,
+        abortReason: undefined,
+        runningCount: 0,
+        queuedCount: 0,
+        completedCount: 0
+      })
+    };
+    const runtime = {
+      runId: "run-test-1",
+      parsedWorkflow: {
+        meta: { name: "test", description: "test" },
+        body: "",
+        sourcePath: "test.js",
+        sourceText: "",
+        sourceHash: "abc123"
+      },
+      config: {
+        defaultProvider: "mock",
+        concurrency: 1,
+        timeoutMs: 30000,
+        retry: runtimeRetry,
+        providers: {},
+        security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+        reporting: { mode: "pretty", verbose: false },
+        cwd: "/workspace",
+        outDir: "/workspace/.open-dynamic-workflow/runs",
+        cliArgs: {}
+      },
+      cli: {},
+      args: {},
+      cwd: "/workspace",
+      artifactsDir: "/workspace/.open-dynamic-workflow/runs/run-test-1",
+      agentResults: [],
+      toolResults: [],
+      scheduler,
+      agentExecutor: { execute: vi.fn() },
+      eventSink: { emit: vi.fn() },
+      abortController: new AbortController(),
+      agentCounter: 0,
+      callSequence: 0,
+      callCache: {
+        readEnabled: true,
+        writeIndex: true,
+        previousEntries: new Map([[1, {
+          kind: "agent",
+          sequence: 1,
+          callId: "call-1",
+          fingerprint,
+          status: "succeeded",
+          resultPath: "agents/old/result.json",
+          agentId: "old-agent"
+        }]]),
+        currentEntries: [],
+        prefixCacheUsable: true
+      }
+    } as any;
+    const dsl = createDsl(runtime);
+
+    await dsl.agent({
+      id: "call-1",
+      prompt: "hello",
+      retry: {
+        delayMs: 750
+      }
+    });
+
+    expect(scheduler.schedule).toHaveBeenCalledTimes(1);
+    expect(runtime.callCache.prefixCacheUsable).toBe(false);
+  });
+
+  it("invalidates the live agent cache path when retry is added without a global retry policy", async () => {
+    const omittedGlobalRetry = resolveGlobalRetryPolicy({});
+    const runtimeRetry = resolveAgentRetryPolicy({
+      globalPolicy: omittedGlobalRetry,
+      agentRetry: {
+        delayMs: 750
+      }
+    });
+    const cachedFingerprint = computeAgentFingerprint({
+      call: { id: "call-1", prompt: "hello" },
+      provider: "mock",
+      timeoutMs: 30000,
+      cwd: "/workspace"
+    } as any);
+    const runtimeFingerprint = computeAgentFingerprint({
+      call: { id: "call-1", prompt: "hello" },
+      provider: "mock",
+      timeoutMs: 30000,
+      cwd: "/workspace",
+      retry: runtimeRetry
+    } as any);
+
+    expect(runtimeFingerprint).not.toBe(cachedFingerprint);
+
+    const scheduler = {
+      schedule: vi.fn().mockResolvedValue({
+        ok: true,
+        status: "succeeded",
+        id: "call-1",
+        provider: "mock",
+        stdout: "",
+        stderr: "",
+        exitCode: 0,
+        durationMs: 1,
+        artifacts: { dir: "", promptPath: "", stdoutPath: "", stderrPath: "" },
+        permissions: { mode: "default" }
+      }),
+      drain: vi.fn().mockResolvedValue(undefined),
+      abort: vi.fn(),
+      getSnapshot: vi.fn().mockReturnValue({
+        aborted: false,
+        abortReason: undefined,
+        runningCount: 0,
+        queuedCount: 0,
+        completedCount: 0
+      })
+    };
+    const runtime = {
+      runId: "run-test-1",
+      parsedWorkflow: {
+        meta: { name: "test", description: "test" },
+        body: "",
+        sourcePath: "test.js",
+        sourceText: "",
+        sourceHash: "abc123"
+      },
+      config: {
+        defaultProvider: "mock",
+        concurrency: 1,
+        timeoutMs: 30000,
+        providers: {},
+        security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+        reporting: { mode: "pretty", verbose: false },
+        cwd: "/workspace",
+        outDir: "/workspace/.open-dynamic-workflow/runs",
+        cliArgs: {}
+      },
+      cli: {},
+      args: {},
+      cwd: "/workspace",
+      artifactsDir: "/workspace/.open-dynamic-workflow/runs/run-test-1",
+      agentResults: [],
+      toolResults: [],
+      scheduler,
+      agentExecutor: { execute: vi.fn() },
+      eventSink: { emit: vi.fn() },
+      abortController: new AbortController(),
+      agentCounter: 0,
+      callSequence: 0,
+      callCache: {
+        readEnabled: true,
+        writeIndex: true,
+        previousEntries: new Map([[1, {
+          kind: "agent",
+          sequence: 1,
+          callId: "call-1",
+          fingerprint: cachedFingerprint,
+          status: "succeeded",
+          resultPath: "agents/old/result.json",
+          agentId: "old-agent"
+        }]]),
+        currentEntries: [],
+        prefixCacheUsable: true
+      }
+    } as any;
+    const dsl = createDsl(runtime);
+
+    await dsl.agent({
+      id: "call-1",
+      prompt: "hello",
+      retry: {
+        delayMs: 750
+      }
+    });
+
+    expect(scheduler.schedule).toHaveBeenCalledTimes(1);
+    expect(runtime.callCache.prefixCacheUsable).toBe(false);
   });
 });

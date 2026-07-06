@@ -336,4 +336,26 @@ describe("Config Schema Validation", () => {
       );
     }
   });
+
+  it("passes when retry is a resolved retry object shape (after config merge)", () => {
+    // Arrange
+    const config = {
+      ...DEFAULT_CONFIG,
+      retry: {
+        enabled: true,
+        source: "config" as const,
+        policy: {
+          maxAttempts: 3,
+          delayMs: 1000,
+          maxDelayMs: 5000,
+          backoff: "exponential" as const,
+          jitter: true,
+          disableDelay: false
+        }
+      }
+    };
+
+    // Act & Assert
+    expect(() => validateConfig(config)).not.toThrow();
+  });
 });

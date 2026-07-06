@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { DEFAULT_CONFIG } from "../../../src/config/defaults.js";
 import { validateConfig } from "../../../src/config/schema.js";
 import { parseRetryCliOptions } from "../../../src/cli/args.js";
@@ -16,6 +18,11 @@ import { loadSharedAgentRegistry } from "../../../src/shared-agents/load.js";
 import { loadToolRegistry } from "../../../src/tools/load.js";
 import { discoverWorkflowRegistry } from "../../../src/workflow/discovery.js";
 import { loadConfig } from "../../../src/config/load.js";
+import {
+  BUILT_IN_DEFAULT_POLICY,
+  resolveAgentRetryPolicy,
+  resolveGlobalRetryPolicy
+} from "../../../src/config/retry.js";
 
 const loadConfigCalls: any[] = [];
 const runtimeExecutionOrder: string[] = [];
@@ -143,7 +150,7 @@ describe("Phase 1 retry acceptance coverage", () => {
     });
   });
 
-  it("accepts valid retry config and rejects unsupported retry selection fields", () => {
+  it("accepts omitted retry, valid retry config, and retry:false", () => {
     // Arrange
     const validRetryConfig: RetryConfigInput = {
       maxAttempts: 3,
@@ -153,17 +160,48 @@ describe("Phase 1 retry acceptance coverage", () => {
       jitter: true,
       disableDelay: false
     };
+    const omittedRetryConfig = {
+      ...DEFAULT_CONFIG
+    };
+    const disabledRetryConfig = {
+      ...DEFAULT_CONFIG,
+      retry: false
+    };
     const validConfig = {
       ...DEFAULT_CONFIG,
       retry: validRetryConfig
     };
 
+    // Act & Assert
+    expect(() => validateConfig(omittedRetryConfig)).not.toThrow();
+    expect(() => validateConfig(disabledRetryConfig)).not.toThrow();
+    expect(() => validateConfig(validConfig)).not.toThrow();
+  });
+
+  it("rejects invalid retry shapes, invalid numeric values, invalid backoff values, and banned selection fields", () => {
+    // Arrange
     const invalidCases = [
       {
-        label: "non-object retry",
+        label: "string retry",
         config: {
           ...DEFAULT_CONFIG,
           retry: "yes" as any
+        },
+        message: "Config value 'retry' must be an object."
+      },
+      {
+        label: "array retry",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: [] as any
+        },
+        message: "Config value 'retry' must be an object."
+      },
+      {
+        label: "null retry",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: null as any
         },
         message: "Config value 'retry' must be an object."
       },
@@ -176,6 +214,30 @@ describe("Phase 1 retry acceptance coverage", () => {
         message: "Config value 'retry.maxAttempts' must be a positive integer."
       },
       {
+        label: "negative retry.delayMs",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: { delayMs: -1 }
+        },
+        message: "Config value 'retry.delayMs' must be a non-negative integer."
+      },
+      {
+        label: "negative retry.maxDelayMs",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: { maxDelayMs: -1 }
+        },
+        message: "Config value 'retry.maxDelayMs' must be a non-negative integer."
+      },
+      {
+        label: "invalid retry.backoff",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: { backoff: "linear" as any }
+        },
+        message: "Config value 'retry.backoff' must be 'fixed' or 'exponential'."
+      },
+      {
         label: "retryOn",
         config: {
           ...DEFAULT_CONFIG,
@@ -183,22 +245,82 @@ describe("Phase 1 retry acceptance coverage", () => {
         },
         message:
           "retryOn is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only."
+      },
+      {
+        label: "retryReasons",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: { retryReasons: ["provider_error"] } as any
+        },
+        message:
+          "retryReasons is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only."
+      },
+      {
+        label: "retryOnErrors",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: { retryOnErrors: ["provider_error"] } as any
+        },
+        message:
+          "retryOnErrors is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only."
+      },
+      {
+        label: "errorCategories",
+        config: {
+          ...DEFAULT_CONFIG,
+          retry: { errorCategories: ["provider_error"] } as any
+        },
+        message:
+          "errorCategories is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only."
       }
     ];
 
-    // Act
-    expect(() => validateConfig(validConfig)).not.toThrow();
-
     // Assert
     for (const testCase of invalidCases) {
-      expect(() => validateConfig(testCase.config)).toThrow(OpenDynamicWorkflowError);
+      // Act
+      const validate = () => validateConfig(testCase.config);
+
+      // Assert
+      expect(validate).toThrow(OpenDynamicWorkflowError);
       try {
-        validateConfig(testCase.config);
+        validate();
       } catch (error: any) {
         expect(error.code).toBe(ErrorCode.CONFIG_VALIDATION_ERROR);
         expect(error.message).toBe(testCase.message);
       }
     }
+  });
+
+  it("rejects invalid retry config through the real loadConfig merge boundary", async () => {
+    // Arrange
+    const tempDir = join(tmpdir(), "phase-1-retry-load-acceptance-" + Date.now());
+    fs.mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    fs.mkdirSync(configDir, { recursive: true });
+    const configPath = join(configDir, "config.yaml");
+    const { loadConfig: realLoadConfig } = await vi.importActual<typeof import("../../../src/config/load.js")>(
+      "../../../src/config/load.js"
+    );
+
+    // Act
+    fs.writeFileSync(
+      configPath,
+      [
+        "retry:",
+        "  maxAttempts: abc",
+        ""
+      ].join("\n")
+    );
+
+    // Assert
+    await expect(
+      realLoadConfig({ cwd: tempDir, configPath, cli: {} })
+    ).rejects.toMatchObject({
+      code: ErrorCode.CONFIG_VALIDATION_ERROR,
+      message: "Config value 'retry.maxAttempts' must be a positive integer."
+    });
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
   it("parses retry CLI flags into run-option-compatible overrides and rejects malformed values", () => {
@@ -233,7 +355,8 @@ describe("Phase 1 retry acceptance coverage", () => {
       { retryMaxAttempts: "0" },
       { retryDelayMs: "-1" },
       { retryBackoff: "linear" },
-      { retry: false, retryMaxAttempts: "2" }
+      { retry: false, retryMaxAttempts: "2" },
+      { noRetry: true, retryDelayMs: "10" }
     ]) {
       expect(() => parseRetryCliOptions(invalidOptions)).toThrow(OpenDynamicWorkflowError);
       try {
@@ -242,6 +365,109 @@ describe("Phase 1 retry acceptance coverage", () => {
         expect(error.code).toBe(ErrorCode.CLI_USAGE_ERROR);
       }
     }
+  });
+
+  it("resolves global and per-agent retry precedence field by field and keeps explicit disable markers distinct", () => {
+    // Arrange
+    const configRetry = {
+      delayMs: 250,
+      jitter: false
+    };
+    const cliOverrides = {
+      maxAttempts: 5,
+      backoff: "fixed" as const,
+      disableDelay: true
+    };
+
+    // Act
+    const resolvedGlobal = resolveGlobalRetryPolicy({
+      configRetry,
+      cliOverrides
+    });
+    const resolvedAgent = resolveAgentRetryPolicy({
+      globalPolicy: resolvedGlobal,
+      agentRetry: {
+        maxAttempts: 2,
+        delayMs: 125
+      }
+    });
+    const resolvedAfterCliNoRetry = resolveAgentRetryPolicy({
+      globalPolicy: resolveGlobalRetryPolicy({
+        configRetry: { maxAttempts: 5 },
+        cliOverrides: { noRetry: true }
+      }),
+      agentRetry: {
+        maxAttempts: 3,
+        delayMs: 75
+      }
+    });
+    const hardDisabledGlobal = resolveGlobalRetryPolicy({
+      configRetry: false
+    });
+    const hardDisabledAgent = resolveAgentRetryPolicy({
+      globalPolicy: hardDisabledGlobal,
+      agentRetry: {
+        maxAttempts: 3
+      }
+    });
+    const explicitAgentDisable = resolveAgentRetryPolicy({
+      globalPolicy: resolvedGlobal,
+      agentRetry: false
+    });
+
+    // Assert
+    expect(resolvedGlobal).toEqual({
+      enabled: true,
+      policy: {
+        maxAttempts: 5,
+        delayMs: 250,
+        backoff: "fixed",
+        maxDelayMs: 30000,
+        jitter: false,
+        disableDelay: true
+      },
+      source: "cli"
+    });
+    expect(resolvedAgent).toEqual({
+      enabled: true,
+      policy: {
+        maxAttempts: 2,
+        delayMs: 125,
+        backoff: "fixed",
+        maxDelayMs: 30000,
+        jitter: false,
+        disableDelay: true
+      },
+      source: "agent"
+    });
+    expect(resolvedAfterCliNoRetry).toEqual({
+      enabled: true,
+      policy: {
+        maxAttempts: 3,
+        delayMs: 75,
+        backoff: "exponential",
+        maxDelayMs: 30000,
+        jitter: true,
+        disableDelay: false
+      },
+      source: "agent"
+    });
+    expect(hardDisabledGlobal).toEqual({
+      enabled: false,
+      policy: BUILT_IN_DEFAULT_POLICY,
+      source: "disabled"
+    });
+    expect(hardDisabledAgent).toEqual({
+      enabled: false,
+      policy: BUILT_IN_DEFAULT_POLICY,
+      source: "disabled"
+    });
+    expect(explicitAgentDisable).toEqual({
+      enabled: false,
+      policy: BUILT_IN_DEFAULT_POLICY,
+      source: "disabled",
+      disabledBy: "agent"
+    });
   });
 
   it("forwards parsed retry overrides through runCommand before workflow execution starts", async () => {

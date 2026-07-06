@@ -120,6 +120,60 @@ providers:
     rmSync(emptyDir, { recursive: true, force: true });
   });
 
+  it("rejects invalid retry config before merge resolution in loadConfig", async () => {
+    // Arrange
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-retry-load-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    const configPath = join(configDir, "config.yaml");
+
+    const cases = [
+      {
+        label: "invalid retry.maxAttempts",
+        content: "retry:\n  maxAttempts: abc\n",
+        message: "Config value 'retry.maxAttempts' must be a positive integer."
+      },
+      {
+        label: "invalid retry.delayMs",
+        content: "retry:\n  delayMs: -1\n",
+        message: "Config value 'retry.delayMs' must be a non-negative integer."
+      },
+      {
+        label: "invalid retry.maxDelayMs",
+        content: "retry:\n  maxDelayMs: -1\n",
+        message: "Config value 'retry.maxDelayMs' must be a non-negative integer."
+      },
+      {
+        label: "invalid retry.backoff",
+        content: "retry:\n  backoff: linear\n",
+        message: "Config value 'retry.backoff' must be 'fixed' or 'exponential'."
+      },
+      {
+        label: "banned retryOn field",
+        content: "retry:\n  retryOn:\n    - provider_error\n",
+        message:
+          "retryOn is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only."
+      }
+    ];
+
+    // Act & Assert
+    for (const testCase of cases) {
+      writeFileSync(configPath, testCase.content);
+
+      try {
+        await loadConfig({ cwd: tempDir, configPath, cli: {} });
+        throw new Error(`Expected ${testCase.label} to fail`);
+      } catch (error: any) {
+        expect(error).toBeInstanceOf(OpenDynamicWorkflowError);
+        expect(error.code).toBe(ErrorCode.CONFIG_VALIDATION_ERROR);
+        expect(error.message).toBe(testCase.message);
+      }
+    }
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
   // Keep some core existing tests to ensure no regressions
   it("loads config from .open-dynamic-workflow/config.yaml", async () => {
     const tempDir = join(tmpdir(), "open-dynamic-workflow-test-base-" + Date.now());
@@ -395,4 +449,3 @@ retry:
     rmSync(tempDir, { recursive: true, force: true });
   });
 });
-

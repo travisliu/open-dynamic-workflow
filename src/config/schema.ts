@@ -3,6 +3,130 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import type { OpenDynamicWorkflowConfig } from "./types.js";
 import { isThinkingEffort, THINKING_EFFORT_VALUES } from "../types/index.js";
 
+const RETRY_PUBLIC_BANNED_FIELDS = ["retryOn", "retryReasons", "retryOnErrors", "errorCategories"] as const;
+const RESOLVED_RETRY_FIELDS = ["enabled", "policy", "source", "disabledBy"] as const;
+
+function validateRetryPolicyFields(policy: unknown, pathPrefix: "retry" | "retry.policy"): void {
+  if (typeof policy !== "object" || policy === null || Array.isArray(policy)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      `Config value '${pathPrefix}' must be an object.`
+    );
+  }
+
+  const retryObj = policy as Record<string, unknown>;
+
+  const maxAttempts = retryObj.maxAttempts;
+  if (maxAttempts !== undefined) {
+    if (typeof maxAttempts !== "number" || !Number.isInteger(maxAttempts) || maxAttempts < 1) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Config value '${pathPrefix}.maxAttempts' must be a positive integer.`
+      );
+    }
+  }
+
+  const delayMs = retryObj.delayMs;
+  if (delayMs !== undefined) {
+    if (typeof delayMs !== "number" || !Number.isInteger(delayMs) || delayMs < 0) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Config value '${pathPrefix}.delayMs' must be a non-negative integer.`
+      );
+    }
+  }
+
+  const maxDelayMs = retryObj.maxDelayMs;
+  if (maxDelayMs !== undefined) {
+    if (typeof maxDelayMs !== "number" || !Number.isInteger(maxDelayMs) || maxDelayMs < 0) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Config value '${pathPrefix}.maxDelayMs' must be a non-negative integer.`
+      );
+    }
+  }
+
+  if (retryObj.backoff !== undefined) {
+    if (retryObj.backoff !== "fixed" && retryObj.backoff !== "exponential") {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `Config value '${pathPrefix}.backoff' must be 'fixed' or 'exponential'.`
+      );
+    }
+  }
+
+  if (retryObj.jitter !== undefined && typeof retryObj.jitter !== "boolean") {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      `Config value '${pathPrefix}.jitter' must be a boolean.`
+    );
+  }
+
+  if (retryObj.disableDelay !== undefined && typeof retryObj.disableDelay !== "boolean") {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      `Config value '${pathPrefix}.disableDelay' must be a boolean.`
+    );
+  }
+}
+
+export function validateRetryConfigInput(retry: unknown): void {
+  if (retry === undefined) {
+    return;
+  }
+
+  if (retry === false) {
+    return;
+  }
+
+  if (typeof retry !== "object" || retry === null || Array.isArray(retry)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'retry' must be an object."
+    );
+  }
+
+  const retryObj = retry as Record<string, unknown>;
+
+  for (const field of RETRY_PUBLIC_BANNED_FIELDS) {
+    if (field in retryObj) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        `${field} is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only.`
+      );
+    }
+  }
+
+  for (const field of RESOLVED_RETRY_FIELDS) {
+    if (field in retryObj) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'retry' must be an object."
+      );
+    }
+  }
+
+  validateRetryPolicyFields(retryObj, "retry");
+}
+
+function validateResolvedRetryConfig(retry: unknown): void {
+  if (typeof retry !== "object" || retry === null || Array.isArray(retry)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      "Config value 'retry' must be an object."
+    );
+  }
+
+  const retryObj = retry as Record<string, unknown>;
+
+  if (retryObj.policy === undefined) {
+    validateRetryConfigInput(retryObj);
+    return;
+  }
+
+  validateRetryPolicyFields(retryObj.policy, "retry.policy");
+}
+
 
 export function validateConfig(config: OpenDynamicWorkflowConfig): void {
   if (typeof config !== "object" || config === null) {
@@ -53,65 +177,10 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
         "Config value 'retry' must be an object."
       );
     } else {
-      const bannedFields = ["retryOn", "retryReasons", "retryOnErrors", "errorCategories"];
-      for (const field of bannedFields) {
-        if (field in (config.retry as any)) {
-          throw new OpenDynamicWorkflowError(
-            ErrorCode.CONFIG_VALIDATION_ERROR,
-            `${field} is not supported in experimental retry v1. Retry eligibility is runtime-defined; configure maxAttempts and delay behavior only.`
-          );
-        }
-      }
-
-      const retryObj = config.retry as any;
-      if (retryObj.maxAttempts !== undefined) {
-        if (!Number.isInteger(retryObj.maxAttempts) || retryObj.maxAttempts < 1) {
-          throw new OpenDynamicWorkflowError(
-            ErrorCode.CONFIG_VALIDATION_ERROR,
-            "Config value 'retry.maxAttempts' must be a positive integer."
-          );
-        }
-      }
-
-      if (retryObj.delayMs !== undefined) {
-        if (!Number.isInteger(retryObj.delayMs) || retryObj.delayMs < 0) {
-          throw new OpenDynamicWorkflowError(
-            ErrorCode.CONFIG_VALIDATION_ERROR,
-            "Config value 'retry.delayMs' must be a non-negative integer."
-          );
-        }
-      }
-
-      if (retryObj.maxDelayMs !== undefined) {
-        if (!Number.isInteger(retryObj.maxDelayMs) || retryObj.maxDelayMs < 0) {
-          throw new OpenDynamicWorkflowError(
-            ErrorCode.CONFIG_VALIDATION_ERROR,
-            "Config value 'retry.maxDelayMs' must be a non-negative integer."
-          );
-        }
-      }
-
-      if (retryObj.backoff !== undefined) {
-        if (retryObj.backoff !== "fixed" && retryObj.backoff !== "exponential") {
-          throw new OpenDynamicWorkflowError(
-            ErrorCode.CONFIG_VALIDATION_ERROR,
-            "Config value 'retry.backoff' must be 'fixed' or 'exponential'."
-          );
-        }
-      }
-
-      if (retryObj.jitter !== undefined && typeof retryObj.jitter !== "boolean") {
-        throw new OpenDynamicWorkflowError(
-          ErrorCode.CONFIG_VALIDATION_ERROR,
-          "Config value 'retry.jitter' must be a boolean."
-        );
-      }
-
-      if (retryObj.disableDelay !== undefined && typeof retryObj.disableDelay !== "boolean") {
-        throw new OpenDynamicWorkflowError(
-          ErrorCode.CONFIG_VALIDATION_ERROR,
-          "Config value 'retry.disableDelay' must be a boolean."
-        );
+      if ("policy" in config.retry) {
+        validateResolvedRetryConfig(config.retry);
+      } else {
+        validateRetryConfigInput(config.retry);
       }
     }
   }

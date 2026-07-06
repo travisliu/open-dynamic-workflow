@@ -3,6 +3,7 @@ import type { ScheduledTask, ScheduleOptions } from "../types/scheduler.js";
 import type { AgentExecutionInput } from "../agents/execution-types.js";
 import type { RuntimeState } from "./types.js";
 import { resolveAgentModel } from "../agents/resolve-model.js";
+import { resolveAgentRetryPolicy, resolveGlobalRetryPolicy } from "../config/retry.js";
 import { isThinkingEffort } from "../types/thinking-effort.js";
 import { resolveThinkingEffort } from "../agents/resolve-thinking-effort.js";
 
@@ -268,6 +269,11 @@ export function createDsl(runtime: RuntimeState) {
       providerDefaultThinkingEffort: runtime.config.providers?.[normalizedProvider]?.defaultThinkingEffort
     });
 
+    const resolvedGlobalRetry = runtime.config.retry ?? resolveGlobalRetryPolicy({});
+    const resolvedRetry = resolveAgentRetryPolicy({
+      globalPolicy: resolvedGlobalRetry,
+      agentRetry: input.retry
+    });
 
     const sequence = (runtime.callSequence ?? 0) + 1;
     runtime.callSequence = sequence;
@@ -279,7 +285,8 @@ export function createDsl(runtime: RuntimeState) {
       timeoutMs: normalizedTimeoutMs,
       cwd: normalizedCwd,
       providerConfig: runtime.config.providers?.[normalizedProvider],
-      thinkingEffort: resolvedThinking.thinkingEffort
+      thinkingEffort: resolvedThinking.thinkingEffort,
+      retry: resolvedRetry
     });
 
 

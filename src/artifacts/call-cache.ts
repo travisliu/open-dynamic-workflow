@@ -124,17 +124,17 @@ export function computeAgentFingerprint(input: {
       metadata: input.call.metadata,
       providerConfig: input.providerConfig,
       thinkingEffort: input.thinkingEffort,
-      retry: input.retry ? {
-        enabled: input.retry.enabled,
+      retry: {
+        enabled: input.retry?.enabled ?? false,
         policy: {
-          maxAttempts: input.retry.policy.maxAttempts,
-          delayMs: input.retry.policy.delayMs,
-          backoff: input.retry.policy.backoff,
-          maxDelayMs: input.retry.policy.maxDelayMs,
-          jitter: input.retry.policy.jitter,
-          disableDelay: input.retry.policy.disableDelay
+          maxAttempts: input.retry?.policy?.maxAttempts ?? 1,
+          delayMs: input.retry?.policy?.delayMs ?? 1000,
+          backoff: input.retry?.policy?.backoff ?? "exponential",
+          maxDelayMs: input.retry?.policy?.maxDelayMs ?? 30000,
+          jitter: input.retry?.policy?.jitter ?? true,
+          disableDelay: input.retry?.policy?.disableDelay ?? false
         }
-      } : undefined
+      }
     }))
     .digest("hex");
 }

@@ -4,7 +4,7 @@ import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { mergeConfig, type ConfigCliOverrides } from "./merge.js";
-import { validateConfig } from "./schema.js";
+import { validateConfig, validateRetryConfigInput } from "./schema.js";
 import type { ResolvedOpenDynamicWorkflowConfig, ConfigDiagnosticContext, DiscoveryCliOverrides } from "./types.js";
 import { resolveUserPath, resolveProjectPath } from "../cli/paths.js";
 import { normalizeDiscoveryConfig } from "./path-discovery.js";
@@ -77,6 +77,7 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
     }
   }
 
+  validateRetryConfigInput(fileConfig?.retry);
   const merged = mergeConfig(DEFAULT_CONFIG, fileConfig || {}, input.cli);
   validateConfig(merged);
 

@@ -148,7 +148,7 @@ export function resolveAgentRetryPolicy(input: {
   const { globalPolicy, agentRetry } = input;
 
   const globalPolicyIsHardDisabled =
-    globalPolicy.source === "disabled" || globalPolicy.disabledBy !== undefined;
+    globalPolicy.source === "disabled";
 
   if (globalPolicyIsHardDisabled) {
     return {

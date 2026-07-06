@@ -116,6 +116,21 @@ describe("call cache", () => {
     // identical resolved retry policy yields the same fingerprint
     expect(identical).toBe(first);
 
+    const cliSourceRetry: ResolvedRetryPolicy = {
+      enabled: true,
+      policy: {
+        maxAttempts: 3,
+        delayMs: 1000,
+        backoff: "exponential" as const,
+        maxDelayMs: 5000,
+        jitter: true,
+        disableDelay: false
+      },
+      source: "cli"
+    };
+    const cliFingerprint = computeAgentFingerprint({ ...base, retry: cliSourceRetry });
+    expect(cliFingerprint).toBe(first);
+
     // changing only maxAttempts changes the fingerprint
     const diffMaxAttempts = computeAgentFingerprint({
       ...base,
@@ -197,6 +212,39 @@ describe("call cache", () => {
     };
     const reorderedFp = computeAgentFingerprint({ ...base, retry: reorderedRetry });
     expect(reorderedFp).toBe(first);
+
+    // absence of retry versus explicit disabled retry produces different fingerprints
+    const absenceRetry: ResolvedRetryPolicy = {
+      enabled: false,
+      policy: {
+        maxAttempts: 1,
+        delayMs: 1000,
+        backoff: "exponential" as const,
+        maxDelayMs: 30000,
+        jitter: true,
+        disableDelay: false
+      },
+      source: "default",
+      disabledBy: "omitted"
+    };
+
+    const explicitDisabledRetry: ResolvedRetryPolicy = {
+      enabled: false,
+      policy: {
+        maxAttempts: 1,
+        delayMs: 1000,
+        backoff: "exponential" as const,
+        maxDelayMs: 30000,
+        jitter: true,
+        disableDelay: false
+      },
+      source: "disabled",
+      disabledBy: "agent"
+    };
+
+    const absenceFp = computeAgentFingerprint({ ...base, retry: absenceRetry });
+    const explicitDisabledFp = computeAgentFingerprint({ ...base, retry: explicitDisabledRetry });
+    expect(absenceFp).toBe(explicitDisabledFp);
   });
 
 
