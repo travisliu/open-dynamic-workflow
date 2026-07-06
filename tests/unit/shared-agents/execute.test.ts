@@ -214,14 +214,15 @@ describe("executeSharedAgent", () => {
       origin: "workflow"
     }, { ...mockDeps, registry });
 
-    expect(mockDeps.agent).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockDeps.agent).toHaveBeenCalledWith({
       id: "implement:2:1",
+      prompt: "Prompt",
       label: "test-agent",
-      metadata: expect.objectContaining({
+      metadata: {
         sharedAgentId: "test-agent",
         sharedAgentSource: "registry"
-      })
-    }));
+      }
+    });
   });
 
   it("allows inner agent call ID to override parent ID", async () => {
@@ -249,13 +250,14 @@ describe("executeSharedAgent", () => {
       origin: "workflow"
     }, { ...mockDeps, registry });
 
-    expect(mockDeps.agent).toHaveBeenCalledWith(expect.objectContaining({
+    expect(mockDeps.agent).toHaveBeenCalledWith({
       id: "custom-inner-id",
+      prompt: "Prompt",
       label: "test-agent",
-      metadata: expect.objectContaining({
+      metadata: {
         sharedAgentId: "test-agent",
         sharedAgentSource: "registry"
-      })
-    }));
+      }
+    });
   });
 });
