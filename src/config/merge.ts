@@ -1,4 +1,6 @@
 import type { OpenDynamicWorkflowConfig } from "./types.js";
+import { resolveGlobalRetryPolicy } from "./retry.js";
+
 
 export interface ConfigCliOverrides {
   provider?: string | undefined;
@@ -73,29 +75,19 @@ export function mergeConfig(
   if (cli.report) merged.reporting.mode = cli.report;
   if (cli.verbose !== undefined) merged.reporting.verbose = cli.verbose;
 
-  if (cli.noRetry) {
-    merged.retry = false;
-  } else {
-    const hasRetryOverrides =
-      cli.retryMaxAttempts !== undefined ||
-      cli.retryDelayMs !== undefined ||
-      cli.retryMaxDelayMs !== undefined ||
-      cli.retryBackoff !== undefined ||
-      cli.retryDisableDelay !== undefined;
+  const cliOverrides = {
+    maxAttempts: cli.retryMaxAttempts,
+    delayMs: cli.retryDelayMs,
+    maxDelayMs: cli.retryMaxDelayMs,
+    backoff: cli.retryBackoff,
+    disableDelay: cli.retryDisableDelay,
+    noRetry: cli.noRetry
+  };
 
-    if (hasRetryOverrides) {
-      const existingRetry = typeof merged.retry === "object" && merged.retry !== null ? merged.retry : {};
-      const newRetry: any = {
-        ...existingRetry,
-      };
-      if (cli.retryMaxAttempts !== undefined) newRetry.maxAttempts = cli.retryMaxAttempts;
-      if (cli.retryDelayMs !== undefined) newRetry.delayMs = cli.retryDelayMs;
-      if (cli.retryMaxDelayMs !== undefined) newRetry.maxDelayMs = cli.retryMaxDelayMs;
-      if (cli.retryBackoff !== undefined) newRetry.backoff = cli.retryBackoff;
-      if (cli.retryDisableDelay !== undefined) newRetry.disableDelay = cli.retryDisableDelay;
-      merged.retry = newRetry;
-    }
-  }
+  merged.retry = resolveGlobalRetryPolicy({
+    configRetry: fileConfig.retry,
+    cliOverrides
+  });
 
   return merged;
 }

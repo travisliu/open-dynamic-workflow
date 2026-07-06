@@ -355,5 +355,44 @@ workflow:
 
     rmSync(tempDir, { recursive: true, force: true });
   });
+
+  it("loads config and carries resolved retry policy through", async () => {
+    // Arrange
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-load-retry-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configContent = `
+retry:
+  maxAttempts: 4
+  delayMs: 250
+`;
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    // Act - config only
+    const configWithFile = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(configWithFile.retry).toBeDefined();
+    expect(configWithFile.retry?.enabled).toBe(true);
+    expect(configWithFile.retry?.policy.maxAttempts).toBe(4);
+    expect(configWithFile.retry?.policy.delayMs).toBe(250);
+    expect(configWithFile.retry?.source).toBe("config");
+
+    // Act - with CLI overrides
+    const configWithCli = await loadConfig({
+      cwd: tempDir,
+      cli: {
+        retryMaxAttempts: 8,
+        retryBackoff: "fixed"
+      }
+    });
+    expect(configWithCli.retry?.enabled).toBe(true);
+    expect(configWithCli.retry?.policy.maxAttempts).toBe(8);
+    expect(configWithCli.retry?.policy.delayMs).toBe(250);
+    expect(configWithCli.retry?.policy.backoff).toBe("fixed");
+    expect(configWithCli.retry?.source).toBe("cli");
+
+    // Clean up
+    rmSync(tempDir, { recursive: true, force: true });
+  });
 });
 

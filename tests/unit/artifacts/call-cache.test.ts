@@ -13,6 +13,7 @@ import {
   type RuntimeCallCache
 } from "../../../src/artifacts/call-cache.js";
 import type { ArtifactStore } from "../../../src/types/artifacts.js";
+import type { ResolvedRetryPolicy } from "../../../src/types/retry.js";
 
 const TEMP_DIR = path.resolve("tests/temp-call-cache-unit");
 
@@ -77,6 +78,125 @@ describe("call cache", () => {
     expect(identical).toBe(first);
     expect(differentEffort).not.toBe(first);
     expect(undefinedEffort).not.toBe(first);
+  });
+
+  it("computes agent fingerprints including resolved retry policy", () => {
+    const base = {
+      call: { id: "a", prompt: "hello" },
+      provider: "codex",
+      model: "m1",
+      timeoutMs: 1000,
+      cwd: "/repo",
+      providerConfig: { args: ["exec"], command: "codex" }
+    };
+
+    const baseRetryPolicy: ResolvedRetryPolicy = {
+      enabled: true,
+      policy: {
+        maxAttempts: 3,
+        delayMs: 1000,
+        backoff: "exponential" as const,
+        maxDelayMs: 5000,
+        jitter: true,
+        disableDelay: false
+      },
+      source: "config"
+    };
+
+    const first = computeAgentFingerprint({ ...base, retry: baseRetryPolicy });
+    const identical = computeAgentFingerprint({ ...base, retry: { ...baseRetryPolicy } });
+    const withoutRetry = computeAgentFingerprint(base);
+    const undefinedRetry = computeAgentFingerprint({ ...base, retry: undefined });
+
+    // unchanged retry policy leaves the existing fingerprint stable
+    expect(undefinedRetry).toBe(withoutRetry);
+    // retry changes fingerprint from base without retry
+    expect(first).not.toBe(withoutRetry);
+
+    // identical resolved retry policy yields the same fingerprint
+    expect(identical).toBe(first);
+
+    // changing only maxAttempts changes the fingerprint
+    const diffMaxAttempts = computeAgentFingerprint({
+      ...base,
+      retry: {
+        ...baseRetryPolicy,
+        policy: { ...baseRetryPolicy.policy, maxAttempts: 5 }
+      }
+    });
+    expect(diffMaxAttempts).not.toBe(first);
+
+    // changing only delay settings changes the fingerprint
+    const diffDelay = computeAgentFingerprint({
+      ...base,
+      retry: {
+        ...baseRetryPolicy,
+        policy: { ...baseRetryPolicy.policy, delayMs: 2000 }
+      }
+    });
+    expect(diffDelay).not.toBe(first);
+
+    // changing only backoff settings changes the fingerprint
+    const diffBackoff = computeAgentFingerprint({
+      ...base,
+      retry: {
+        ...baseRetryPolicy,
+        policy: { ...baseRetryPolicy.policy, backoff: "fixed" as const }
+      }
+    });
+    expect(diffBackoff).not.toBe(first);
+
+    // changing jitter changes the fingerprint
+    const diffJitter = computeAgentFingerprint({
+      ...base,
+      retry: {
+        ...baseRetryPolicy,
+        policy: { ...baseRetryPolicy.policy, jitter: false }
+      }
+    });
+    expect(diffJitter).not.toBe(first);
+
+    // changing disableDelay changes the fingerprint
+    const diffDisableDelay = computeAgentFingerprint({
+      ...base,
+      retry: {
+        ...baseRetryPolicy,
+        policy: { ...baseRetryPolicy.policy, disableDelay: true }
+      }
+    });
+    expect(diffDisableDelay).not.toBe(first);
+
+    // changing retry: false versus an enabled policy changes the fingerprint
+    const disabledRetry: ResolvedRetryPolicy = {
+      enabled: false,
+      policy: {
+        maxAttempts: 1,
+        delayMs: 0,
+        backoff: "fixed" as const,
+        maxDelayMs: 0,
+        jitter: false,
+        disableDelay: true
+      },
+      source: "disabled"
+    };
+    const disabledFp = computeAgentFingerprint({ ...base, retry: disabledRetry });
+    expect(disabledFp).not.toBe(first);
+
+    // unrelated object key ordering does not change the fingerprint
+    const reorderedRetry: ResolvedRetryPolicy = {
+      source: "config",
+      enabled: true,
+      policy: {
+        backoff: "exponential" as const,
+        maxAttempts: 3,
+        disableDelay: false,
+        jitter: true,
+        maxDelayMs: 5000,
+        delayMs: 1000
+      }
+    };
+    const reorderedFp = computeAgentFingerprint({ ...base, retry: reorderedRetry });
+    expect(reorderedFp).toBe(first);
   });
 
 

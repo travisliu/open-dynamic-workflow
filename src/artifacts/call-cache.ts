@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentCallInput, AgentPermissions, AgentResult, AgentSuccessResult } from "../types/agent.js";
 import type { ThinkingEffort } from "../types/thinking-effort.js";
+import type { ResolvedRetryPolicy } from "../types/retry.js";
 
 import type { ToolExecutionResult, ToolFailureMode } from "../types/tool.js";
 import type { ArtifactStore } from "../types/artifacts.js";
@@ -108,6 +109,7 @@ export function computeAgentFingerprint(input: {
   cwd: string;
   providerConfig?: unknown;
   thinkingEffort?: ThinkingEffort | undefined;
+  retry?: ResolvedRetryPolicy | undefined;
 }): string {
   return crypto
     .createHash("sha256")
@@ -121,7 +123,18 @@ export function computeAgentFingerprint(input: {
       cwd: input.cwd,
       metadata: input.call.metadata,
       providerConfig: input.providerConfig,
-      thinkingEffort: input.thinkingEffort
+      thinkingEffort: input.thinkingEffort,
+      retry: input.retry ? {
+        enabled: input.retry.enabled,
+        policy: {
+          maxAttempts: input.retry.policy.maxAttempts,
+          delayMs: input.retry.policy.delayMs,
+          backoff: input.retry.policy.backoff,
+          maxDelayMs: input.retry.policy.maxDelayMs,
+          jitter: input.retry.policy.jitter,
+          disableDelay: input.retry.policy.disableDelay
+        }
+      } : undefined
     }))
     .digest("hex");
 }

@@ -266,4 +266,84 @@ describe("Merge Config", () => {
     expect(merged.workflow.discovery.include).toEqual(["legacy-workflows/**/*.ts"]);
     expect(merged.workflow.discovery.exclude).toEqual(["legacy-workflows/**/*.test.ts"]);
   });
+
+  describe("Retry merge precedence", () => {
+    it("config-file retry values merge over built-in defaults", () => {
+      const merged = mergeConfig(DEFAULT_CONFIG, { retry: { maxAttempts: 5, delayMs: 500 } }, {});
+      expect(merged.retry).toBeDefined();
+      const retry = merged.retry as any;
+      expect(retry.enabled).toBe(true);
+      expect(retry.policy.maxAttempts).toBe(5);
+      expect(retry.policy.delayMs).toBe(500);
+      expect(retry.policy.backoff).toBe("exponential");
+    });
+
+    it("CLI retry overrides take precedence over config-file values", () => {
+      const merged = mergeConfig(
+        DEFAULT_CONFIG,
+        { retry: { maxAttempts: 5, delayMs: 500 } },
+        { retryMaxAttempts: 10, retryBackoff: "fixed" }
+      );
+      expect(merged.retry).toBeDefined();
+      const retry = merged.retry as any;
+      expect(retry.enabled).toBe(true);
+      expect(retry.policy.maxAttempts).toBe(10);
+      expect(retry.policy.delayMs).toBe(500);
+      expect(retry.policy.backoff).toBe("fixed");
+    });
+
+    it("noRetry disables retries for the merged config", () => {
+      const merged = mergeConfig(
+        DEFAULT_CONFIG,
+        { retry: { maxAttempts: 5 } },
+        { noRetry: true }
+      );
+      expect(merged.retry).toBeDefined();
+      const retry = merged.retry as any;
+      expect(retry.enabled).toBe(false);
+      expect(retry.source).toBe("cli");
+      expect(retry.disabledBy).toBe("cli");
+      expect(retry.policy.maxAttempts).toBe(1);
+    });
+
+    it("retry: false remains disabled instead of being converted into an enabled retry object", () => {
+      const merged = mergeConfig(
+        DEFAULT_CONFIG,
+        { retry: false },
+        {}
+      );
+      expect(merged.retry).toBeDefined();
+      const retry = merged.retry as any;
+      expect(retry.enabled).toBe(false);
+      expect(retry.source).toBe("disabled");
+      expect(retry.policy.maxAttempts).toBe(1);
+    });
+
+    it("retry: false stays disabled even when CLI retry fields are present", () => {
+      const merged = mergeConfig(
+        DEFAULT_CONFIG,
+        { retry: false },
+        { retryMaxAttempts: 10, retryBackoff: "fixed" }
+      );
+      expect(merged.retry).toBeDefined();
+      const retry = merged.retry as any;
+      expect(retry.enabled).toBe(false);
+      expect(retry.source).toBe("disabled");
+      expect(retry.policy.maxAttempts).toBe(1);
+      expect(retry.policy.backoff).toBe("exponential");
+    });
+
+    it("unrelated config values still merge normally when retry is configured", () => {
+      const merged = mergeConfig(
+        DEFAULT_CONFIG,
+        { concurrency: 10, retry: { maxAttempts: 5 } },
+        { provider: "gemini" }
+      );
+      expect(merged.concurrency).toBe(10);
+      expect(merged.defaultProvider).toBe("gemini");
+      const retry = merged.retry as any;
+      expect(retry.enabled).toBe(true);
+      expect(retry.policy.maxAttempts).toBe(5);
+    });
+  });
 });
