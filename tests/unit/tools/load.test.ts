@@ -89,38 +89,83 @@ describe("loadToolRegistry", () => {
     // No default export
     await writeFile(join(toolsDir, "no-export.js"), "export const x = 1;");
     
-    const action = () => loadToolRegistry({
+    const err = await expectLoadFailure({
       cwd: tempBaseDir,
       dir: "tools",
       maxDefinitions: 10
-    });
+    }, "TOOL_INVALID_DEFINITION");
 
-    await expect(action).rejects.toThrow(/does not have a valid default export/);
-    try {
-      await action();
-    } catch (err: any) {
-      expect(err.code).toBe("TOOL_INVALID_DEFINITION");
-    }
+    expect(err.message).toMatch(/must default export defineTool/);
   });
 
-  it("should delegate duplicate IDs to registry validation (Case 16)", async () => {
+  it("should reject a statically valid-looking but runtime-unbranded default export", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+
+    await writeFile(join(toolsDir, "fake-unbranded.ts"), `
+      function defineTool(def: any) {
+        return def;
+      }
+
+      export default defineTool({
+        id: "fake-unbranded",
+        description: "not branded",
+        inputSchema: { type: "object" },
+        run: () => "never"
+      });
+    `);
+
+    const err = await expectLoadFailure({
+      cwd: tempBaseDir,
+      dir: "tools",
+      maxDefinitions: 10
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toContain("tools/fake-unbranded.ts");
+    expect(err.message).toMatch(/does not have a valid default export created with defineTool/);
+  });
+
+  async function expectLoadFailure(input: any, code: string) {
+    try {
+      await loadToolRegistry(input);
+      throw new Error(`Expected loadToolRegistry to fail with code ${code} but it succeeded`);
+    } catch (err: any) {
+      expect(err.code).toBe(code);
+      return err;
+    }
+  }
+
+  it("rejects duplicate static tool IDs before importing modules (Case 16)", async () => {
     const toolsDir = join(tempBaseDir, "tools");
     await mkdir(toolsDir);
     
     const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
-    const toolTemplate = (id: string) => `
+    const m1 = join(tempBaseDir, "m1.marker");
+    const m2 = join(tempBaseDir, "m2.marker");
+
+    const toolTemplate = (id: string, marker: string) => `
       import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(marker)}, "imported");
       export default defineTool({ id: "${id}", description: "d", inputSchema: {}, run: () => {} });
     `;
 
-    await writeFile(join(toolsDir, "t1.ts"), toolTemplate("dup"));
-    await writeFile(join(toolsDir, "t2.ts"), toolTemplate("dup"));
+    await writeFile(join(toolsDir, "t1.ts"), toolTemplate("dup", m1));
+    await writeFile(join(toolsDir, "t2.ts"), toolTemplate("dup", m2));
 
-    await expect(loadToolRegistry({
+    const err = await expectLoadFailure({
       cwd: tempBaseDir,
       dir: "tools",
       maxDefinitions: 10
-    })).rejects.toThrow(/Duplicate tool ID 'dup'/);
+    }, "TOOL_DUPLICATE_DEFINITION");
+
+    expect(err.message).toMatch(/Duplicate tool ID 'dup'/);
+    expect(err.message).toContain("tools/t1.ts");
+    expect(err.message).toContain("tools/t2.ts");
+
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(m1)).toBe(false);
+    expect(existsSync(m2)).toBe(false);
   });
 
   it("should respect configured maxDefinitions before execution (Case 17)", async () => {
@@ -136,11 +181,13 @@ describe("loadToolRegistry", () => {
     await writeFile(join(toolsDir, "t1.ts"), toolTemplate("t1"));
     await writeFile(join(toolsDir, "t2.ts"), toolTemplate("t2"));
 
-    await expect(loadToolRegistry({
+    const err = await expectLoadFailure({
       cwd: tempBaseDir,
       dir: "tools",
       maxDefinitions: 1
-    })).rejects.toThrow(/Too many tool definitions/);
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toMatch(/Too many tool definitions/);
   });
 
   it("should support sibling and nested helper imports and discover top-level files regardless of name (Issue 4, ISSUE-003)", async () => {
@@ -243,13 +290,13 @@ describe("loadToolRegistry", () => {
     
     await writeFile(join(toolsDir, "not-a-tool.ts"), "export const x = 1;");
     
-    const action = () => loadToolRegistry({
+    const err = await expectLoadFailure({
       cwd: tempBaseDir,
       dir: "tools",
       maxDefinitions: 10
-    });
+    }, "TOOL_INVALID_DEFINITION");
 
-    await expect(action).rejects.toThrow(/does not have a valid default export/);
+    expect(err.message).toMatch(/must default export defineTool/);
   });
 
 
@@ -291,7 +338,7 @@ describe("loadToolRegistry", () => {
       },
     });
 
-    const action = () => loadToolRegistry({
+    const err = await expectLoadFailure({
       cwd: tempBaseDir,
       maxDefinitions: 10,
       precollected: {
@@ -302,9 +349,9 @@ describe("loadToolRegistry", () => {
         }],
         discoveryPolicy: { exclude: compiledDiscovery.discovery.exclude }
       }
-    });
+    }, "SECURITY_POLICY_VIOLATION");
 
-    await expect(action).rejects.toThrow(/excluded by policy/);
+    expect(err.message).toMatch(/excluded by policy/);
     const { existsSync } = await import("node:fs");
     expect(existsSync(markerFile)).toBe(false);
   });
@@ -346,7 +393,7 @@ describe("loadToolRegistry", () => {
       },
     });
 
-    const action = () => loadToolRegistry({
+    const err = await expectLoadFailure({
       cwd: tempBaseDir,
       maxDefinitions: 10,
       precollected: {
@@ -357,15 +404,242 @@ describe("loadToolRegistry", () => {
         }],
         discoveryPolicy: { exclude: compiledDiscovery.discovery.exclude }
       }
-    });
+    }, "SECURITY_POLICY_VIOLATION");
 
-    await expect(action).rejects.toThrow(/excluded by policy/);
-    try {
-      await action();
-    } catch (err: any) {
-      expect(err.code).toBe("SECURITY_POLICY_VIOLATION");
-    }
+    expect(err.message).toMatch(/excluded by policy/);
 
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerFile)).toBe(false);
+  });
+
+  it("static contract failure happens before import", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const markerPath = join(tempBaseDir, "test1.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "unsafe.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerPath)}, "imported");
+      export default defineTool({
+        id: "../unsafe",
+        description: "invalid before import",
+        inputSchema: { type: "object" },
+        run: () => "never"
+      });
+    `);
+
+    const err = await expectLoadFailure({
+      cwd: tempBaseDir,
+      dir: "tools",
+      maxDefinitions: 10
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toMatch(/static validation|Tool id|safe|not path-like/i);
+    expect(err.message).toContain("tools/unsafe.tool.ts");
+    expect(err.message).toContain("TOOL_DEFINITION_INVALID");
+    
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
+  it("imported metadata or schema rejected before import", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const markerPath = join(tempBaseDir, "test2.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "schema.js"), `
+      export const inputSchema = { type: "object" };
+    `);
+
+    await writeFile(join(toolsDir, "imported-schema-tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import { inputSchema } from "./schema.js";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerPath)}, "imported");
+      export default defineTool({
+        id: "imported-schema-tool",
+        description: "invalid imported schema",
+        inputSchema,
+        run: () => "never"
+      });
+    `);
+
+    const err = await expectLoadFailure({
+      cwd: tempBaseDir,
+      dir: "tools",
+      maxDefinitions: 10
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toContain("inputSchema");
+    expect(err.message).toContain("tools/imported-schema-tool.ts");
+    
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
+  it("invalid JSON schema rejected before import", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const markerPath = join(tempBaseDir, "test3.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "bad-schema.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerPath)}, "imported");
+      export default defineTool({
+        id: "bad-schema-tool",
+        description: "bad schema",
+        inputSchema: { type: "definitely-not-json-schema-type" },
+        run: () => "never"
+      });
+    `);
+
+    const err = await expectLoadFailure({
+      cwd: tempBaseDir,
+      dir: "tools",
+      maxDefinitions: 10
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toContain("inputSchema");
+    expect(err.message).toContain("tools/bad-schema.tool.ts");
+    expect(err.message).toContain("TOOL_DEFINITION_INVALID");
+
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(markerPath)).toBe(false);
+  });
+
+  it("multiple invalid candidates are aggregated", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const m1 = join(tempBaseDir, "m1.marker");
+    const m2 = join(tempBaseDir, "m2.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "unsafe.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(m1)}, "imported");
+      export default defineTool({
+        id: "../unsafe",
+        description: "unsafe ID",
+        inputSchema: {},
+        run: () => {}
+      });
+    `);
+
+    await writeFile(join(toolsDir, "bad-schema.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(m2)}, "imported");
+      export default defineTool({
+        id: "bad-schema",
+        description: "bad schema",
+        inputSchema: { type: "definitely-not-json-schema-type" },
+        run: () => {}
+      });
+    `);
+
+    const err = await expectLoadFailure({
+      cwd: tempBaseDir,
+      dir: "tools",
+      maxDefinitions: 10
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toContain("tools/unsafe.tool.ts");
+    expect(err.message).toContain("tools/bad-schema.tool.ts");
+    expect(err.message).toContain("TOOL_DEFINITION_INVALID");
+
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(m1)).toBe(false);
+    expect(existsSync(m2)).toBe(false);
+  });
+
+  it("invalid duplicate candidates fail validation, not duplicate detection", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const m1 = join(tempBaseDir, "m1.marker");
+    const m2 = join(tempBaseDir, "m2.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "t1.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(m1)}, "imported");
+      export default defineTool({
+        id: "../dup",
+        description: "unsafe duplicate",
+        inputSchema: {},
+        run: () => {}
+      });
+    `);
+
+    await writeFile(join(toolsDir, "t2.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(m2)}, "imported");
+      export default defineTool({
+        id: "../dup",
+        description: "unsafe duplicate 2",
+        inputSchema: {},
+        run: () => {}
+      });
+    `);
+
+    const err = await expectLoadFailure({
+      cwd: tempBaseDir,
+      dir: "tools",
+      maxDefinitions: 10
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toContain("tools/t1.tool.ts");
+    expect(err.message).toContain("tools/t2.tool.ts");
+    expect(err.message).not.toContain("Duplicate tool ID");
+
+    const { existsSync } = await import("node:fs");
+    expect(existsSync(m1)).toBe(false);
+    expect(existsSync(m2)).toBe(false);
+  });
+
+  it("precollected candidates use the same static gate", async () => {
+    const toolsDir = join(tempBaseDir, "tools");
+    await mkdir(toolsDir);
+    const markerFile = join(tempBaseDir, "bad-precollected.marker");
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    await writeFile(join(toolsDir, "bad.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import * as fs from "node:fs";
+      fs.writeFileSync(${JSON.stringify(markerFile)}, "imported");
+      export default defineTool({
+        id: "../unsafe",
+        description: "bad precollected",
+        inputSchema: {},
+        run: () => {}
+      });
+    `);
+
+    const err = await expectLoadFailure({
+      cwd: tempBaseDir,
+      maxDefinitions: 10,
+      precollected: {
+        candidateFiles: [{
+          relativePath: "tools/bad.tool.ts",
+          absolutePath: join(toolsDir, "bad.tool.ts"),
+          realPath: join(toolsDir, "bad.tool.ts"),
+          resourceType: "tool",
+          sourcePattern: "tools/*.tool.ts",
+          sourceConfigPath: "tools.include",
+          source: "new"
+        }],
+        discoveryPolicy: { exclude: [] }
+      }
+    }, "TOOL_INVALID_DEFINITION");
+
+    expect(err.message).toContain("tools/bad.tool.ts");
     const { existsSync } = await import("node:fs");
     expect(existsSync(markerFile)).toBe(false);
   });

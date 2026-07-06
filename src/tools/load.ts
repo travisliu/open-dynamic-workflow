@@ -7,10 +7,11 @@ import { buildToolRegistry } from "./registry.js";
 import { isDefinedTool } from "./define-tool.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
-import type { PrecollectedResourceLoadInput } from "../discovery/types.js";
+import type { CandidateFile, PrecollectedResourceLoadInput } from "../discovery/types.js";
 import { isExcludedByDiscoveryPolicy } from "../discovery/index.js";
 import type { CompiledDiscoveryPattern } from "../discovery/compile-patterns.js";
 import type { ConfigDiagnostic } from "../config/types.js";
+import { validateStaticToolContract } from "./definition-contract.js";
 
 export interface LoadToolRegistryInput {
   cwd: string;
@@ -141,13 +142,18 @@ async function mirrorDirectory(
   }
 }
 
+interface LoadCandidate {
+  candidate: CandidateFile;
+  sourcePath: string;
+}
+
 export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<ToolRegistry> {
   const { cwd, maxDefinitions } = input;
   const realCwd = resolve(cwd);
 
   const excludePatterns = resolveToolLoadExcludePatterns(input, realCwd);
 
-  const discoveredFiles: string[] = [];
+  const candidates: LoadCandidate[] = [];
 
   if (input.precollected) {
     const toolCandidates = input.precollected.candidateFiles
@@ -158,7 +164,10 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
     for (const candidate of toolCandidates) {
       const fullPath = resolve(realCwd, candidate.realPath || candidate.absolutePath);
       await assertPathInsideCwd(realCwd, fullPath, `Tool path '${fullPath}' points outside the workspace.`);
-      discoveredFiles.push(fullPath);
+      candidates.push({
+        candidate,
+        sourcePath: fullPath,
+      });
     }
   } else if (input.dir) {
     // Legacy direct API compatibility path: dir input
@@ -172,17 +181,77 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
           .map(f => f.name)
           .sort();
         for (const name of entries) {
-          discoveredFiles.push(join(absoluteDir, name));
+          const absolutePath = join(absoluteDir, name);
+          const relativePath = relative(realCwd, absolutePath).replace(/\\/g, "/");
+          const candidate: CandidateFile = {
+            resourceType: "tool",
+            absolutePath,
+            relativePath,
+            realPath: absolutePath,
+            sourcePattern: input.dir,
+            sourceConfigPath: "tools.dir",
+            source: "legacy-dir"
+          };
+          candidates.push({
+            candidate,
+            sourcePath: absolutePath,
+          });
         }
       }
     } catch (err: any) {
       if (err.code !== "ENOENT") {
         throw new OpenDynamicWorkflowError(
-          "TOOL_INVALID_DEFINITION" as any,
+          ErrorCode.TOOL_INVALID_DEFINITION,
           `Failed to read tools directory '${absoluteDir}': ${err.message}`
         );
       }
     }
+  }
+
+  // Pre-import static contract validation for all candidates
+  const allDiagnostics: { path: string; code: string; message: string }[] = [];
+  const successfulContracts = new Map<string, any>();
+
+  for (const item of candidates) {
+    const result = await validateStaticToolContract(item.candidate);
+    if (!result.ok) {
+      for (const diag of result.diagnostics) {
+        allDiagnostics.push({
+          path: diag.path,
+          code: diag.code || "TOOL_DEFINITION_INVALID",
+          message: diag.message,
+        });
+      }
+    } else {
+      successfulContracts.set(item.sourcePath, result.contract);
+    }
+  }
+
+  if (allDiagnostics.length > 0) {
+    const formattedDiagnostics = allDiagnostics
+      .map(d => `  - ${d.path} [${d.code}] ${d.message}`)
+      .join("\n");
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.TOOL_INVALID_DEFINITION,
+      `Tool definition failed static validation:\n${formattedDiagnostics}`
+    );
+  }
+
+  // Pre-import duplicate ID detection using list tools semantics
+  const idToPath = new Map<string, string>();
+  for (const item of candidates) {
+    const contract = successfulContracts.get(item.sourcePath);
+    if (!contract) continue;
+    const toolId = contract.id;
+    const pathForMessage = item.candidate.relativePath;
+    if (idToPath.has(toolId)) {
+      const firstSeenPath = idToPath.get(toolId)!;
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.TOOL_DUPLICATE_DEFINITION,
+        `Duplicate tool ID '${toolId}' detected. Found in:\n  - ${firstSeenPath}\n  - ${pathForMessage}`
+      );
+    }
+    idToPath.set(toolId, pathForMessage);
   }
 
   const definitions: Array<{ definition: BrandedToolDefinition; sourcePath: string }> = [];
@@ -282,13 +351,14 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
       }
     };
 
-    for (const filePath of discoveredFiles) {
-      await inspectImportsRecursive(filePath);
+    for (const item of candidates) {
+      await inspectImportsRecursive(item.sourcePath);
     }
 
     const mirroredDirs = new Set<string>();
 
-    for (const filePath of discoveredFiles) {
+    for (const item of candidates) {
+      const filePath = item.sourcePath;
       const srcDir = dirname(filePath);
       if (!mirroredDirs.has(srcDir)) {
         mirroredDirs.add(srcDir);
@@ -299,7 +369,8 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
       }
     }
 
-    for (const filePath of discoveredFiles) {
+    for (const item of candidates) {
+      const filePath = item.sourcePath;
       const ext = extname(filePath);
       const relPath = relative(realCwd, filePath);
       let tempFilePath = join(tempDir, relPath);
