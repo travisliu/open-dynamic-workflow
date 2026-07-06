@@ -16,6 +16,7 @@ export async function extractTool(file: CandidateFile): Promise<ResourceExtracti
     const sourceText = await fs.readFile(file.absolutePath, "utf8");
     const sourceFile = parseSourceFile(file.absolutePath, sourceText);
     const definitionObject = findDefaultDefineCall(sourceFile, "defineTool");
+    const staticContext = { sourceFile };
 
     if (!definitionObject) {
       return {
@@ -83,8 +84,8 @@ export async function extractTool(file: CandidateFile): Promise<ResourceExtracti
       }));
     }
 
-    const idResult = props.id ? extractStaticValue(props.id) : undefined;
-    const descResult = props.description ? extractStaticValue(props.description) : undefined;
+    const idResult = props.id ? extractStaticValue(props.id, staticContext) : undefined;
+    const descResult = props.description ? extractStaticValue(props.description, staticContext) : undefined;
 
     const id = idResult?.ok && typeof idResult.value === "string" ? idResult.value.trim() : "";
     const description = descResult?.ok && typeof descResult.value === "string" ? descResult.value.trim() : "";
@@ -120,7 +121,7 @@ export async function extractTool(file: CandidateFile): Promise<ResourceExtracti
     };
 
     if (Object.prototype.hasOwnProperty.call(props, "inputSchema")) {
-      const inputSchema = asStaticObject(props.inputSchema!);
+      const inputSchema = asStaticObject(props.inputSchema!, staticContext);
       if (inputSchema) {
         tool.inputSchema = inputSchema;
         const requiredInputs = deriveRequiredInputs(inputSchema);
@@ -151,7 +152,7 @@ export async function extractTool(file: CandidateFile): Promise<ResourceExtracti
     }
 
     if (Object.prototype.hasOwnProperty.call(props, "outputSchema")) {
-      const outputSchema = asStaticObject(props.outputSchema!);
+      const outputSchema = asStaticObject(props.outputSchema!, staticContext);
       if (outputSchema) {
         tool.outputSchema = outputSchema;
       } else {
@@ -168,7 +169,7 @@ export async function extractTool(file: CandidateFile): Promise<ResourceExtracti
     }
 
     if (Object.prototype.hasOwnProperty.call(props, "defaultTimeoutMs")) {
-      const timeoutResult = extractStaticValue(props.defaultTimeoutMs!);
+      const timeoutResult = extractStaticValue(props.defaultTimeoutMs!, staticContext);
       if (timeoutResult.ok && isPositiveInteger(timeoutResult.value)) {
         tool.defaultTimeoutMs = timeoutResult.value;
       } else {

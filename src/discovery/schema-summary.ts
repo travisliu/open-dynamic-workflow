@@ -4,8 +4,11 @@ import { extractStaticValue } from "./static-values.js";
 /**
  * Extracts a static object literal from an AST node if possible.
  */
-export function asStaticObject(node: ts.Node): Record<string, unknown> | undefined {
-  const result = extractStaticValue(node);
+export function asStaticObject(
+  node: ts.Node,
+  context?: { sourceFile: ts.SourceFile }
+): Record<string, unknown> | undefined {
+  const result = extractStaticValue(node, context);
   if (result.ok && result.value !== null && typeof result.value === "object" && !Array.isArray(result.value)) {
     return result.value as Record<string, unknown>;
   }

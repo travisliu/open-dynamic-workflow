@@ -12,11 +12,60 @@ export type StaticValueResult =
   | { ok: true; value: StaticValue }
   | { ok: false; message: string };
 
+interface StaticResolutionContext {
+  sourceFile: ts.SourceFile;
+}
+
+interface ResolverState {
+  declarations: Map<string, ts.Expression>;
+  resolving: Set<string>;
+}
+
 export function parseSourceFile(filePath: string, sourceText: string): ts.SourceFile {
   return ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true);
 }
 
-export function extractStaticValue(node: ts.Node): StaticValueResult {
+function collectTopLevelConstDeclarations(sourceFile: ts.SourceFile): Map<string, ts.Expression> {
+  const declarations = new Map<string, ts.Expression>();
+
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) {
+      continue;
+    }
+
+    const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0;
+    if (!isConst) {
+      continue;
+    }
+
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) {
+        continue;
+      }
+
+      declarations.set(declaration.name.text, declaration.initializer);
+    }
+  }
+
+  return declarations;
+}
+
+function createResolverState(context?: StaticResolutionContext): ResolverState | undefined {
+  if (!context) {
+    return undefined;
+  }
+
+  return {
+    declarations: collectTopLevelConstDeclarations(context.sourceFile),
+    resolving: new Set<string>(),
+  };
+}
+
+function extractStaticValueInternal(
+  node: ts.Node,
+  context?: StaticResolutionContext,
+  state?: ResolverState
+): StaticValueResult {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return { ok: true, value: node.text };
   }
@@ -39,11 +88,33 @@ export function extractStaticValue(node: ts.Node): StaticValueResult {
 
   // Handle negative numbers (PrefixUnaryExpression with MinusToken)
   if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken) {
-    const operandResult = extractStaticValue(node.operand);
+    const operandResult = extractStaticValueInternal(node.operand, context, state);
     if (operandResult.ok && typeof operandResult.value === "number") {
       return { ok: true, value: -operandResult.value };
     }
     return { ok: false, message: "Unsupported unary expression" };
+  }
+
+  if (ts.isIdentifier(node)) {
+    if (!state) {
+      return { ok: false, message: `Unsupported node type: ${ts.SyntaxKind[node.kind]}` };
+    }
+
+    const declaration = state.declarations.get(node.text);
+    if (!declaration) {
+      return { ok: false, message: `Unresolved identifier: ${node.text}` };
+    }
+
+    if (state.resolving.has(node.text)) {
+      return { ok: false, message: `Circular identifier reference: ${node.text}` };
+    }
+
+    state.resolving.add(node.text);
+    try {
+      return extractStaticValueInternal(declaration, context, state);
+    } finally {
+      state.resolving.delete(node.text);
+    }
   }
 
   if (ts.isArrayLiteralExpression(node)) {
@@ -52,7 +123,7 @@ export function extractStaticValue(node: ts.Node): StaticValueResult {
       if (ts.isSpreadElement(element)) {
         return { ok: false, message: "Spread elements are not supported" };
       }
-      const result = extractStaticValue(element);
+      const result = extractStaticValueInternal(element, context, state);
       if (!result.ok) return result;
       values.push(result.value);
     }
@@ -77,12 +148,40 @@ export function extractStaticValue(node: ts.Node): StaticValueResult {
         return { ok: false, message: "Unsupported key type (only identifiers and strings are allowed)" };
       }
 
-      const valueResult = extractStaticValue(property.initializer);
+      const valueResult = extractStaticValueInternal(property.initializer, context, state);
       if (!valueResult.ok) return valueResult;
       obj[key] = valueResult.value;
     }
     return { ok: true, value: obj };
   }
 
+  if (ts.isPropertyAccessExpression(node)) {
+    const targetResult = extractStaticValueInternal(node.expression, context, state);
+    if (!targetResult.ok) {
+      return targetResult;
+    }
+
+    if (
+      targetResult.value === null ||
+      typeof targetResult.value !== "object" ||
+      Array.isArray(targetResult.value)
+    ) {
+      return { ok: false, message: `Property access target is not an object: ${node.expression.getText()}` };
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(targetResult.value, node.name.text)) {
+      return { ok: false, message: `Property '${node.name.text}' not found` };
+    }
+
+    return {
+      ok: true,
+      value: (targetResult.value as Record<string, StaticValue>)[node.name.text]!
+    };
+  }
+
   return { ok: false, message: `Unsupported node type: ${ts.SyntaxKind[node.kind]}` };
+}
+
+export function extractStaticValue(node: ts.Node, context?: StaticResolutionContext): StaticValueResult {
+  return extractStaticValueInternal(node, context, createResolverState(context));
 }
