@@ -94,6 +94,9 @@ export function resolveGlobalRetryPolicy(input: {
     finalEnabled = false;
     finalSource = "cli";
     finalDisabledBy = "cli";
+    if (cliOverrides.disableDelay !== undefined) {
+      finalPolicy.disableDelay = cliOverrides.disableDelay;
+    }
   } else {
     const hasCliOverrides =
       cliOverrides?.maxAttempts !== undefined ||

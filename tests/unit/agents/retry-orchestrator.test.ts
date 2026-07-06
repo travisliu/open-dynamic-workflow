@@ -338,4 +338,236 @@ describe("RetryOrchestrator", () => {
     expect(secondExecInput.prompt).toContain("failed JSON Schema validation");
     expect(secondExecInput.prompt).toContain("must be integer");
   });
+
+  it("waits for the computed delay before the next attempt when delay is enabled", async () => {
+    const retryableFailure: AgentResult = {
+      ok: false,
+      status: "failed",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "",
+      stderr: "provider failed",
+      exitCode: 1,
+      durationMs: 20,
+      artifacts: { dir: "agents/my-logical-agent/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+      error: { name: "ProviderProcessFailed", message: "Failed", code: "PROVIDER_PROCESS_FAILED" },
+      permissions: { mode: "default" }
+    };
+
+    const successResult: AgentResult = {
+      ok: true,
+      status: "succeeded",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "recovered",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 30,
+      artifacts: { dir: "agents/my-logical-agent/attempts/2", promptPath: "", stdoutPath: "", stderrPath: "" },
+      permissions: { mode: "default" }
+    };
+
+    vi.mocked(mockExecutor.execute)
+      .mockResolvedValueOnce(retryableFailure)
+      .mockResolvedValueOnce(successResult);
+
+    const input = createInput({
+      policy: {
+        maxAttempts: 2,
+        delayMs: 1500,
+        backoff: "fixed",
+        maxDelayMs: 5000,
+        jitter: false,
+        disableDelay: false
+      }
+    });
+
+    const promise = orchestrator.execute(input);
+
+    await vi.runAllTicks();
+    await vi.runAllTicks();
+
+    expect(mockExecutor.execute).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1500);
+
+    const result = await promise;
+
+    expect(result.ok).toBe(true);
+    expect(mockExecutor.execute).toHaveBeenCalledTimes(2);
+    expect(result.retry?.attempts[0].computedDelayBeforeNextAttemptMs).toBe(1500);
+    expect(result.retry?.attempts[0].delaySkipped).toBeUndefined();
+  });
+
+  it("skips waiting but preserves the computed delay metadata when disableDelay is true", async () => {
+    const retryableFailure: AgentResult = {
+      ok: false,
+      status: "failed",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "",
+      stderr: "provider failed",
+      exitCode: 1,
+      durationMs: 20,
+      artifacts: { dir: "agents/my-logical-agent/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+      error: { name: "ProviderProcessFailed", message: "Failed", code: "PROVIDER_PROCESS_FAILED" },
+      permissions: { mode: "default" }
+    };
+
+    const successResult: AgentResult = {
+      ok: true,
+      status: "succeeded",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "recovered",
+      stderr: "",
+      exitCode: 0,
+      durationMs: 30,
+      artifacts: { dir: "agents/my-logical-agent/attempts/2", promptPath: "", stdoutPath: "", stderrPath: "" },
+      permissions: { mode: "default" }
+    };
+
+    vi.mocked(mockExecutor.execute)
+      .mockResolvedValueOnce(retryableFailure)
+      .mockResolvedValueOnce(successResult);
+
+    const input = createInput({
+      policy: {
+        maxAttempts: 2,
+        delayMs: 2000,
+        backoff: "fixed",
+        maxDelayMs: 5000,
+        jitter: false,
+        disableDelay: true
+      }
+    });
+
+    const start = Date.now();
+    const result = await orchestrator.execute(input);
+    const duration = Date.now() - start;
+
+    expect(duration).toBeLessThan(100);
+    expect(result.ok).toBe(true);
+    expect(mockExecutor.execute).toHaveBeenCalledTimes(2);
+    expect(result.retry?.attemptsStarted).toBe(2);
+
+    expect(result.retry?.attempts[0].computedDelayBeforeNextAttemptMs).toBe(2000);
+    expect(result.retry?.attempts[0].delaySkipped).toBe(true);
+  });
+
+  it("aborts the retry loop immediately if cancellation arrives during the wait", async () => {
+    const retryableFailure: AgentResult = {
+      ok: false,
+      status: "failed",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "",
+      stderr: "provider failed",
+      exitCode: 1,
+      durationMs: 20,
+      artifacts: { dir: "agents/my-logical-agent/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+      error: { name: "ProviderProcessFailed", message: "Failed", code: "PROVIDER_PROCESS_FAILED" },
+      permissions: { mode: "default" }
+    };
+
+    vi.mocked(mockExecutor.execute).mockResolvedValue(retryableFailure);
+
+    const controller = new AbortController();
+    const input = createInput({
+      policy: {
+        maxAttempts: 3,
+        delayMs: 5000,
+        backoff: "fixed",
+        maxDelayMs: 10000,
+        jitter: false,
+        disableDelay: false
+      }
+    });
+    input.signal = controller.signal;
+
+    const promise = orchestrator.execute(input);
+
+    await vi.runAllTicks();
+    await vi.runAllTicks();
+    expect(mockExecutor.execute).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+
+    const result = await promise;
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe("cancelled");
+    expect(mockExecutor.execute).toHaveBeenCalledTimes(1);
+
+    expect(result.retry?.attemptsStarted).toBe(1);
+    expect(result.retry?.attempts[0].status).toBe("cancelled");
+  });
+
+  it("computes and passes exponential delay values correctly", async () => {
+    const retryableFailure: AgentResult = {
+      ok: false,
+      status: "failed",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "",
+      stderr: "provider failed",
+      exitCode: 1,
+      durationMs: 20,
+      artifacts: { dir: "agents/my-logical-agent/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+      error: { name: "ProviderProcessFailed", message: "Failed", code: "PROVIDER_PROCESS_FAILED" },
+      permissions: { mode: "default" }
+    };
+
+    vi.mocked(mockExecutor.execute).mockResolvedValue(retryableFailure);
+
+    const input = createInput({
+      policy: {
+        maxAttempts: 3,
+        delayMs: 1000,
+        backoff: "exponential",
+        maxDelayMs: 10000,
+        jitter: false,
+        disableDelay: true
+      }
+    });
+
+    const result = await orchestrator.execute(input);
+
+    expect(result.retry?.attempts[0].computedDelayBeforeNextAttemptMs).toBe(1000);
+    expect(result.retry?.attempts[1].computedDelayBeforeNextAttemptMs).toBe(2000);
+  });
+
+  it("caps exponential delays correctly using maxDelayMs", async () => {
+    const retryableFailure: AgentResult = {
+      ok: false,
+      status: "failed",
+      id: "my-logical-agent",
+      provider: "mock",
+      stdout: "",
+      stderr: "provider failed",
+      exitCode: 1,
+      durationMs: 20,
+      artifacts: { dir: "agents/my-logical-agent/attempts/1", promptPath: "", stdoutPath: "", stderrPath: "" },
+      error: { name: "ProviderProcessFailed", message: "Failed", code: "PROVIDER_PROCESS_FAILED" },
+      permissions: { mode: "default" }
+    };
+
+    vi.mocked(mockExecutor.execute).mockResolvedValue(retryableFailure);
+
+    const input = createInput({
+      policy: {
+        maxAttempts: 3,
+        delayMs: 2000,
+        backoff: "exponential",
+        maxDelayMs: 3000,
+        jitter: false,
+        disableDelay: true
+      }
+    });
+
+    const result = await orchestrator.execute(input);
+
+    expect(result.retry?.attempts[0].computedDelayBeforeNextAttemptMs).toBe(2000);
+    expect(result.retry?.attempts[1].computedDelayBeforeNextAttemptMs).toBe(3000);
+  });
 });

@@ -18,8 +18,10 @@ import type { ArtifactStore } from "../types/artifacts.js";
 import { EventBus } from "../orchestration/event-bus.js";
 import { classifyAttemptFailure } from "./attempt-classifier.js";
 import { redactText, collectSecretValues } from "../security/env.js";
+import { computeRetryDelay, sleepRetryDelay } from "./retry-delay.js";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+
 
 export interface RetryOrchestratorInput {
   logicalAgentId: string;
@@ -263,45 +265,47 @@ export class RetryOrchestrator {
           reason: classification.reason
         });
 
-        const canRetry = classification.retryable && attemptNum < maxAttempts && !input.signal.aborted;
+        if (input.signal.aborted) {
+          attemptSummary.status = "cancelled";
+          attempts.push(attemptSummary);
+          finalStatus = "cancelled";
+          finalFailureReason = "cancelled";
+          finalResult = attemptResult;
+          break;
+        }
+
+        const canRetry = classification.retryable && attemptNum < maxAttempts;
 
         if (canRetry) {
-          let delayMs = policy.backoff === "exponential"
-            ? policy.delayMs * Math.pow(2, attemptNum - 1)
-            : policy.delayMs;
-          delayMs = Math.min(policy.maxDelayMs, delayMs);
+          const delayMetadata = computeRetryDelay(policy, attemptNum);
+          attemptSummary.computedDelayBeforeNextAttemptMs = delayMetadata.delayMs;
 
-          let finalDelayMs = delayMs;
-          if (policy.jitter) {
-            finalDelayMs = Math.random() * delayMs;
+          if (input.signal.aborted) {
+            attemptSummary.status = "cancelled";
+            attempts.push(attemptSummary);
+            finalStatus = "cancelled";
+            finalFailureReason = "cancelled";
+            finalResult = attemptResult;
+            break;
           }
-
-          attemptSummary.computedDelayBeforeNextAttemptMs = finalDelayMs;
 
           if (policy.disableDelay) {
             attemptSummary.delaySkipped = true;
             await input.eventBus.emit("agent.retry.skipped_delay" as any, {
               agentId: input.logicalAgentId,
               nextAttempt: attemptNum + 1,
-              delayMs: finalDelayMs
+              delayMs: delayMetadata.delayMs
             });
           } else {
             await input.eventBus.emit("agent.retry.scheduled" as any, {
               agentId: input.logicalAgentId,
               nextAttempt: attemptNum + 1,
-              delayMs: finalDelayMs
+              delayMs: delayMetadata.delayMs
             });
 
             try {
-              await new Promise<void>((resolve, reject) => {
-                const timer = setTimeout(resolve, finalDelayMs);
-                const onAbort = () => {
-                  clearTimeout(timer);
-                  reject(new Error("Aborted"));
-                };
-                input.signal.addEventListener("abort", onAbort);
-              });
-            } catch {
+              await sleepRetryDelay(delayMetadata.delayMs, input.signal);
+            } catch (err: any) {
               attemptSummary.status = "cancelled";
               attempts.push(attemptSummary);
               finalStatus = "cancelled";
@@ -376,6 +380,10 @@ export class RetryOrchestrator {
       if (input.metadata !== undefined) failureResult.metadata = input.metadata;
 
       finalResult = failureResult;
+    }
+
+    if (finalStatus === "cancelled" && finalResult) {
+      finalResult.status = "cancelled";
     }
 
     // Attach retry metadata to final result

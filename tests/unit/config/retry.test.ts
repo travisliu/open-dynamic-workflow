@@ -107,6 +107,73 @@ describe("Retry Resolver", () => {
 
       expect(JSON.stringify(res1.policy)).toBe(JSON.stringify(res2.policy));
     });
+
+    describe("disableDelay regression safety", () => {
+      it("defaults disableDelay to false in built-in default policy", () => {
+        const resolved = resolveGlobalRetryPolicy({});
+        expect(resolved.policy.disableDelay).toBe(false);
+      });
+
+      it("preserves disableDelay: true from config-file retry input", () => {
+        const resolved = resolveGlobalRetryPolicy({
+          configRetry: { disableDelay: true }
+        });
+        expect(resolved.policy.disableDelay).toBe(true);
+      });
+
+      it("preserves disableDelay: false from config-file retry input", () => {
+        const resolved = resolveGlobalRetryPolicy({
+          configRetry: { disableDelay: false }
+        });
+        expect(resolved.policy.disableDelay).toBe(false);
+      });
+
+      it("applies CLI overrides for disableDelay: true", () => {
+        const resolved = resolveGlobalRetryPolicy({
+          configRetry: { maxAttempts: 5 },
+          cliOverrides: { disableDelay: true }
+        });
+        expect(resolved.policy.disableDelay).toBe(true);
+      });
+
+      it("applies CLI overrides for disableDelay: false", () => {
+        const resolved = resolveGlobalRetryPolicy({
+          configRetry: { maxAttempts: 5, disableDelay: true },
+          cliOverrides: { disableDelay: false }
+        });
+        expect(resolved.policy.disableDelay).toBe(false);
+      });
+
+      it("applies CLI overrides for disableDelay even when noRetry is true", () => {
+        const resolved = resolveGlobalRetryPolicy({
+          configRetry: { maxAttempts: 5 },
+          cliOverrides: { noRetry: true, disableDelay: true }
+        });
+        expect(resolved.policy.disableDelay).toBe(true);
+      });
+
+      it("does not mutate configRetry or cliOverrides when disableDelay is present", () => {
+        const configRetry = { maxAttempts: 5, disableDelay: true };
+        const cliOverrides = { disableDelay: false };
+        resolveGlobalRetryPolicy({ configRetry, cliOverrides });
+        expect(configRetry.disableDelay).toBe(true);
+        expect(cliOverrides.disableDelay).toBe(false);
+      });
+
+      it("keeps resolved policy shape stable and deterministic when disableDelay is present", () => {
+        const resolved = resolveGlobalRetryPolicy({
+          configRetry: { disableDelay: true }
+        });
+        expect(Object.keys(resolved.policy)).toEqual([
+          "maxAttempts",
+          "delayMs",
+          "backoff",
+          "maxDelayMs",
+          "jitter",
+          "disableDelay"
+        ]);
+      });
+    });
   });
 
   describe("resolveAgentRetryPolicy", () => {
@@ -185,6 +252,49 @@ describe("Retry Resolver", () => {
       const res2 = resolveAgentRetryPolicy({ globalPolicy, agentRetry: agentRetry2 });
 
       expect(JSON.stringify(res1.policy)).toBe(JSON.stringify(res2.policy));
+    });
+
+    describe("disableDelay regression safety", () => {
+      it("preserves globalPolicy disableDelay when agentRetry is omitted", () => {
+        const globalPolicy = resolveGlobalRetryPolicy({ configRetry: { disableDelay: true } });
+        const resolved = resolveAgentRetryPolicy({ globalPolicy });
+        expect(resolved.policy.disableDelay).toBe(true);
+      });
+
+      it("defaults disableDelay to false when agentRetry is false", () => {
+        const globalPolicy = resolveGlobalRetryPolicy({ configRetry: { disableDelay: true } });
+        const resolved = resolveAgentRetryPolicy({ globalPolicy, agentRetry: false });
+        expect(resolved.policy.disableDelay).toBe(false);
+      });
+
+      it("applies agent-level overrides for disableDelay: true", () => {
+        const globalPolicy = resolveGlobalRetryPolicy({ configRetry: { disableDelay: false } });
+        const resolved = resolveAgentRetryPolicy({
+          globalPolicy,
+          agentRetry: { disableDelay: true }
+        });
+        expect(resolved.policy.disableDelay).toBe(true);
+      });
+
+      it("applies agent-level overrides for disableDelay: false", () => {
+        const globalPolicy = resolveGlobalRetryPolicy({ configRetry: { disableDelay: true } });
+        const resolved = resolveAgentRetryPolicy({
+          globalPolicy,
+          agentRetry: { disableDelay: false }
+        });
+        expect(resolved.policy.disableDelay).toBe(false);
+      });
+
+      it("does not mutate globalPolicy or agentRetry when disableDelay is present", () => {
+        const globalPolicy = resolveGlobalRetryPolicy({ configRetry: { disableDelay: true } });
+        const agentRetry = { disableDelay: false };
+        const globalPolicyCopy = JSON.parse(JSON.stringify(globalPolicy));
+
+        resolveAgentRetryPolicy({ globalPolicy, agentRetry });
+
+        expect(globalPolicy).toEqual(globalPolicyCopy);
+        expect(agentRetry.disableDelay).toBe(false);
+      });
     });
   });
 });
