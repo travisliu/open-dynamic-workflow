@@ -15,8 +15,6 @@
 
 <p align="center">&nbsp;</p>
 
-Rename Notice: Renamed from `@prmflow/openflow` (binary: `openflow`) to `@travisliu/open-dynamic-workflow`
-
 Open Dynamic Workflow is a local-first workflow runner for orchestrating external coding-agent CLIs such as Codex, Gemini, Copilot, OpenCode, Antigravity, Pi, Cursor, and a deterministic mock provider.
 
 Natural-language prompts are flexible, but they are not always reliable for repeated engineering work. Open Dynamic Workflow turns repeatable agent tasks into workflow scripts, so execution is explicit, version-controlled, validated, and easier to reproduce.

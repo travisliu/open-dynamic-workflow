@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-07-07
+
+### Added
+
+- **Experimental Retry Support**: Implemented a comprehensive runtime scheduling and execution framework for automatic agent call retries. Features include:
+  - Retry policy resolution, attempt scheduling, cache fingerprinting, and backoff delay service (with optional jitter).
+  - Attempt-level artifact tracking, persistent logging, and integration/cache regression tests.
+- **Unified Path Configuration for Resource Discovery**: Introduced a unified `discovery` path configuration for locating workflows, agents, and tools, with support for source-aware warning behavior.
+- **Glob Engine Integration (`tinyglobby`)**: Replaced custom globbing logic with `tinyglobby` for pattern compilation and matching.
+
+### Changed & Improved
+
+- **Source-Aware Path Discovery Redesign**: Centralized loader handoffs, pattern exclusion matching, policy evaluation, and precollection for cleaner and warning-preserving resource resolution.
+- **Provider Prompt Transport Hardening**: Hardened provider prompt transport against `spawn E2BIG` errors.
+- **Legacy Cleanup**: Removed remaining legacy `@prmflow/openflow` and old `openflow` package references, exports, structures, and legacy loader discovery branches.
+
+### Fixed
+
+- **Registry Lookup & Setup Safety**: Wrapped agent registry lookup and provider setup in try-catch blocks to prevent unhandled promise rejections on configuration/setup errors.
+- **Metadata Const Ordering**: Allowed same-file local `const` tool metadata references in tool listings, while preventing forward metadata const references.
+- **Shared Agent ID Propagation**: Fixed the shared-agent ID propagation issue to ensure that parallel shared-agent calls inside loop rounds receive distinct agent execution IDs (inheriting the outer DSL call ID when inner IDs are absent), preventing ID collisions, shared-artifact directory overlaps, and cache/resume corruption.
+
 ## [0.4.0] - 2026-06-25
 
 ### Added
