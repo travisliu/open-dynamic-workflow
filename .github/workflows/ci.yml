@@ -43,6 +43,9 @@ jobs:
       - name: Build Project
         run: npm run build
 
+      - name: Create Default Discovery Directories
+        run: mkdir -p workflows .open-dynamic-workflow/agents .open-dynamic-workflow/tools
+
       - name: Run Tests
         run: npm test
 
