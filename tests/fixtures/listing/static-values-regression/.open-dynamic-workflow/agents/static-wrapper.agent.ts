@@ -1,5 +1,5 @@
 // @ts-ignore
-import { defineAgent } from "@prmflow/openflow";
+import { defineAgent } from "@travisliu/open-dynamic-workflow";
 
 const agentId = "static-wrapper.agent" as const;
 const agentDescription = ("Static wrapper agent") satisfies string;

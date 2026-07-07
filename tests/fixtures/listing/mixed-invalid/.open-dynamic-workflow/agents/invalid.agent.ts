@@ -1,4 +1,4 @@
-import { defineAgent } from "@prmflow/openflow";
+import { defineAgent } from "@travisliu/open-dynamic-workflow";
 export default defineAgent({
   // id missing
   description: "An invalid agent",

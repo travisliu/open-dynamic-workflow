@@ -1,6 +1,6 @@
 import fs from "node:fs";
 // @ts-ignore
-import { defineAgent } from "@prmflow/openflow";
+import { defineAgent } from "@travisliu/open-dynamic-workflow";
 
 const markerPath = "agent-side-effect.marker";
 fs.writeFileSync(markerPath, "executed");

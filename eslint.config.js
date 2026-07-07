@@ -11,7 +11,6 @@ export default tseslint.config(
       'coverage/**',
       'scripts/**',
       'workflows/**',
-      'openflow/**',
       'examples/**',
       'skills/**',
       'tests/fixtures/**',

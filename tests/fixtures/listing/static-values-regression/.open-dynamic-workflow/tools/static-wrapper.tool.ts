@@ -1,5 +1,5 @@
 // @ts-ignore
-import { defineTool } from "@prmflow/openflow";
+import { defineTool } from "@travisliu/open-dynamic-workflow";
 
 const toolId = "static-wrapper.tool" as const;
 const toolDescription = ("Static wrapper tool") satisfies string;

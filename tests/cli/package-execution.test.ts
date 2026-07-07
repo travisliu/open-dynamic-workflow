@@ -33,31 +33,6 @@ describe("CLI package execution and installation", () => {
     }
   });
 
-  it("can execute the openflow wrapper package bin", () => {
-    // Install the packed tarball into openflow/ first to ensure it has the latest local version
-    execSync(`npm install --no-save --no-package-lock "${packedTarballPath}"`, {
-      cwd: path.join(WORKSPACE_DIR, "openflow"),
-      stdio: "ignore"
-    });
-
-    // Run --help through the wrapper
-    const helpStdout = execSync("node openflow/bin/openflow.js --help 2>&1", {
-      cwd: WORKSPACE_DIR,
-      encoding: "utf8"
-    });
-    expect(helpStdout).toContain("[deprecated] @prmflow/openflow has moved to @travisliu/open-dynamic-workflow.");
-    expect(helpStdout).toContain("Orchestrate coding-agent CLI workflows");
-
-    // Run doctor through the wrapper
-    const doctorStdout = execSync("node openflow/bin/openflow.js doctor 2>&1", {
-      cwd: WORKSPACE_DIR,
-      encoding: "utf8"
-    });
-    expect(doctorStdout).toContain("Node.js >= 20");
-    expect(doctorStdout).toContain("open-dynamic-workflow");
-
-  }, 30000);
-
   it("can execute npx . --help", () => {
     const stdout = execSync("npx . --help", { cwd: WORKSPACE_DIR, encoding: "utf8" });
     expect(stdout).toContain("Orchestrate coding-agent CLI workflows");

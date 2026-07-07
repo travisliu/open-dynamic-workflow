@@ -1,6 +1,6 @@
 import fs from "node:fs";
 // @ts-ignore
-import { defineTool } from "@prmflow/openflow";
+import { defineTool } from "@travisliu/open-dynamic-workflow";
 
 const markerPath = "tool-side-effect.marker";
 fs.writeFileSync(markerPath, "executed");

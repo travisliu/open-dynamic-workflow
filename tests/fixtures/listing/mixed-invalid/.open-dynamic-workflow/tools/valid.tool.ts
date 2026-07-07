@@ -1,4 +1,4 @@
-import { defineTool } from "@prmflow/openflow";
+import { defineTool } from "@travisliu/open-dynamic-workflow";
 export default defineTool({
   id: "valid-tool",
   description: "A valid tool",

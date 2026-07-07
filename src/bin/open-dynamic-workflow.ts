@@ -32,14 +32,6 @@ function isCommanderControlError(error: unknown): boolean {
   );
 }
 
-function isCommanderUsageError(error: unknown): boolean {
-  if (!(error instanceof OpenDynamicWorkflowError)) {
-    return false;
-  }
-  const causeCode = objectCode(error.cause);
-  return typeof causeCode === "string" && causeCode.startsWith("commander.");
-}
-
 main(process.argv).catch((error) => {
   if (isCommanderControlError(error)) {
     process.exitCode = 0;

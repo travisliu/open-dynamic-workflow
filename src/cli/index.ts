@@ -216,7 +216,7 @@ Examples:
   await program.parseAsync(argv, parseOptions);
 }
 
-// Backward compatibility helpers and runner for the legacy @prmflow/openflow wrapper package.
+// Programmatic CLI runner and helper utilities (used by integration tests).
 function objectCode(value: unknown): string | undefined {
   if (value && typeof value === "object" && "code" in value && typeof value.code === "string") {
     return value.code;
@@ -242,14 +242,6 @@ function isCommanderControlError(error: unknown): boolean {
     causeCode === "commander.help" ||
     causeCode === "commander.version"
   );
-}
-
-function isCommanderUsageError(error: unknown): boolean {
-  if (!(error instanceof OpenDynamicWorkflowError)) {
-    return false;
-  }
-  const causeCode = objectCode(error.cause);
-  return typeof causeCode === "string" && causeCode.startsWith("commander.");
 }
 
 export async function runCli(args: string[]): Promise<void> {
