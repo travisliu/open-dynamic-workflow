@@ -91,52 +91,17 @@ export class DefaultAgentExecutor implements AgentExecutor {
   }
 
   private async executeInternal(input: AgentExecutionInput): Promise<AgentResult> {
-    const registry = createDefaultProviderRegistry({ config: this.config });
-    const adapter = registry.get(input.provider);
     const resolvedPerms = input.permissions || { mode: "default" };
     const sanitizedMetadata = sanitizeMetadata(input.metadata);
     const baseDir = input.artifacts?.baseDir ?? `agents/${input.id}`;
 
-    // 1. Write prompt.txt
-    await this.artifactStore.writeText(`${baseDir}/prompt.txt`, input.prompt);
-
-    // 2. Write schema.json if schema is provided
-    if (input.schema) {
-      await this.artifactStore.writeJson(`${baseDir}/schema.json`, input.schema);
-    }
-
-    // Write metadata.json
-    const metadataJson: Record<string, any> = {
-      ...sanitizedMetadata,
-      model: input.model,
-      resolutionSource: sanitizedMetadata.modelResolutionSource || "provider-default",
-      structuredOutputTransport: input.schema ? input.structuredOutput?.transport ?? "auto" : undefined,
-      permissions: resolvedPerms,
-      thinkingEffortResolutionSource: sanitizedMetadata.thinkingEffortResolutionSource || "provider-cli-default"
-    };
-    if (input.thinkingEffort !== undefined) {
-      metadataJson.thinkingEffort = input.thinkingEffort;
-    }
-    await this.artifactStore.writeJson(`${baseDir}/metadata.json`, metadataJson);
-
-    // Write permissions.json
-    await this.artifactStore.writeJson(`${baseDir}/permissions.json`, resolvedPerms);
-
-    // Initialize empty log files
-    await this.artifactStore.writeText(`${baseDir}/stdout.log`, "");
-    await this.artifactStore.writeText(`${baseDir}/stderr.log`, "");
-
-    const secretValues = collectSecretValues(process.env, this.config.security?.redactEnv);
-
-    const stdoutRedactor = new StreamRedactor(secretValues);
-    const stderrRedactor = new StreamRedactor(secretValues);
-
     const startMs = Date.now();
     let stdoutInMemory = "";
     let stderrInMemory = "";
-    let exitCode: number | null = null;
-    let timedOut = false;
-    let cancelled = false;
+
+    const secretValues = collectSecretValues(process.env, this.config.security?.redactEnv);
+    const stdoutRedactor = new StreamRedactor(secretValues);
+    const stderrRedactor = new StreamRedactor(secretValues);
 
     const agentArtifacts: AgentArtifacts = {
       dir: baseDir,
@@ -189,7 +154,44 @@ export class DefaultAgentExecutor implements AgentExecutor {
 
     let executionResult: { exitCode: number | null; timedOut: boolean; cancelled: boolean };
     let commandInput: ProviderCommand | undefined;
+    let adapter: any;
+    let exitCode: number | null = null;
+    let timedOut = false;
+    let cancelled = false;
+
     try {
+      const registry = createDefaultProviderRegistry({ config: this.config });
+      adapter = registry.get(input.provider);
+
+      // 1. Write prompt.txt
+      await this.artifactStore.writeText(`${baseDir}/prompt.txt`, input.prompt);
+
+      // 2. Write schema.json if schema is provided
+      if (input.schema) {
+        await this.artifactStore.writeJson(`${baseDir}/schema.json`, input.schema);
+      }
+
+      // Write metadata.json
+      const metadataJson: Record<string, any> = {
+        ...sanitizedMetadata,
+        model: input.model,
+        resolutionSource: sanitizedMetadata.modelResolutionSource || "provider-default",
+        structuredOutputTransport: input.schema ? input.structuredOutput?.transport ?? "auto" : undefined,
+        permissions: resolvedPerms,
+        thinkingEffortResolutionSource: sanitizedMetadata.thinkingEffortResolutionSource || "provider-cli-default"
+      };
+      if (input.thinkingEffort !== undefined) {
+        metadataJson.thinkingEffort = input.thinkingEffort;
+      }
+      await this.artifactStore.writeJson(`${baseDir}/metadata.json`, metadataJson);
+
+      // Write permissions.json
+      await this.artifactStore.writeJson(`${baseDir}/permissions.json`, resolvedPerms);
+
+      // Initialize empty log files
+      await this.artifactStore.writeText(`${baseDir}/stdout.log`, "");
+      await this.artifactStore.writeText(`${baseDir}/stderr.log`, "");
+
       assertThinkingEffortSupported(input.provider, input.thinkingEffort);
       commandInput = await adapter.buildCommand(runInput);
 
