@@ -533,11 +533,15 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
       try {
         const tmpFiles = await readdir(projectTmpDir);
         if (tmpFiles.length === 0) {
-          await rm(projectTmpDir, { recursive: true }).catch(() => {});
-          const parentDir = join(realCwd, ".open-dynamic-workflow");
-          const parentFiles = await readdir(parentDir);
-          if (parentFiles.length === 0) {
-            await rm(parentDir, { recursive: true }).catch(() => {});
+          const isTestEnv = process.env.VITEST === "true" || process.env.NODE_ENV === "test";
+          const isSharedDir = realCwd === process.cwd() || resolve(realCwd) === resolve(process.cwd());
+          if (!isTestEnv || !isSharedDir) {
+            await rm(projectTmpDir, { recursive: true }).catch(() => {});
+            const parentDir = join(realCwd, ".open-dynamic-workflow");
+            const parentFiles = await readdir(parentDir);
+            if (parentFiles.length === 0) {
+              await rm(parentDir, { recursive: true }).catch(() => {});
+            }
           }
         }
       } catch {}
