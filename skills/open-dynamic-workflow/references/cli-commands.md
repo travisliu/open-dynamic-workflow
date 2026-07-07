@@ -279,8 +279,16 @@ Literal shared agent IDs referenced in `agent({ definition })` or `ctx.agent({ d
 ## Tool Loading & Trust Model
 
 When executing `open-dynamic-workflow run` or `open-dynamic-workflow validate`, Open Dynamic Workflow resolves tool files using the patterns in `tools.include` / `exclude` (with legacy fallback to `tools.dir` supported during migration).
-Unlike workflows or shared agents, tool definitions are trusted application extensions. They may execute unrestricted JavaScript with host access (e.g., read/write files, execute shell commands, import packages, or perform network requests).
-However, tool definitions must be declared with `defineTool()` and have valid default exports. Duplicate or invalid tool definitions will cause a `TOOL_INVALID_DEFINITION` or `TOOL_DUPLICATE_DEFINITION` validation error.
+
+Tool files are treated as trusted runtime extensions. They may execute unrestricted JavaScript with host access (e.g., read/write files, execute shell commands, import packages, or perform network requests).
+
+Before they are imported at runtime, tool metadata is statically discoverable. Commands like `list tools`, `validate`, `run`, and `doctor` enforce the exact same static metadata contract:
+* All tool entrypoints must default-export `defineTool({ ... })`.
+* Static property values like `id`, `description`, `inputSchema`, optional `outputSchema`, optional `defaultTimeoutMs`, and optional `metadata` are validated statically.
+* Same-file earlier `const` declaration fragments and static property access (e.g., `SCHEMA.properties`) are supported.
+* Imported, forward-referenced, spread, or computed metadata/schema values are unsupported.
+* Invalid definitions fail consistently with `TOOL_INVALID_DEFINITION`.
+* Duplicate tool IDs fail consistently with `TOOL_DUPLICATE_DEFINITION` (or the corresponding CLI duplicate error) before execution begins.
 Individual `tool({ definition })` calls are checked statically during validation to ensure they reference a registered tool ID.
 
 ---

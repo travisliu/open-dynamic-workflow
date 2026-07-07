@@ -5,6 +5,7 @@ import { main } from "../../src/cli/index.js";
 
 const TEMP_DIR = path.resolve("tests/temp-resumable-tools-aaa");
 const FAKE_PROVIDER = path.resolve("tests/fixtures/fake-counter-provider.mjs");
+const SRC_TOOLS_PATH = path.resolve(process.cwd(), "src/tools/index.ts");
 
 async function runCli(args: string[]) {
   const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -63,9 +64,9 @@ describe("Resumable Tools AAA Acceptance Tests", () => {
 
     // 1. Tool Definitions (Cacheable and Non-Cacheable)
     await fs.writeFile(path.join(toolsDir, "cacheable-tool.ts"), `
+import { defineTool } from "${SRC_TOOLS_PATH}";
 import * as fs from "node:fs";
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+export default defineTool({
   id: "cacheable-tool",
   description: "cacheable",
   inputSchema: { type: "object" },
@@ -77,12 +78,12 @@ export default {
     fs.writeFileSync(counterPath, (count + 1).toString());
     return { result: "cacheable-ok", args };
   }
-};`);
+});`);
 
     await fs.writeFile(path.join(toolsDir, "live-tool.ts"), `
+import { defineTool } from "${SRC_TOOLS_PATH}";
 import * as fs from "node:fs";
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+export default defineTool({
   id: "live-tool",
   description: "non-cacheable",
   inputSchema: { type: "object" },
@@ -94,7 +95,7 @@ export default {
     fs.writeFileSync(counterPath, (count + 1).toString());
     return { result: "live-ok", args };
   }
-};`);
+});`);
 
     // 2. Config
     await fs.writeFile(configPath, `
@@ -236,14 +237,14 @@ export default async (ctx) => {
     await fs.mkdir(toolsDir, { recursive: true });
 
     await fs.writeFile(path.join(toolsDir, "tool.ts"), `
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+import { defineTool } from "${SRC_TOOLS_PATH}";
+export default defineTool({
   id: "tool",
   description: "test",
   inputSchema: { type: "object" },
   cacheable: true,
   run: () => "ok"
-};`);
+});`);
 
     await fs.writeFile(configPath, `
 tools:

@@ -5,6 +5,7 @@ import { main } from "../../src/cli/index.js";
 
 const TEMP_DIR = path.resolve("tests/temp-resumable-acceptance");
 const FAKE_PROVIDER = path.resolve("tests/fixtures/fake-counter-provider.mjs");
+const SRC_TOOLS_PATH = path.resolve(process.cwd(), "src/tools/index.ts");
 
 async function runCli(args: string[]) {
   const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -697,14 +698,14 @@ export default async (ctx) => { "done" };`);
     const toolsDir = path.join(TEMP_DIR, "tools-01");
     await fs.mkdir(toolsDir, { recursive: true });
     await fs.writeFile(path.join(toolsDir, "tool-01.ts"), `
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+import { defineTool } from "${SRC_TOOLS_PATH}";
+export default defineTool({
   id: "tool-01",
   description: "test",
   inputSchema: { type: "object" },
   cacheable: true,
   run: () => "ok"
-};`);
+});`);
 
     await fs.writeFile(configPath, `
 defaultProvider: codex
@@ -746,14 +747,14 @@ export default async (ctx) => {
     const toolsDir = path.join(TEMP_DIR, "tools-02");
     await fs.mkdir(toolsDir, { recursive: true });
     await fs.writeFile(path.join(toolsDir, "tool-02.ts"), `
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+import { defineTool } from "${SRC_TOOLS_PATH}";
+export default defineTool({
   id: "tool-02",
   description: "test",
   inputSchema: { type: "object" },
   cacheable: true,
   run: () => "ok"
-};`);
+});`);
 
     await fs.writeFile(configPath, `
 defaultProvider: codex

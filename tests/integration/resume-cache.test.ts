@@ -5,6 +5,7 @@ import { main } from "../../src/cli/index.js";
 
 const TEMP_DIR = path.resolve("tests/temp-resume-cache");
 const FAKE_PROVIDER = path.resolve("tests/fixtures/fake-counter-provider.mjs");
+const SRC_TOOLS_PATH = path.resolve(process.cwd(), "src/tools/index.ts");
 
 async function runCli(args: string[]) {
   const stdoutSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -462,9 +463,9 @@ export default async (ctx) => {
     const toolsDir = path.join(TEMP_DIR, "tools");
     await fs.mkdir(toolsDir, { recursive: true });
     await fs.writeFile(path.join(toolsDir, "count-tool.ts"), `
+import { defineTool } from "${SRC_TOOLS_PATH}";
 import * as fs from "node:fs";
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+export default defineTool({
   id: "count-tool",
   description: "counts executions",
   inputSchema: { type: "object" },
@@ -479,7 +480,7 @@ export default {
     fs.writeFileSync(counterPath, count.toString());
     return { count, args };
   }
-};`, "utf8");
+});`, "utf8");
 
     // Update config to include tools
     await fs.writeFile(configPath, `
@@ -537,9 +538,9 @@ tools:
     await fs.mkdir(toolsDir, { recursive: true });
     
     await fs.writeFile(path.join(toolsDir, "miss-tool.ts"), `
+import { defineTool } from "${SRC_TOOLS_PATH}";
 import * as fs from "node:fs";
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+export default defineTool({
   id: "miss-tool",
   description: "counts executions",
   inputSchema: { type: "object" },
@@ -554,7 +555,7 @@ export default {
     fs.writeFileSync(counterPath, count.toString());
     return { count, args };
   }
-};`, "utf8");
+});`, "utf8");
 
     await fs.writeFile(configPath, `
 defaultProvider: codex
@@ -613,9 +614,9 @@ export default async (ctx) => {
     await fs.mkdir(toolsDir, { recursive: true });
     
     await fs.writeFile(path.join(toolsDir, "miss-tool.ts"), `
+import { defineTool } from "${SRC_TOOLS_PATH}";
 import * as fs from "node:fs";
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+export default defineTool({
   id: "miss-tool",
   description: "counts executions",
   inputSchema: { type: "object" },
@@ -630,7 +631,7 @@ export default {
     fs.writeFileSync(counterPath, count.toString());
     return { count, args };
   }
-};`, "utf8");
+});`, "utf8");
 
     await fs.writeFile(configPath, `
 defaultProvider: codex
@@ -697,9 +698,9 @@ export default async (ctx) => {
     await fs.mkdir(toolsDir, { recursive: true });
     
     await fs.writeFile(path.join(toolsDir, "miss-tool.ts"), `
+import { defineTool } from "${SRC_TOOLS_PATH}";
 import * as fs from "node:fs";
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+export default defineTool({
   id: "miss-tool",
   description: "counts executions",
   inputSchema: { type: "object" },
@@ -714,7 +715,7 @@ export default {
     fs.writeFileSync(counterPath, count.toString());
     return { count };
   }
-};`, "utf8");
+});`, "utf8");
 
     await fs.writeFile(configPath, `
 defaultProvider: codex
@@ -766,9 +767,9 @@ export default async (ctx) => {
     await fs.mkdir(toolsDir, { recursive: true });
     
     await fs.writeFile(path.join(toolsDir, "live-tool.ts"), `
+import { defineTool } from "${SRC_TOOLS_PATH}";
 import * as fs from "node:fs";
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+export default defineTool({
   id: "live-tool",
   description: "counts executions",
   inputSchema: { type: "object" },
@@ -783,7 +784,7 @@ export default {
     fs.writeFileSync(counterPath, count.toString());
     return { count };
   }
-};`, "utf8");
+});`, "utf8");
 
     await fs.writeFile(configPath, `
 defaultProvider: codex
@@ -829,8 +830,8 @@ export default async (ctx) => {
     await fs.mkdir(toolsDir, { recursive: true });
     
     await fs.writeFile(path.join(toolsDir, "fail-tool.ts"), `
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+import { defineTool } from "${SRC_TOOLS_PATH}";
+export default defineTool({
   id: "fail-tool",
   description: "fails on demand",
   inputSchema: { type: "object" },
@@ -839,7 +840,7 @@ export default {
     if (args.fail) throw new Error("intentional failure");
     return "ok";
   }
-};`, "utf8");
+});`, "utf8");
 
     await fs.writeFile(configPath, `
 defaultProvider: codex
@@ -922,14 +923,14 @@ export default async (ctx) => {
     const toolsDir = path.join(TEMP_DIR, "tools-traversal");
     await fs.mkdir(toolsDir, { recursive: true });
     await fs.writeFile(path.join(toolsDir, "tool-1.ts"), `
-export default {
-  [Symbol.for("open-dynamic-workflow.toolDefinition")]: true,
+import { defineTool } from "${SRC_TOOLS_PATH}";
+export default defineTool({
   id: "tool-1",
   description: "test",
   inputSchema: { type: "object" },
   cacheable: true,
   run: () => "ok"
-};`, "utf8");
+});`, "utf8");
 
     await fs.writeFile(configPath, `
 tools:

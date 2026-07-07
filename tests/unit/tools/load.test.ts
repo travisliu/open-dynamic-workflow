@@ -643,4 +643,220 @@ describe("loadToolRegistry", () => {
     const { existsSync } = await import("node:fs");
     expect(existsSync(markerFile)).toBe(false);
   });
+
+  describe("post-import contract drift validation", () => {
+    const srcToolsPath = resolve(process.cwd(), "src/tools/index.ts");
+
+    async function testDrift(fileName: string, fileContent: string, fieldName: string) {
+      const toolsDir = join(tempBaseDir, "tools");
+      await mkdir(toolsDir, { recursive: true });
+
+      const filePath = join(toolsDir, fileName);
+      await writeFile(filePath, fileContent);
+
+      const err = await expectLoadFailure({
+        cwd: tempBaseDir,
+        dir: "tools",
+        maxDefinitions: 10
+      }, "TOOL_INVALID_DEFINITION");
+
+      expect(err.message).toContain(`tools/${fileName}`);
+      expect(err.message).toContain(fieldName);
+      expect(err.message).toContain("changed after static validation");
+    }
+
+    it("should fail on post-import runtime id drift", async () => {
+      await testDrift(
+        "id-drift.tool.ts",
+        `
+          import { defineTool } from "${srcToolsPath}";
+          const config = { id: "static-id" };
+          config.id = "drifted-id";
+          export default defineTool({
+            id: config.id,
+            description: "desc",
+            inputSchema: {},
+            run: () => {}
+          });
+        `,
+        "id"
+      );
+    });
+
+    it("should fail on post-import runtime description drift", async () => {
+      await testDrift(
+        "desc-drift.tool.ts",
+        `
+          import { defineTool } from "${srcToolsPath}";
+          const config = { description: "static-desc" };
+          config.description = "drifted-desc";
+          export default defineTool({
+            id: "desc-drift",
+            description: config.description,
+            inputSchema: {},
+            run: () => {}
+          });
+        `,
+        "description"
+      );
+    });
+
+    it("should fail on post-import runtime inputSchema drift", async () => {
+      await testDrift(
+        "input-schema-drift.tool.ts",
+        `
+          import { defineTool } from "${srcToolsPath}";
+          const inputSchema = {
+            type: "object",
+            properties: {
+              value: { type: "string" }
+            }
+          };
+          inputSchema.properties.value.type = "number";
+          export default defineTool({
+            id: "input-schema-drift",
+            description: "desc",
+            inputSchema: inputSchema,
+            run: () => {}
+          });
+        `,
+        "inputSchema"
+      );
+    });
+
+    it("should fail on post-import runtime outputSchema drift", async () => {
+      await testDrift(
+        "output-schema-drift.tool.ts",
+        `
+          import { defineTool } from "${srcToolsPath}";
+          const outputSchema = {
+            type: "object",
+            properties: {
+              value: { type: "string" }
+            }
+          };
+          outputSchema.properties.value.type = "number";
+          export default defineTool({
+            id: "output-schema-drift",
+            description: "desc",
+            inputSchema: {},
+            outputSchema: outputSchema,
+            run: () => {}
+          });
+        `,
+        "outputSchema"
+      );
+    });
+
+    it("should fail on post-import runtime defaultTimeoutMs drift", async () => {
+      await testDrift(
+        "timeout-drift.tool.ts",
+        `
+          import { defineTool } from "${srcToolsPath}";
+          const config = { timeout: 1000 };
+          config.timeout = 2000;
+          export default defineTool({
+            id: "timeout-drift",
+            description: "desc",
+            inputSchema: {},
+            defaultTimeoutMs: config.timeout,
+            run: () => {}
+          });
+        `,
+        "defaultTimeoutMs"
+      );
+    });
+
+    it("should fail on post-import runtime metadata drift", async () => {
+      await testDrift(
+        "metadata-drift.tool.ts",
+        `
+          import { defineTool } from "${srcToolsPath}";
+          const metadata = { foo: "bar" };
+          metadata.foo = "baz";
+          export default defineTool({
+            id: "metadata-drift",
+            description: "desc",
+            inputSchema: {},
+            metadata: metadata,
+            run: () => {}
+          });
+        `,
+        "metadata"
+      );
+    });
+
+    it("should fail on post-import optional field presence drift", async () => {
+      await testDrift(
+        "presence-drift.tool.ts",
+        `
+          import { defineTool } from "${srcToolsPath}";
+          const originalFreeze = Object.freeze;
+          Object.freeze = (obj: any) => {
+            Object.freeze = originalFreeze;
+            delete obj.metadata;
+            return originalFreeze(obj);
+          };
+          export default defineTool({
+            id: "presence-drift",
+            description: "desc",
+            inputSchema: {},
+            metadata: {},
+            run: () => {}
+          });
+        `,
+        "metadata"
+      );
+    });
+
+    it("should load when valid nested schema and metadata are used", async () => {
+      const toolsDir = join(tempBaseDir, "tools");
+      await mkdir(toolsDir, { recursive: true });
+
+      const fileContent = `
+        import { defineTool } from "${srcToolsPath}";
+        const inputSchema = {
+          type: "object",
+          properties: {
+            obj: {
+              type: "object",
+              properties: {
+                a: { type: "number" },
+                b: { type: "number" }
+              }
+            }
+          }
+        };
+        // Reorder keys at runtime
+        inputSchema.properties.obj.properties = {
+          b: { type: "number" },
+          a: { type: "number" }
+        };
+        export default defineTool({
+          id: "nested-tool",
+          description: "nested tool",
+          inputSchema: inputSchema,
+          metadata: {
+            nestedMeta: {
+              y: [1, 2, 3],
+              x: "bar"
+            }
+          },
+          run: () => {}
+        });
+      `;
+
+      await writeFile(join(toolsDir, "nested-tool.tool.ts"), fileContent);
+
+      const registry = await loadToolRegistry({
+        cwd: tempBaseDir,
+        dir: "tools",
+        maxDefinitions: 10
+      });
+
+      expect(registry.has("nested-tool")).toBe(true);
+      const definition = registry.require("nested-tool").definition;
+      expect(definition.id).toBe("nested-tool");
+    });
+  });
 });

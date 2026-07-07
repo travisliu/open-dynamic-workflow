@@ -374,7 +374,15 @@ tools:
   maxDefinitions: 100
 ```
 
-Tool and shared-agent filenames do not need `.tool.` or `.agent.` markers. Broad runtime-extension patterns such as `**/*.js` and `**/*.ts` are valid, but every included file is treated as an intended entrypoint and must default-export `defineTool()` or `defineAgent()`.
+Tool and shared-agent filenames do not need `.tool.` or `.agent.` markers. Broad runtime-extension patterns such as `**/*.js` and `**/*.ts` are valid, but every included file is treated as an intended entrypoint.
+
+Every included tool file must:
+* Default-export `defineTool({ ... })`.
+* Use static `id`, `description`, `inputSchema`, optional `outputSchema`, optional `defaultTimeoutMs`, and optional `metadata`.
+* Keep schema and metadata in supported static forms (e.g., static literals, same-file earlier `const` declaration references, or static property access expressions like `schema.properties`).
+* Avoid imported, computed, spread, or forward-referenced schema and metadata fields.
+
+Using `include` and `exclude` controls the discovery scope, but they do not loosen the static metadata contract. Any matched file that does not conform to the contract will trigger a validation error.
 
 ---
 

@@ -12,6 +12,7 @@ import { isExcludedByDiscoveryPolicy } from "../discovery/index.js";
 import type { CompiledDiscoveryPattern } from "../discovery/compile-patterns.js";
 import type { ConfigDiagnostic } from "../config/types.js";
 import { validateStaticToolContract } from "./definition-contract.js";
+import type { StaticToolContract } from "./definition-contract.js";
 
 export interface LoadToolRegistryInput {
   cwd: string;
@@ -142,6 +143,122 @@ async function mirrorDirectory(
   }
 }
 
+function hasOwn(value: any, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function isSupportedJsonValue(val: any): boolean {
+  if (val === null) return true;
+  const t = typeof val;
+  if (t === "string" || t === "number" || t === "boolean") {
+    return true;
+  }
+  if (Array.isArray(val)) {
+    return true;
+  }
+  if (t === "object") {
+    const proto = Object.getPrototypeOf(val);
+    return proto === Object.prototype || proto === null;
+  }
+  return false;
+}
+
+function jsonDeepEqual(a: any, b: any): boolean {
+  if (!isSupportedJsonValue(a) || !isSupportedJsonValue(b)) {
+    return false;
+  }
+
+  if (Object.is(a, b)) {
+    return true;
+  }
+
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") {
+    return false;
+  }
+
+  const aIsArray = Array.isArray(a);
+  const bIsArray = Array.isArray(b);
+  if (aIsArray !== bIsArray) {
+    return false;
+  }
+
+  if (aIsArray) {
+    if (a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (!jsonDeepEqual(a[i], b[i])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+
+  if (keysA.length !== keysB.length) {
+    return false;
+  }
+
+  keysA.sort();
+  keysB.sort();
+
+  for (let i = 0; i < keysA.length; i++) {
+    const keyA = keysA[i];
+    const keyB = keysB[i];
+    if (keyA === undefined || keyB === undefined || keyA !== keyB) {
+      return false;
+    }
+    if (!jsonDeepEqual(a[keyA], b[keyA])) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function assertRuntimeDefinitionMatchesStaticContract(
+  definition: any,
+  contract: StaticToolContract,
+  relativePath: string
+): void {
+  const compareField = (fieldName: keyof StaticToolContract, isJson: boolean) => {
+    const contractValue = contract[fieldName];
+    const definitionValue = (definition as any)[fieldName];
+
+    const contractHas = contractValue !== undefined;
+    const definitionHas = definitionValue !== undefined;
+
+    if (contractHas !== definitionHas) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.TOOL_INVALID_DEFINITION,
+        `Tool definition field '${fieldName}' changed after static validation against statically extracted contract in '${relativePath}'.`
+      );
+    }
+
+    if (contractHas) {
+      const match = isJson
+        ? jsonDeepEqual(contractValue, definitionValue)
+        : contractValue === definitionValue;
+
+      if (!match) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.TOOL_INVALID_DEFINITION,
+          `Tool definition field '${fieldName}' changed after static validation against statically extracted contract in '${relativePath}'.`
+        );
+      }
+    }
+  };
+
+  compareField("id", false);
+  compareField("description", false);
+  compareField("inputSchema", true);
+  compareField("outputSchema", true);
+  compareField("defaultTimeoutMs", false);
+  compareField("metadata", true);
+}
+
 interface LoadCandidate {
   candidate: CandidateFile;
   sourcePath: string;
@@ -210,7 +327,7 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
 
   // Pre-import static contract validation for all candidates
   const allDiagnostics: { path: string; code: string; message: string }[] = [];
-  const successfulContracts = new Map<string, any>();
+  const successfulContracts = new Map<string, StaticToolContract>();
 
   for (const item of candidates) {
     const result = await validateStaticToolContract(item.candidate);
@@ -395,6 +512,11 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
           "TOOL_INVALID_DEFINITION" as any,
           `Tool file '${filePath}' does not have a valid default export created with defineTool().`
         );
+      }
+
+      const contract = successfulContracts.get(filePath);
+      if (contract) {
+        assertRuntimeDefinitionMatchesStaticContract(definition, contract, item.candidate.relativePath);
       }
 
       definitions.push({ definition, sourcePath: filePath });

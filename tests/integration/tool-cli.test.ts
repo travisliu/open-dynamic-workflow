@@ -281,4 +281,261 @@ tools:
     expect(result.error).toBeNull();
     expect(result.stdout).toContain("✓ Validated workflow \"bare\" at workflows/bare.workflow.ts");
   });
+
+  it("Scenario 1: Valid same-file const/property-access tool is accepted consistently", async () => {
+    const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
+    await fs.writeFile(path.join(toolsDir, "valid-same-file.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      const SCHEMA_FRAGMENT = {
+        properties: {
+          inputMsg: { type: "string" }
+        }
+      };
+      export default defineTool({
+        id: "same-file-const-tool",
+        description: "valid same-file const description",
+        inputSchema: {
+          type: "object",
+          properties: SCHEMA_FRAGMENT.properties
+        },
+        run: (args) => {
+          return "result: " + args.inputMsg;
+        }
+      });
+    `);
+
+    const wfPath = path.join(workflowDir, "valid-same-file.workflow.ts");
+    await fs.writeFile(wfPath, `
+      export const meta = { name: "valid-same-file-wf", description: "desc" };
+      export default async () => {
+        return await tool({ definition: "same-file-const-tool", args: { inputMsg: "hello-world" } });
+      };
+    `);
+
+    // Assertion 1: list tools --report json
+    const listResult = await runCli(["list", "tools", "--report", "json"], projectDir);
+    expect(listResult.error).toBeNull();
+    const listJson = JSON.parse(listResult.stdout);
+    const toolRes = listJson.resources.find((r: any) => r.id === "same-file-const-tool");
+    expect(toolRes).toBeDefined();
+    // has no diagnostic for that tool
+    const warnings = listJson.warnings || [];
+    const toolWarnings = warnings.filter((w: any) => w.path && w.path.includes("valid-same-file.tool.ts"));
+    expect(toolWarnings).toHaveLength(0);
+
+    // Assertion 2: validate exits successfully
+    const valResult = await runCli(["validate", wfPath], projectDir);
+    expect(valResult.error).toBeNull();
+
+    // Assertion 3: run --report json exits successfully and returns the expected tool result
+    const runResult = await runCli(["run", wfPath, "--report", "json"], projectDir);
+    expect(runResult.error).toBeNull();
+    const runJson = JSON.parse(runResult.stdout);
+    expect(runJson.status).toBe("succeeded");
+    expect(runJson.result).toBe("result: hello-world");
+  });
+
+  it("Scenario 2: Imported or computed schema/metadata is rejected consistently", async () => {
+    const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
+    
+    // We will create a tool with computed inputSchema (which is unsupported and not statically extractable)
+    await fs.writeFile(path.join(toolsDir, "computed-schema.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      const getSchema = () => ({ type: "object", properties: {} });
+      export default defineTool({
+        id: "computed-schema-tool",
+        description: "computed schema description",
+        inputSchema: getSchema(),
+        run: () => "ok"
+      });
+    `);
+
+    const wfPath = path.join(workflowDir, "computed-schema.workflow.ts");
+    await fs.writeFile(wfPath, `
+      export const meta = { name: "computed-schema-wf", description: "desc" };
+      export default async () => {
+        return await tool({ definition: "computed-schema-tool", args: {} });
+      };
+    `);
+
+    // Assertion 1: list tools --strict or JSON diagnostic output rejects candidate with a static tool diagnostic
+    const listResult = await runCli(["list", "tools", "--report", "json"], projectDir);
+    const listJson = JSON.parse(listResult.stdout);
+    const warnings = listJson.warnings || [];
+    const targetWarning = warnings.find((w: any) => w.path && w.path.includes("computed-schema.tool.ts"));
+    expect(targetWarning).toBeDefined();
+    expect(targetWarning.code).toBe("TOOL_DEFINITION_INVALID");
+    expect(targetWarning.message).toContain("inputSchema");
+
+    const listStrictResult = await runCli(["list", "tools", "--strict"], projectDir);
+    expect(listStrictResult.exitCode).not.toBe(0);
+
+    // Assertion 2: validate rejects with TOOL_INVALID_DEFINITION
+    const valResult = await runCli(["validate", wfPath], projectDir);
+    expect(valResult.error).toBeDefined();
+    expect(valResult.error.code).toBe("TOOL_INVALID_DEFINITION");
+    expect(valResult.error.message).toContain("computed-schema.tool.ts");
+    expect(valResult.error.message).toContain("inputSchema");
+
+    // Assertion 3: run rejects with TOOL_INVALID_DEFINITION when workflow can reach loader validation
+    const runResult = await runCli(["run", wfPath], projectDir);
+    expect(runResult.error).toBeDefined();
+    expect(runResult.error.code).toBe("TOOL_INVALID_DEFINITION");
+    expect(runResult.error.message).toContain("computed-schema.tool.ts");
+    expect(runResult.error.message).toContain("inputSchema");
+  });
+
+  it("Scenario 2b: Imported metadata is rejected consistently", async () => {
+    const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
+
+    await fs.writeFile(path.join(toolsDir, "tool-metadata.ts"), `
+      export const TOOL_METADATA = {
+        tags: ["imported"]
+      };
+    `);
+
+    await fs.writeFile(path.join(toolsDir, "imported-metadata.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      import { TOOL_METADATA } from "./tool-metadata.js";
+      export default defineTool({
+        id: "imported-metadata-tool",
+        description: "imported metadata description",
+        inputSchema: { type: "object" },
+        metadata: TOOL_METADATA,
+        run: () => "ok"
+      });
+    `);
+
+    const wfPath = path.join(workflowDir, "imported-metadata.workflow.ts");
+    await fs.writeFile(wfPath, `
+      export const meta = { name: "imported-metadata-wf", description: "desc" };
+      export default async () => {
+        return await tool({ definition: "imported-metadata-tool", args: {} });
+      };
+    `);
+
+    // Arrange: temporary tool project contains an imported metadata value.
+    // Act: ask the CLI to discover, validate, and run it.
+    const listResult = await runCli(["list", "tools", "--report", "json"], projectDir);
+    const listJson = JSON.parse(listResult.stdout);
+    const warnings = listJson.warnings || [];
+    const targetWarning = warnings.find((w: any) => w.path && w.path.includes("imported-metadata.tool.ts"));
+    expect(targetWarning).toBeDefined();
+    expect(targetWarning.code).toBe("TOOL_DEFINITION_INVALID");
+    expect(targetWarning.message).toContain("metadata");
+
+    const listStrictResult = await runCli(["list", "tools", "--strict"], projectDir);
+    expect(listStrictResult.exitCode).not.toBe(0);
+
+    // Assert: validation and run both fail with the stable tool-definition error.
+    const valResult = await runCli(["validate", wfPath], projectDir);
+    expect(valResult.error).toBeDefined();
+    expect(valResult.error.code).toBe("TOOL_INVALID_DEFINITION");
+    expect(valResult.error.message).toContain("imported-metadata.tool.ts");
+    expect(valResult.error.message).toContain("metadata");
+
+    const runResult = await runCli(["run", wfPath], projectDir);
+    expect(runResult.error).toBeDefined();
+    expect(runResult.error.code).toBe("TOOL_INVALID_DEFINITION");
+    expect(runResult.error.message).toContain("imported-metadata.tool.ts");
+    expect(runResult.error.message).toContain("metadata");
+  });
+
+  it("Scenario 3: Invalid JSON Schema is rejected consistently", async () => {
+    const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
+    await fs.writeFile(path.join(toolsDir, "invalid-schema.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      export default defineTool({
+        id: "invalid-schema-tool",
+        description: "invalid schema description",
+        inputSchema: {
+          type: "definitely-not-json-schema-type"
+        },
+        run: () => "ok"
+      });
+    `);
+
+    const wfPath = path.join(workflowDir, "invalid-schema.workflow.ts");
+    await fs.writeFile(wfPath, `
+      export const meta = { name: "invalid-schema-wf", description: "desc" };
+      export default async () => {
+        return await tool({ definition: "invalid-schema-tool", args: {} });
+      };
+    `);
+
+    // Assertion 1: list tools reports a diagnostic mentioning inputSchema
+    const listResult = await runCli(["list", "tools", "--report", "json"], projectDir);
+    const listJson = JSON.parse(listResult.stdout);
+    const warnings = listJson.warnings || [];
+    const targetWarning = warnings.find((w: any) => w.path && w.path.includes("invalid-schema.tool.ts"));
+    expect(targetWarning).toBeDefined();
+    expect(targetWarning.code).toBe("TOOL_DEFINITION_INVALID");
+    expect(targetWarning.message).toContain("inputSchema");
+
+    // Assertion 2: validate rejects with TOOL_INVALID_DEFINITION
+    const valResult = await runCli(["validate", wfPath], projectDir);
+    expect(valResult.error).toBeDefined();
+    expect(valResult.error.code).toBe("TOOL_INVALID_DEFINITION");
+    expect(valResult.error.message).toContain("invalid-schema.tool.ts");
+    expect(valResult.error.message).toContain("inputSchema");
+
+    // Assertion 3: run rejects with TOOL_INVALID_DEFINITION
+    const runResult = await runCli(["run", wfPath], projectDir);
+    expect(runResult.error).toBeDefined();
+    expect(runResult.error.code).toBe("TOOL_INVALID_DEFINITION");
+    expect(runResult.error.message).toContain("invalid-schema.tool.ts");
+    expect(runResult.error.message).toContain("inputSchema");
+  });
+
+  it("Scenario 4: Duplicate static tool IDs fail before runtime execution", async () => {
+    const srcToolsPath = path.resolve(process.cwd(), "src/tools/index.ts");
+    
+    // Create two tool files with the same id: "dup"
+    await fs.writeFile(path.join(toolsDir, "dup1.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      export default defineTool({
+        id: "dup",
+        description: "dup tool 1",
+        inputSchema: {},
+        run: () => "ok"
+      });
+    `);
+
+    await fs.writeFile(path.join(toolsDir, "dup2.tool.ts"), `
+      import { defineTool } from "${srcToolsPath}";
+      export default defineTool({
+        id: "dup",
+        description: "dup tool 2",
+        inputSchema: {},
+        run: () => "ok"
+      });
+    `);
+
+    const wfPath = path.join(workflowDir, "dup.workflow.ts");
+    await fs.writeFile(wfPath, `
+      export const meta = { name: "dup-wf", description: "desc" };
+      import * as fs from "node:fs";
+      export default async () => {
+        fs.writeFileSync("${markerFile}", "executed");
+        return await tool({ definition: "dup", args: {} });
+      };
+    `);
+
+    // Assertion 1: validate reports a duplicate ID failure
+    const valResult = await runCli(["validate", wfPath], projectDir);
+    expect(valResult.error).toBeDefined();
+    expect(valResult.error.message).toContain("Duplicate tool ID");
+
+    // Assertion 2: doctor reports a duplicate ID failure
+    const docResult = await runCli(["doctor"], projectDir);
+    expect(docResult.stdout + docResult.stderr).toContain("Duplicate tool ID");
+
+    // Assertion 3: run reports a duplicate ID failure, and side-effect marker is not created
+    const runResult = await runCli(["run", wfPath], projectDir);
+    expect(runResult.error).toBeDefined();
+    expect(runResult.error.message).toContain("Duplicate tool ID");
+
+    // Ensure the side-effect marker was NOT created
+    await expect(fs.stat(markerFile)).rejects.toThrow();
+  });
 });

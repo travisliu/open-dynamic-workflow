@@ -790,6 +790,22 @@ type ToolCallInput = {
 * Loop rounds may call tools only through `ctx.tool()`, preferably with `id: ctx.toolId("suffix")`.
 * **Not allowed**: inside `parallel()`, inside pipeline stages (`pipeline()`), as global `tool()` inside loop rounds, inside `defineAgent.run()`, or nested inside tool definitions.
 
+### Registered Tool Definition API
+
+Tools must be defined using the `defineTool()` wrapper and exported as the default export of their respective files.
+
+#### Tool Definition Metadata Contract
+
+* `id`: static, safe, non-empty string.
+* `description`: static, non-empty string.
+* `inputSchema`: static JSON Schema object.
+* `outputSchema`: optional static JSON Schema object.
+* `defaultTimeoutMs`: optional positive integer.
+* `metadata`: optional JSON-compatible object.
+* `run`: required method or property containing the tool execution logic, executed only when the tool is called.
+
+Workflow validation and the `validate` CLI command may load trusted tool modules after static metadata validation, but the tool's `run()` function is never executed during validation.
+
 ---
 
 ## 11. Providers
