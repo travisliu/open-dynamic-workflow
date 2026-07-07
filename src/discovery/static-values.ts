@@ -59,11 +59,7 @@ function collectTopLevelConstDeclarations(sourceFile: ts.SourceFile): Map<string
   return declarations;
 }
 
-function createResolverState(context?: StaticResolutionContext): ResolverState | undefined {
-  if (!context) {
-    return undefined;
-  }
-
+function createResolverState(context: StaticResolutionContext): ResolverState {
   return {
     declarations: collectTopLevelConstDeclarations(context.sourceFile),
     resolving: new Set<string>(),
@@ -71,17 +67,38 @@ function createResolverState(context?: StaticResolutionContext): ResolverState |
   };
 }
 
+function unwrapStaticExpression(node: ts.Node): ts.Node {
+  while (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    node = (node as { expression: ts.Expression }).expression;
+  }
+  return node;
+}
+
 function extractStaticValueInternal(
   node: ts.Node,
-  context?: StaticResolutionContext,
-  state?: ResolverState
+  context: StaticResolutionContext,
+  state: ResolverState
 ): StaticValueResult {
+  node = unwrapStaticExpression(node);
+
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return { ok: true, value: node.text };
   }
 
   if (ts.isNumericLiteral(node)) {
-    return { ok: true, value: Number(node.text) };
+    const value = Number(node.text);
+    if (!Number.isFinite(value)) {
+      return {
+        ok: false,
+        message: `Numeric literal is not finite: ${node.text}`
+      };
+    }
+    return { ok: true, value };
   }
 
   if (node.kind === ts.SyntaxKind.TrueKeyword) {
@@ -99,17 +116,23 @@ function extractStaticValueInternal(
   // Handle negative numbers (PrefixUnaryExpression with MinusToken)
   if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken) {
     const operandResult = extractStaticValueInternal(node.operand, context, state);
-    if (operandResult.ok && typeof operandResult.value === "number") {
-      return { ok: true, value: -operandResult.value };
+    if (!operandResult.ok) {
+      return operandResult;
+    }
+    if (typeof operandResult.value === "number") {
+      const value = -operandResult.value;
+      if (!Number.isFinite(value)) {
+        return {
+          ok: false,
+          message: `Numeric literal is not finite: -${node.operand.getText()}`
+        };
+      }
+      return { ok: true, value };
     }
     return { ok: false, message: "Unsupported unary expression" };
   }
 
   if (ts.isIdentifier(node)) {
-    if (!state) {
-      return { ok: false, message: `Unsupported node type: ${ts.SyntaxKind[node.kind]}` };
-    }
-
     const declaration = state.declarations.get(node.text);
     if (!declaration) {
       return { ok: false, message: `Unresolved identifier: ${node.text}` };
@@ -145,7 +168,7 @@ function extractStaticValueInternal(
   }
 
   if (ts.isObjectLiteralExpression(node)) {
-    const obj: { [key: string]: StaticValue } = {};
+    const obj: { [key: string]: StaticValue } = Object.create(null);
     for (const property of node.properties) {
       if (!ts.isPropertyAssignment(property)) {
         return { ok: false, message: "Unsupported property type (only literal property assignments are allowed)" };
@@ -197,5 +220,6 @@ function extractStaticValueInternal(
 }
 
 export function extractStaticValue(node: ts.Node, context?: StaticResolutionContext): StaticValueResult {
-  return extractStaticValueInternal(node, context, createResolverState(context));
+  const resolvedContext = context ?? { sourceFile: node.getSourceFile() };
+  return extractStaticValueInternal(node, resolvedContext, createResolverState(resolvedContext));
 }

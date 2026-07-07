@@ -1,0 +1,16 @@
+defaultProvider: mock
+concurrency: 2
+workflow:
+  discovery:
+    include:
+      - "workflows/**/*.workflow.ts"
+  include:
+    - "workflows/**/*.workflow.ts"
+sharedAgents:
+  dir: ".open-dynamic-workflow/agents"
+  include:
+    - ".open-dynamic-workflow/agents/**/*.agent.ts"
+tools:
+  dir: ".open-dynamic-workflow/tools"
+  include:
+    - ".open-dynamic-workflow/tools/**/*.tool.ts"

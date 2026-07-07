@@ -16,6 +16,7 @@ export async function extractAgent(file: CandidateFile): Promise<ResourceExtract
     const sourceText = await fs.readFile(file.absolutePath, "utf8");
     const sourceFile = parseSourceFile(file.absolutePath, sourceText);
     const definitionObject = findDefaultDefineCall(sourceFile, "defineAgent");
+    const staticContext = { sourceFile };
 
     if (!definitionObject) {
       return {
@@ -84,29 +85,31 @@ export async function extractAgent(file: CandidateFile): Promise<ResourceExtract
       }));
     }
 
-    const idResult = props.id ? extractStaticValue(props.id) : undefined;
+    const idResult = props.id ? extractStaticValue(props.id, staticContext) : undefined;
     const id = idResult?.ok && typeof idResult.value === "string" ? idResult.value.trim() : "";
 
     if (!props.id || !id) {
+      const detail = (idResult && !idResult.ok) ? `: ${idResult.message}` : "";
       diagnostics.push(listDiagnostic({
         resourceType: "agent",
         path: file.relativePath,
         code: "AGENT_DEFINITION_INVALID",
-        message: "Agent id must be a static non-empty string."
+        message: `Agent id must be a static non-empty string${detail}.`
       }));
     }
 
     let description = "";
     if (props.description) {
-      const descResult = extractStaticValue(props.description);
+      const descResult = extractStaticValue(props.description, staticContext);
       if (descResult.ok && typeof descResult.value === "string") {
         description = descResult.value.trim();
       } else {
+        const detail = descResult.ok ? "" : `: ${descResult.message}`;
         diagnostics.push(listDiagnostic({
           resourceType: "agent",
           path: file.relativePath,
           code: "AGENT_DEFINITION_INVALID",
-          message: "Agent description must be a static string."
+          message: `Agent description must be a static string${detail}.`
         }));
       }
     }
@@ -124,7 +127,7 @@ export async function extractAgent(file: CandidateFile): Promise<ResourceExtract
     };
 
     if (Object.prototype.hasOwnProperty.call(props, "metadata")) {
-      const metadata = asStaticObject(props.metadata!);
+      const metadata = asStaticObject(props.metadata!, staticContext);
       if (metadata) {
         agent.metadata = metadata;
       } else {
@@ -141,7 +144,7 @@ export async function extractAgent(file: CandidateFile): Promise<ResourceExtract
     }
 
     if (Object.prototype.hasOwnProperty.call(props, "inputSchema")) {
-      const inputSchema = asStaticObject(props.inputSchema!);
+      const inputSchema = asStaticObject(props.inputSchema!, staticContext);
       if (inputSchema) {
         agent.inputSchema = inputSchema;
         const requiredInputs = deriveRequiredInputs(inputSchema);

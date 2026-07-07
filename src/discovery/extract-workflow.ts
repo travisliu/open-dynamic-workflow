@@ -98,7 +98,8 @@ export async function extractWorkflow(file: CandidateFile): Promise<ResourceExtr
     };
   }
 
-  const staticValueResult = extractStaticValue(declaration.initializer);
+  const staticContext = { sourceFile };
+  const staticValueResult = extractStaticValue(declaration.initializer, staticContext);
   if (!staticValueResult.ok) {
     return {
       ok: false,
