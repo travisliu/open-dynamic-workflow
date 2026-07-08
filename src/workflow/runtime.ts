@@ -8,7 +8,7 @@ import type { AgentExecutor } from "../agents/execution-types.js";
 import type { RuntimeEventSink } from "../orchestration/scheduler.js";
 import { DefaultScheduler } from "../orchestration/scheduler.js";
 import { createDsl } from "./dsl.js";
-import { createSandboxContext } from "./sandbox.js";
+import { createSandboxContext, createSandboxContextFacade } from "./sandbox.js";
 import type { RuntimeState } from "./types.js";
 import { type WorkflowRegistry, createRootWorkflowRegistry } from "./registry.js";
 import { serializeError } from "../errors/serialize.js";
@@ -17,6 +17,7 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { loadRuntimeCallCache } from "../artifacts/call-cache.js";
 import type { SharedAgentRegistry } from "../shared-agents/registry.js";
+import { createWorkflowContextRuntime } from "../context/index.js";
 
 import { DefaultWorkflowInvocationManager } from "./invocation-manager.js";
 import type { WorkflowInvocationContext } from "./invocation-types.js";
@@ -92,6 +93,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     const runLimitTracker = new RunLimitTracker({
       maxAgentCalls: input.cli.maxAgentCalls ?? input.config.maxAgentCalls
     });
+    const contextRuntime = createWorkflowContextRuntime({ runId });
 
     const runtime: RuntimeState = {
       artifactStore: deps.artifactStore,
@@ -126,7 +128,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       toolCounter: 0,
       loopCounter: 0,
       loopSummaries: [],
-      runLimitTracker
+      runLimitTracker,
+      contextRuntime
     };
 
     const invocationManager = new DefaultWorkflowInvocationManager({
@@ -383,6 +386,7 @@ export async function executeWorkflowModule(runtime: RuntimeState, invocationCon
         cwd: runtime.cwd,
         runId: runtime.runId,
         artifactsDir: runtime.artifactsDir,
+        context: createSandboxContextFacade(runtime.contextRuntime.createFacade()),
         signal: activeInvocation?.signal || runtime.abortController.signal
       };
       result = await withToolTopLevelWindow(parsedWorkflow.sourcePath, () => workflowFn(dslContext));

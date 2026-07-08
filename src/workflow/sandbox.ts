@@ -4,6 +4,8 @@ import { createDsl } from "./dsl.js";
 import { getActiveWorkflowInvocation } from "./invocation-types.js";
 import { cloneJsonObject } from "./json.js";
 import { withToolForbidden } from "./scope.js";
+import { OpenDynamicWorkflowError } from "../errors/types.js";
+import { ErrorCode } from "../errors/codes.js";
 
 /**
  * Creates a restricted sandbox context for running a workflow.
@@ -72,6 +74,7 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
     cwd: { value: runtime.cwd, enumerable: true, configurable: false, writable: false },
     runId: { value: runtime.runId, enumerable: true, configurable: false, writable: false },
     artifactsDir: { value: runtime.artifactsDir, enumerable: true, configurable: false, writable: false },
+    context: { value: createSandboxContextFacade(runtime.contextRuntime.createFacade()), enumerable: true, configurable: false, writable: false },
     setTimeout: { 
       value: (fn: any, ms?: number, ...args: any[]) => {
         if (typeof fn !== "function") {
@@ -91,4 +94,156 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
   const context = vm.createContext(sandbox);
   
   return context;
+}
+
+function cloneContextValueBoundary(
+  value: unknown,
+  seen: Set<unknown>,
+  operation: string,
+  path: string
+): unknown {
+  if (value === undefined) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONTEXT_INVALID_VALUE,
+      `Context operation '${operation}' failed for path '${path}': value cannot be undefined`
+    );
+  }
+  if (value === null) {
+    return null;
+  }
+
+  const type = typeof value;
+  if (type === "boolean" || type === "string") {
+    return value;
+  }
+  if (type === "number") {
+    if (!Number.isFinite(value)) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONTEXT_INVALID_VALUE,
+        `Context operation '${operation}' failed for path '${path}': number must be finite (received ${value})`
+      );
+    }
+    return value;
+  }
+  if (type === "bigint" || type === "symbol" || type === "function") {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONTEXT_INVALID_VALUE,
+      `Context operation '${operation}' failed for path '${path}': type ${type} is not JSON-safe`
+    );
+  }
+
+  if (type === "object") {
+    if (seen.has(value)) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONTEXT_INVALID_VALUE,
+        `Context operation '${operation}' failed for path '${path}': cyclic object structure detected`
+      );
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      const descriptors = Object.getOwnPropertyDescriptors(value);
+      for (const key of Object.keys(descriptors)) {
+        const desc = descriptors[key];
+        if (desc && (desc.get || desc.set)) {
+          throw new OpenDynamicWorkflowError(
+            ErrorCode.CONTEXT_INVALID_VALUE,
+            `Context operation '${operation}' failed for path '${path}': property '${key}' contains accessors`
+          );
+        }
+      }
+
+      const clonedArr: unknown[] = [];
+      for (let i = 0; i < value.length; i++) {
+        const desc = descriptors[String(i)];
+        const val = desc ? desc.value : undefined;
+        clonedArr.push(cloneContextValueBoundary(val, seen, operation, path));
+      }
+      seen.delete(value);
+      return clonedArr;
+    }
+
+    // Verify if it is a VM-realm or host-realm plain object
+    const proto = Object.getPrototypeOf(value);
+    const isValidPlainObject =
+      proto === null ||
+      (proto !== null && Object.getPrototypeOf(proto) === null);
+
+    if (!isValidPlainObject) {
+      const constructorName = proto?.constructor?.name || "unknown";
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONTEXT_INVALID_VALUE,
+        `Context operation '${operation}' failed for path '${path}': value is not a plain object or array (prototype: ${constructorName})`
+      );
+    }
+
+    const descriptors = Object.getOwnPropertyDescriptors(value as object);
+    for (const key of Object.keys(descriptors)) {
+      const desc = descriptors[key];
+      if (desc && (desc.get || desc.set)) {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.CONTEXT_INVALID_VALUE,
+          `Context operation '${operation}' failed for path '${path}': property '${key}' contains accessors`
+        );
+      }
+    }
+
+    // Perform thenable detection from descriptors, not property reads
+    const thenDesc = descriptors["then"];
+    if (thenDesc && typeof thenDesc.value === "function") {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONTEXT_INVALID_VALUE,
+        `Context operation '${operation}' failed for path '${path}': value contains a Promise or thenable`
+      );
+    }
+
+    // Reconstruct the object in the host realm (with either null or Object.prototype)
+    const clonedObj = proto === null ? Object.create(null) : {};
+    const keys = Object.keys(value as object);
+    for (const key of keys) {
+      const desc = descriptors[key];
+      const val = desc ? desc.value : undefined;
+      clonedObj[key] = cloneContextValueBoundary(val, seen, operation, path);
+    }
+    seen.delete(value);
+    return clonedObj;
+  }
+
+  throw new OpenDynamicWorkflowError(
+    ErrorCode.CONTEXT_INVALID_VALUE,
+    `Context operation '${operation}' failed for path '${path}': type ${type} is not JSON-safe`
+  );
+}
+
+function sanitizeContextValue(value: unknown, operation: string, path: string): unknown {
+  return cloneContextValueBoundary(value, new Set(), operation, path);
+}
+
+export function createSandboxContextFacade(facade: any): any {
+  return {
+    get(path: string) {
+      return facade.get(path);
+    },
+    has(path: string) {
+      return facade.has(path);
+    },
+    set(path: string, value: any) {
+      return facade.set(path, sanitizeContextValue(value, "set", path));
+    },
+    delete(path: string) {
+      return facade.delete(path);
+    },
+    merge(path: string, value: any) {
+      return facade.merge(path, sanitizeContextValue(value, "merge", path));
+    },
+    append(path: string, value: any) {
+      return facade.append(path, sanitizeContextValue(value, "append", path));
+    },
+    snapshot(options?: any) {
+      return facade.snapshot(options);
+    },
+    scope(path: string, fn: any) {
+      return facade.scope(path, fn);
+    }
+  };
 }

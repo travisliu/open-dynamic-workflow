@@ -1,5 +1,6 @@
 import type { ParsedWorkflow, WorkflowMeta, WorkflowInvocationSummary } from "../types/workflow.js";
 import type { ArtifactStore } from "../types/artifacts.js";
+import type { WorkflowContextRuntime } from "../context/index.js";
 import type { ResolvedConfig, CliRunOptions } from "../types/config.js";
 import type { AgentResult } from "../types/agent.js";
 import type { Scheduler } from "../types/scheduler.js";
@@ -69,6 +70,7 @@ export interface RuntimeState {
   loopCounter?: number | undefined;
   loopSummaries?: LoopSummary[] | undefined;
   runLimitTracker?: RunLimitTracker | undefined;
+  contextRuntime: WorkflowContextRuntime;
 }
 
 export interface IdGenerator {

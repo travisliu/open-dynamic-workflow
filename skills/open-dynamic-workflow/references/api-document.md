@@ -56,6 +56,97 @@ Open Dynamic Workflow exposes these workflow DSL primitives:
 | `log()`      | Emit a workflow log event.                      |
 | `workflow()` | Invoke another workflow as a child.            |
 | `tool()`     | Run a registered deterministic tool definition. |
+| `context`    | Access the JSON-safe nested key-path store for workflow state. |
+
+---
+
+## 2.1. `context` (Key-Path Store)
+
+`context` is a JSON-safe nested key-path store available to top-level workflow execution. It allows storing, merging, appending, and reading state values during a workflow run.
+
+### Usage Contexts
+* **Top-Level Global**: The global `context` object is directly available within the top-level script execution scope of a workflow.
+* **Workflow Callback Context**: The workflow runtime callback context exposes the same underlying context store via `ctx.context` in default-exported workflow functions.
+
+### Examples
+
+```ts
+// Set a deep property
+context.set("features.plan.goal", "Implement top-level context API");
+
+// Retrieve a property
+const goal = context.get("features.plan.goal");
+
+// Append a value to a list (creates a list if path doesn't exist)
+context.append("features.review.findings", { title: "Type export verification", severity: "low" });
+
+// Shallow merge an object into a target location
+context.merge("features.plan", { constraints: ["No later-phase wiring in phase 1"] });
+
+// Take a snapshot copy of the context
+const data = context.snapshot();
+```
+
+### API Reference
+
+#### `get<T = unknown>(path: string): T | undefined`
+Retrieves a deep clone of the value stored at `path`. Returns `undefined` if the path does not exist.
+
+#### `has(path: string): boolean`
+Checks if `path` exists in the context. Returns `true` even if the value at the path is explicitly `null`.
+
+#### `set(path: string, value: JsonValue): void`
+Sets the value at the specified `path`. Deeply clones the value before mutation and creates intermediate plain objects if they do not exist.
+
+#### `delete(path: string): boolean`
+Deletes the property at the terminal segment of `path`. Returns `true` if the property existed and was deleted, or `false` otherwise.
+
+#### `merge(path: string, value: JsonObject): void`
+Performs a shallow object merge of `value` into the target location at `path`. If the target is missing, it is treated as `{}`. Rejects non-plain-object inputs, or existing targets that are primitives or arrays.
+
+#### `append(path: string, value: JsonValue): void`
+Appends `value` to the array at the target location. If the target is missing, it is initialized as an empty array `[]` before appending. Rejects if the target already exists and is not an array.
+
+#### `snapshot(): JsonObject`
+Returns a materialized, deep-cloned JSON-safe copy of the entire visible context store.
+
+#### `snapshot(options: { metadata: true }): WorkflowContextSnapshot`
+Returns a structured snapshot object containing the materialized values and root-only metadata. The metadata includes:
+* `scopeId`: The root run ID.
+* `visibleScopes`: An array of visible scope IDs.
+* `sourcePaths`: Mapping of paths to their source metadata.
+* `deletedPaths`: Array of paths that have been deleted.
+* `serializedBytes` (optional): Serialized JSON UTF-8 byte length of the values.
+* `limitBytes` (optional): The maximum snapshot byte limit.
+
+#### `scope<T>(pathPrefix: string, fn: () => Promise<T> | T): Promise<T>`
+Pushes a path prefix, runs the synchronous or asynchronous function `fn` with the prefix applied to all operations within `fn`, and pops the prefix in a `finally` block (ensuring restoration for both successful returns and failures).
+
+### Path Validation Rules
+Paths must conform to the following formatting rules:
+* Must be non-empty dot-separated object-property paths (e.g. `"features.plan.goal"`).
+* Whitespace in paths or individual segments is trimmed, but empty segments are rejected.
+* Leading and trailing dots (e.g. `".features"` or `"features."`) are rejected.
+* Segments containing special property names (`"__proto__"`, `"prototype"`, `"constructor"`) are rejected to prevent prototype pollution.
+* Purely numeric segments (e.g. `"features.0"`) are rejected in this phase (no array indexing).
+
+### JSON-Safe Value Rules
+Values stored in the context must be strictly JSON-safe:
+* **Allowed**: `null`, booleans, finite numbers, strings, arrays, and plain objects (whose prototype is `Object.prototype` or `null`).
+* **Rejected**: `undefined`, functions, symbols, bigint, dates, maps, sets, weak collections, cyclic structures, class instances, and non-finite numbers (`NaN`, `Infinity`, `-Infinity`).
+* Incoming values are validated and deeply cloned before mutation.
+
+### Store Size Limits
+* **Value Limit**: Individual values set or merged must not exceed 256 KB serialized JSON.
+* **Snapshot Limit**: The entire materialized context store must not exceed 1 MB serialized JSON.
+* **Fast Failure**: Validation and size checks are performed before mutation; any violating operation fails fast and leaves the store unmodified.
+
+### Phase 1 Limitations
+The context store is strictly constrained during this phase:
+* Global `context` is supported only in top-level workflow code.
+* `ctx.context` is supported only in default-exported top-level workflow functions.
+* Loop, pipeline, child workflow, and parallel isolated context behaviors are out of scope.
+* Context events, artifacts persistence, and replay patches are out of scope.
 
 ---
 
