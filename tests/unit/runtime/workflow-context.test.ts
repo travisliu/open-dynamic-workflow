@@ -99,15 +99,18 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
     });
   });
 
-  it("supports ctx.context inside default-exported workflow functions", async () => {
+  it("supports default-exported workflow functions with no arguments", async () => {
     // Arrange
     const runner = new DefaultRuntimeRunner();
     const parsedWorkflow: ParsedWorkflow = {
       meta: { name: "callback-context", description: "test callback context" },
       body: `
-        export default async (ctx) => {
-          ctx.context.set("workflow.status", "ok");
-          return ctx.context.get("workflow.status");
+        export default async (...receivedArgs) => {
+          context.set("workflow.status", "ok");
+          return {
+            argCount: receivedArgs.length,
+            status: context.get("workflow.status")
+          };
         };
       `,
       sourcePath: "workflow.js",
@@ -123,19 +126,22 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Assert
     expect(result.status).toBe("succeeded");
-    expect(result.result).toBe("ok");
+    expect(result.result).toEqual({
+      argCount: 0,
+      status: "ok"
+    });
   });
 
-  it("shares one store between global and callback facades", async () => {
+  it("shares one shared global context store between top-level script and default export", async () => {
     // Arrange
     const runner = new DefaultRuntimeRunner();
     const parsedWorkflow: ParsedWorkflow = {
       meta: { name: "shared-store", description: "test shared store" },
       body: `
         context.set("shared", "global-val");
-        export default async (ctx) => {
-          const v1 = ctx.context.get("shared");
-          ctx.context.set("shared", "callback-val");
+        export default async () => {
+          const v1 = context.get("shared");
+          context.set("shared", "callback-val");
           const v2 = context.get("shared");
           return { v1, v2 };
         };

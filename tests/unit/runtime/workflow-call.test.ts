@@ -75,4 +75,21 @@ describe("workflow call normalization", () => {
     expect(() => normalizeWorkflowCall({ name: "child", concurrency: 0 })).toThrow("positive integer");
     expect(() => normalizeWorkflowCall({ name: "child", concurrency: -5 })).toThrow("positive integer");
   });
+
+  it("rejects calls containing context option", () => {
+    let error: any;
+    try {
+      normalizeWorkflowCall({ name: "child", context: { inherit: ["shared"] } } as any);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeDefined();
+    expect(error.message).toContain("unsupported");
+    expect(error.message).toContain("context");
+
+    // Keep an adjacent positive assertion that a valid call with supported keys still normalizes
+    const normalized = normalizeWorkflowCall({ name: "child", args: { x: 1 } });
+    expect(normalized.name).toBe("child");
+    expect(normalized.args).toEqual({ x: 1 });
+  });
 });

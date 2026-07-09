@@ -251,4 +251,69 @@ export default async () => {
     expect(report.status).toBe("failed");
     expect(report.error.code).toBe("WORKFLOW_RESULT_SERIALIZATION_FAILED");
   });
+
+  it("shares global context between parent and child workflows", async () => {
+    const childPath = path.join(TEMP_DIR, "context-child.workflow.js");
+    await fs.writeFile(
+      childPath,
+      `
+export const meta = { name: "context-child", description: "child context writer" };
+export default async () => {
+  const before = context.get("shared.parentValue");
+  context.set("shared.childSaw", before);
+  context.append("shared.events", "child");
+  return context.snapshot();
+};
+      `
+    );
+
+    const parentPath = path.join(TEMP_DIR, "context-parent.workflow.js");
+    await fs.writeFile(
+      parentPath,
+      `
+export const meta = { name: "context-parent", description: "parent context writer" };
+export default async () => {
+  context.set("shared.parentValue", "from-parent");
+  context.append("shared.events", "parent-before");
+  const childSnapshot = await workflow({ name: "context-child" });
+  context.append("shared.events", "parent-after");
+  return {
+    childSnapshot,
+    finalSnapshot: context.snapshot()
+  };
+};
+      `
+    );
+
+    const customConfigPath = path.join(TEMP_DIR, "custom-config.json");
+    const customConfig = {
+      workflow: {
+        discovery: {
+          include: [
+            "*.js"
+          ]
+        }
+      }
+    };
+    await fs.writeFile(customConfigPath, JSON.stringify(customConfig));
+
+    const result = await runCli([
+      "run",
+      parentPath,
+      "--config", customConfigPath,
+      "--out", TEMP_DIR,
+      "--cwd", TEMP_DIR,
+      "--report", "json"
+    ]);
+
+    expect(result.error).toBeNull();
+    const report = JSON.parse(result.stdout);
+    expect(report.status).toBe("succeeded");
+    expect(report.result.childSnapshot.shared.parentValue).toBe("from-parent");
+    expect(report.result.childSnapshot.shared.childSaw).toBe("from-parent");
+    expect(report.result.finalSnapshot.shared.parentValue).toBe("from-parent");
+    expect(report.result.finalSnapshot.shared.childSaw).toBe("from-parent");
+    expect(report.result.finalSnapshot.shared.events).toEqual(["parent-before", "child", "parent-after"]);
+    expect(report.workflows.some((w: any) => w.workflowName === "context-child" && w.status === "succeeded")).toBe(true);
+  });
 });

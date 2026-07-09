@@ -326,8 +326,7 @@ export function validateWorkflow(
       "failureMode",
       "timeoutMs",
       "concurrency",
-      "metadata",
-      "context"
+      "metadata"
     ]);
 
     for (const prop of firstArg.properties) {

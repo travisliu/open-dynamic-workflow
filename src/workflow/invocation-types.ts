@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { JsonObject } from "../types/common.js";
-import type { WorkflowCallInput, WorkflowSettledResult, WorkflowContextOptions } from "../types/workflow.js";
+import type { WorkflowCallInput, WorkflowSettledResult } from "../types/workflow.js";
 import type { WorkflowDefinition } from "./registry.js";
 
 /**
@@ -12,10 +12,7 @@ export interface WorkflowInvocationContext {
   runId: string;
   /** Unique ID for this specific invocation */
   workflowInvocationId: string;
-  /** Optional ID of the context overlay scope created for this invocation */
-  contextOverlayScopeId?: string | undefined;
-  /** Context options for overlay creation */
-  contextOptions?: WorkflowContextOptions | undefined;
+
   /** Parent invocation ID if this is a child workflow */
   parentWorkflowInvocationId?: string | undefined;
   /** Name of the workflow being invoked */

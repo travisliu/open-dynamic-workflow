@@ -1,6 +1,6 @@
 import type { AgentCallInput, AgentResult } from "./agent.js";
 import type { JsonObject, JsonValue, WorkflowStatus } from "./common.js";
-import type { WorkflowContext } from "./context.js";
+
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
 import type { ToolSummary, ToolCallInput, ToolSettledResult } from "./tool.js";
@@ -37,13 +37,6 @@ export type WorkflowFailureMode = "throw" | "settled";
 
 export type ContextMergeStrategy = "append" | "merge" | "replace" | "rejectOnConflict";
 
-export type ContextInheritRule = string | { path: string; required?: boolean };
-
-export interface WorkflowContextOptions {
-  inherit?: ContextInheritRule[] | undefined;
-  merge?: Record<string, ContextMergeStrategy> | undefined;
-}
-
 export interface WorkflowCallInput {
   name: string;
   args?: JsonObject;
@@ -51,7 +44,6 @@ export interface WorkflowCallInput {
   timeoutMs?: number;
   concurrency?: number;
   metadata?: JsonObject;
-  context?: WorkflowContextOptions | undefined;
 }
 
 export type WorkflowThrowCallInput = Omit<WorkflowCallInput, "failureMode"> & {
@@ -116,41 +108,7 @@ export interface ParallelOptions {
   };
 }
 
-export interface WorkflowRuntimeContext {
-  args: JsonObject;
-  cwd: string;
-  runId: string;
-  workflowInvocationId?: string | undefined;
-  artifactsDir: string;
-  context: WorkflowContext;
-  agent(input: AgentCallInput): Promise<AgentResult>;
-  parallel<TTasks extends ParallelTasks<unknown>>(
-    tasks: TTasks,
-    options?: ParallelOptions
-  ): Promise<ParallelResult<TTasks>>;
-  phase(name: string): void;
-  log(message: string, data?: unknown): void;
-  pipeline<I, O>(
-    items: I[],
-    stages: PipelineStage<any, any>[],
-    options?: PipelineOptions
-  ): Promise<PipelineResult<O>>;
-  tool<T = unknown>(input: ToolCallInput & { failureMode?: "throw" }): Promise<T>;
-  tool<T = unknown>(input: ToolCallInput & { failureMode: "settled" }): Promise<ToolSettledResult<T>>;
-  tool<T = unknown>(input: ToolCallInput): Promise<T | ToolSettledResult<T>>;
-  workflow<T = JsonValue>(input: WorkflowThrowCallInput): Promise<T>;
-  workflow<T = JsonValue>(input: WorkflowSettledCallInput): Promise<WorkflowSettledResult<T>>;
-  workflow<T = JsonValue>(input: WorkflowCallInput): Promise<T | WorkflowSettledResult<T>>;
-  loop<TState>(
-    input: LoopInput<TState> & { options: { failureMode?: "throw" } }
-  ): Promise<TState>;
-  loop<TState>(
-    input: LoopInput<TState> & { options: { failureMode: "settled" } }
-  ): Promise<LoopSettledResult<TState>>;
-  loop<TState>(
-    input: LoopInput<TState>
-  ): Promise<TState | LoopSettledResult<TState>>;
-}
+
 
 export interface WorkflowIdentity {
   name: string;
@@ -192,9 +150,5 @@ export interface WorkflowRunResult {
   context?: {
     rootFinalArtifact?: string | undefined;
     summaryArtifact?: string | undefined;
-    overlayCount: number;
-    conflictCount: number;
-    rejectedWriteCount: number;
-    truncatedPreviewCount: number;
   } | undefined;
 }

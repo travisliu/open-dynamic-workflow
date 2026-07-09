@@ -7,8 +7,7 @@ import type { ArtifactStore } from "../types/artifacts.js";
 import type { AgentExecutor } from "../agents/execution-types.js";
 import type { RuntimeEventSink } from "../orchestration/scheduler.js";
 import { DefaultScheduler } from "../orchestration/scheduler.js";
-import { createDsl } from "./dsl.js";
-import { createSandboxContext, createSandboxContextFacade } from "./sandbox.js";
+import { createSandboxContext } from "./sandbox.js";
 import type { RuntimeState } from "./types.js";
 import { type WorkflowRegistry, createRootWorkflowRegistry } from "./registry.js";
 import { serializeError } from "../errors/serialize.js";
@@ -21,8 +20,7 @@ import { createWorkflowContextRuntime, writeContextArtifacts } from "../context/
 
 import { DefaultWorkflowInvocationManager } from "./invocation-manager.js";
 import type { WorkflowInvocationContext } from "./invocation-types.js";
-import { getActiveWorkflowInvocation } from "./invocation-types.js";
-import { cloneJsonValue, cloneJsonObject } from "./json.js";
+import { cloneJsonValue } from "./json.js";
 import { withDslExecutionScope, withToolTopLevelWindow } from "./scope.js";
 import type { ToolRegistry } from "../types/tool.js";
 import type { ToolExecutor } from "../tools/executor-types.js";
@@ -406,20 +404,7 @@ export async function executeWorkflowModule(runtime: RuntimeState, invocationCon
     const workflowFn = (context as any).__default;
     let result: unknown;
     if (typeof workflowFn === "function") {
-      const dsl = createDsl(runtime);
-      const activeInvocation = getActiveWorkflowInvocation();
-      const args = activeInvocation ? activeInvocation.args : runtime.args;
-      
-      const dslContext = {
-        ...dsl,
-        args: Object.freeze(cloneJsonObject(args, "workflow args")),
-        cwd: runtime.cwd,
-        runId: runtime.runId,
-        artifactsDir: runtime.artifactsDir,
-        context: createSandboxContextFacade(runtime.contextRuntime.createFacade()),
-        signal: activeInvocation?.signal || runtime.abortController.signal
-      };
-      result = await withToolTopLevelWindow(parsedWorkflow.sourcePath, () => workflowFn(dslContext));
+      result = await withToolTopLevelWindow(parsedWorkflow.sourcePath, () => workflowFn());
     } else {
       result = workflowFn;
     }

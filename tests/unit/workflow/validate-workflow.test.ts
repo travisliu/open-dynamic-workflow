@@ -539,6 +539,24 @@ describe("Validate Workflow Restrictions", () => {
       expect(issues).toHaveLength(0);
     });
 
+    it("rejects global workflow context option", () => {
+      const parsed = createParsed(`
+        await workflow({ name: "child-workflow", context: { inherit: ["shared"] } });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues.some(i => i.message.includes("unsupported") && i.message.includes("context"))).toBe(true);
+    });
+
+    it("rejects ctx.workflow context option", () => {
+      const parsed = createParsed(`
+        export default async (ctx) => {
+          await ctx.workflow({ name: "child-workflow", context: { merge: { shared: "replace" } } });
+        };
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues.some(i => i.message.includes("unsupported") && i.message.includes("context"))).toBe(true);
+    });
+
     it("flags workflow() with path-like name", () => {
       const parsed = createParsed(`
         await workflow({ name: "./child-workflow" });

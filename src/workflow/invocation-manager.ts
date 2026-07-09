@@ -411,9 +411,7 @@ export class DefaultWorkflowInvocationManager implements WorkflowInvocationManag
       abortController,
       effectiveConcurrency,
       concurrencyBudget,
-      artifactPath,
-      contextOptions: call.context,
-      contextOverlayScopeId: workflowInvocationId
+      artifactPath
     };
 
     try {
@@ -497,41 +495,9 @@ export class DefaultWorkflowInvocationManager implements WorkflowInvocationManag
     const parentScope = getDslExecutionScope();
     const childScope = deriveChildWorkflowToolScope(parentScope, context);
     
-    if (context.depth === 0 || !this.runtime.contextRuntime) {
-      return withActiveWorkflowInvocation(context, () => 
-        withDslExecutionScope(childScope, () => this.evaluate(context))
-      );
-    }
-
-    const parentScopeId = this.runtime.contextRuntime.getActiveScopeId?.() || this.runtime.runId;
-    const sequence = this.runtime.callSequence ?? 0;
-
-    const overlayResultPromise = this.runtime.contextRuntime.runWithOverlay({
-      scopeId: context.workflowInvocationId,
-      scopeType: "workflow",
-      parentScopeId,
-      metadata: {
-        workflowName: context.workflowName,
-        workflowInvocationId: context.workflowInvocationId,
-        parentWorkflowInvocationId: context.parentWorkflowInvocationId,
-        depth: context.depth
-      },
-      inherit: context.contextOptions?.inherit,
-      mergeRules: context.contextOptions?.merge,
-      orderKey: sequence,
-      mergeMode: "immediate"
-    }, () => 
-      withActiveWorkflowInvocation(context, () => 
-        withDslExecutionScope(childScope, () => this.evaluate(context))
-      )
+    return withActiveWorkflowInvocation(context, () => 
+      withDslExecutionScope(childScope, () => this.evaluate(context))
     );
-
-    return overlayResultPromise.then((res: any) => {
-      if (!res.success) {
-        throw res.error || new Error(`Child workflow execution failed: ${context.workflowName}`);
-      }
-      return res.result;
-    });
   }
 
   private recordSummary(ctx: WorkflowInvocationContext, finishedAt: string, status: WorkflowSettledStatus, error?: any, artifactPath?: string) {
