@@ -10,6 +10,6 @@ export const meta = {
   }
 };
 
-export default async ({ args }) => {
+export default async () => {
   return args.count;
 };

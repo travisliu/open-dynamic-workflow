@@ -447,7 +447,7 @@ describe("Loop Resume/Cache Integration", () => {
       const wfPath = path.join(workflowDir, "loop-tool.workflow.ts");
       await fs.writeFile(wfPath, `
         export const meta = { name: "loop-tool-wf", description: "desc" };
-        export default async ({ loop }) => await loop({
+        export default async () => await loop({
           label: "loop-label",
           initialState: { count: 0 },
           options: { maxRounds: 1 },

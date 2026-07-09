@@ -46,7 +46,7 @@ describe("Nested Workflow Cancellation", () => {
         name: "slow-child",
         description: "A slow child workflow"
       };
-      export default async ({ signal }) => {
+      export default async () => {
         await new Promise((resolve, reject) => {
           const t = setTimeout(resolve, 5000);
           if (signal.aborted) {
@@ -68,7 +68,7 @@ describe("Nested Workflow Cancellation", () => {
         name: "parent-cancel",
         description: "Parent that calls slow child"
       };
-      export default async ({ workflow }) => {
+      export default async () => {
         return await workflow({ name: "slow-child" });
       };
     `);
@@ -104,7 +104,7 @@ describe("Nested Workflow Cancellation", () => {
         name: "parent-short-circuit",
         description: "Parent that waits to be cancelled, then calls missing child"
       };
-      export default async ({ signal, workflow }) => {
+      export default async () => {
         try {
           // Wait to be cancelled by timeout
           await new Promise((resolve) => {

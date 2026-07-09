@@ -141,20 +141,6 @@ export async function runStageBarrier(
     });
 
     await Promise.all(promises);
-
-    if (runtime.contextRuntime) {
-      const stageOverlayResults: any[] = [];
-      for (const state of activeItems) {
-        const lastResult = state.stagesResults[state.stagesResults.length - 1];
-        if (lastResult && lastResult.status === "succeeded" && (lastResult as any).contextOverlayResult) {
-          stageOverlayResults.push((lastResult as any).contextOverlayResult);
-          delete (lastResult as any).contextOverlayResult;
-        }
-      }
-      if (stageOverlayResults.length > 0) {
-        runtime.contextRuntime.mergeOverlayResults(stageOverlayResults);
-      }
-    }
   }
 
   // Construct final results

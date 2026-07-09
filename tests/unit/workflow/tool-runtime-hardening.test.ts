@@ -24,9 +24,9 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
   it("rejects tool call from a promise callback even if aliased", async () => {
     // We use a trick to bypass static validation if needed.
     const body = `
-      export default async (ctx) => {
+      export default async () => {
         const key = "tool";
-        const t = ctx[key];
+        const t = globalThis[key];
         return await Promise.resolve().then(() => t({ definition: "echo", args: { message: "hi" } }));
       };
     `;
@@ -64,8 +64,8 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
 
   it("still allows direct top-level tool calls with await", async () => {
     const body = `
-      export default async (ctx) => {
-        await ctx.tool({ definition: "echo", args: { message: "hi" } });
+      export default async () => {
+        await tool({ definition: "echo", args: { message: "hi" } });
         return "ok";
       };
     `;
@@ -102,7 +102,7 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
 
   it("still allows direct top-level global tool() calls with await", async () => {
     const body = `
-      export default async (ctx) => {
+      export default async () => {
         await tool({ definition: "echo", args: { message: "hi" } });
         return "ok";
       };
@@ -140,9 +140,9 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
 
   it("still allows direct top-level tool calls after await on a sandbox promise", async () => {
     const body = `
-      export default async (ctx) => {
+      export default async () => {
         await Promise.resolve(); // This is a sandbox promise
-        await ctx.tool({ definition: "echo", args: { message: "hi" } });
+        await tool({ definition: "echo", args: { message: "hi" } });
         return "ok";
       };
     `;
@@ -179,11 +179,11 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
 
   it("rejects tool call from setTimeout", async () => {
     const body = `
-      export default async (ctx) => {
+      export default async () => {
         return new Promise((resolve) => {
           setTimeout(async () => {
             try {
-              await ctx.tool({ definition: "echo", args: { message: "hi" } });
+              await tool({ definition: "echo", args: { message: "hi" } });
               resolve("ok");
             } catch (err) {
               resolve("failed: " + err.message);
@@ -225,10 +225,10 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
 
   it("rejects tool call from a nested helper even if static validation is bypassed (WS-001)", async () => {
     const body = `
-      export default async (ctx) => {
+      export default async () => {
         const helper = async () => {
           const key = "tool";
-          return await ctx[key]({ definition: "echo", args: { message: "hi" } });
+          return await globalThis[key]({ definition: "echo", args: { message: "hi" } });
         };
         return await helper();
       };

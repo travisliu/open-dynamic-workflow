@@ -226,8 +226,8 @@ tools:
     const wfPath = path.join(workflowDir, "missing.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "missing", description: "desc" };
-      export default async (flow) => {
-        return await flow.tool({ definition: "missing-tool", args: {} });
+      export default async () => {
+        return await tool({ definition: "missing-tool", args: {} });
       };
     `);
 

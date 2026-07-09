@@ -57,6 +57,8 @@ const loopResult = await loop({
       remainingIssues: verification.json?.remainingIssues ?? state.remainingIssues
     };
 
+    context.append("round-history", { plan: nextState.plan, accepted });
+
     return {
       done: accepted,
       nextState
@@ -65,3 +67,8 @@ const loopResult = await loop({
 });
 
 phase("summarize");
+
+export default {
+  loopResult,
+  history: context.get("round-history")
+};

@@ -3,7 +3,7 @@ export const meta = {
   description: "verbose agent logging fixture"
 };
 
-export default async function workflow({ agent, args }) {
+export default async function () {
   const id = args.subcase === "fail" ? "review-fail" : (args.subcase === "timeout" ? "verbose-timeout" : "verbose-review");
   const timeoutMs = args.subcase === "timeout" ? 100 : 30000;
 

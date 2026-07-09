@@ -85,9 +85,9 @@ describe("resume/cache", () => {
     const counterPath = path.join(TEMP_DIR, "counter.txt");
     await writeConfig(configPath);
     const content = `export const meta = { name: "resume-cache", description: "resume cache test" };
-export default async (ctx) => {
-  const a = await ctx.agent({ id: "a", prompt: "first" });
-  const b = await ctx.agent({ id: "b", prompt: "second" });
+export default async () => {
+  const a = await agent({ id: "a", prompt: "first" });
+  const b = await agent({ id: "b", prompt: "second" });
   return [a.text, b.text];
 };`;
     await fs.writeFile(workflowPath, content, "utf8");
@@ -124,9 +124,9 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "max-agent-calls-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "max-agent-calls", description: "max agent calls test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "a", prompt: "first" });
-  await ctx.agent({ id: "b", prompt: "second" });
+export default async () => {
+  await agent({ id: "a", prompt: "first" });
+  await agent({ id: "b", prompt: "second" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -164,9 +164,9 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "limited-resume-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "limited-resume", description: "limited resume test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "a", prompt: "first" });
-  await ctx.agent({ id: "b", prompt: "second" });
+export default async () => {
+  await agent({ id: "a", prompt: "first" });
+  await agent({ id: "b", prompt: "second" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -212,10 +212,10 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "edited-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "edited-resume", description: "edited resume test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "a", prompt: "unchanged a" });
-  await ctx.agent({ id: "b", prompt: "old b" });
-  await ctx.agent({ id: "c", prompt: "unchanged c" });
+export default async () => {
+  await agent({ id: "a", prompt: "unchanged a" });
+  await agent({ id: "b", prompt: "old b" });
+  await agent({ id: "c", prompt: "unchanged c" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -225,10 +225,10 @@ export default async (ctx) => {
     const [firstRunId] = await listRunDirs(runsDir);
 
     await fs.writeFile(workflowPath, `export const meta = { name: "edited-resume", description: "edited resume test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "a", prompt: "unchanged a" });
-  await ctx.agent({ id: "b", prompt: "new b" });
-  await ctx.agent({ id: "c", prompt: "unchanged c" });
+export default async () => {
+  await agent({ id: "a", prompt: "unchanged a" });
+  await agent({ id: "b", prompt: "new b" });
+  await agent({ id: "c", prompt: "unchanged c" });
   return "done";
 };`, "utf8");
 
@@ -247,13 +247,13 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "parallel-loop-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "parallel-loop", description: "parallel and loop resume test" };
-export default async (ctx) => {
-  await ctx.parallel({
-    a: () => ctx.agent({ id: "parallel-a", prompt: "parallel a" }),
-    b: () => ctx.agent({ id: "parallel-b", prompt: "parallel b" })
+export default async () => {
+  await parallel({
+    a: () => agent({ id: "parallel-a", prompt: "parallel a" }),
+    b: () => agent({ id: "parallel-b", prompt: "parallel b" })
   });
   for (let i = 0; i < 3; i++) {
-    await ctx.agent({ id: \`round-\${i}\`, prompt: \`round \${i}\` });
+    await agent({ id: \`round-\${i}\`, prompt: \`round \${i}\` });
   }
   return "done";
 };`, "utf8");
@@ -274,8 +274,8 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "schema-invalid-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "schema-invalid", description: "schema invalid resume test" };
-export default async (ctx) => {
-  await ctx.agent({
+export default async () => {
+  await agent({
     id: "schema-agent",
     prompt: "return schema",
     schema: { type: "object", properties: { status: { type: "string" } }, required: ["status"] },
@@ -301,10 +301,10 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "failed-middle-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "failed-middle", description: "failed middle resume test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "a", prompt: "ok a" });
-  await ctx.agent({ id: "b", prompt: "fail b" });
-  await ctx.agent({ id: "c", prompt: "ok c" });
+export default async () => {
+  await agent({ id: "a", prompt: "ok a" });
+  await agent({ id: "b", prompt: "fail b" });
+  await agent({ id: "c", prompt: "ok c" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -325,8 +325,8 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "no-cache-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "no-cache", description: "no cache resume test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "a", prompt: "no cache" });
+export default async () => {
+  await agent({ id: "a", prompt: "no cache" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -349,8 +349,8 @@ export default async (ctx) => {
     const counterPath = path.join(TEMP_DIR, "journal-counter.txt");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "journal", description: "journal rebuild test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "a", prompt: "journal a" });
+export default async () => {
+  await agent({ id: "a", prompt: "journal a" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -381,8 +381,8 @@ export default async (ctx) => {
 });`, "utf8");
 
     await fs.writeFile(workflowPath, `export const meta = { name: "shared-agent-resume", description: "shared agent resume test" };
-export default async (ctx) => {
-  await ctx.agent({ definition: "wrapper" });
+export default async () => {
+  await agent({ definition: "wrapper" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -413,16 +413,16 @@ export default async (ctx) => {
     await writeConfig(configPath);
 
     await fs.writeFile(childPath, `export const meta = { name: "child", description: "child" };
-export default async (ctx) => {
-  await ctx.agent({ prompt: "child agent" });
+export default async () => {
+  await agent({ prompt: "child agent" });
   return "done";
 };`, "utf8");
 
     await fs.writeFile(parentPath, `export const meta = { name: "parent", description: "parent" };
-export default async (ctx) => {
-  await ctx.agent({ prompt: "parent agent 1" });
-  await ctx.workflow({ name: "child" });
-  await ctx.agent({ prompt: "parent agent 2" });
+export default async () => {
+  await agent({ prompt: "parent agent 1" });
+  await workflow({ name: "child" });
+  await agent({ prompt: "parent agent 2" });
   return "done";
 };`, "utf8");
     process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -450,8 +450,8 @@ export default async (ctx) => {
     // We'll use a tool that writes to a file to count executions
     const content = `
 export const meta = { name: "tool-cache", description: "tool cache test" };
-export default async (ctx) => {
-  const res = await ctx.tool({
+export default async () => {
+  const res = await tool({
     definition: "count-tool",
     args: { foo: "bar" }
   });
@@ -577,8 +577,8 @@ tools:
 
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-miss", description: "tool miss test" };
-export default async (ctx) => {
-  await ctx.tool({ definition: "miss-tool", args: { val: 1 } });
+export default async () => {
+  await tool({ definition: "miss-tool", args: { val: 1 } });
   return "done";
 };`, "utf8");
 
@@ -590,8 +590,8 @@ export default async (ctx) => {
     // Edit workflow to change args
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-miss", description: "tool miss test" };
-export default async (ctx) => {
-  await ctx.tool({ definition: "miss-tool", args: { val: 2 } });
+export default async () => {
+  await tool({ definition: "miss-tool", args: { val: 2 } });
   return "done";
 };`, "utf8");
 
@@ -651,8 +651,8 @@ workflow:
 
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-miss-meta", description: "test" };
-export default async (ctx) => {
-  await ctx.tool({ definition: "miss-tool", args: {}, timeoutMs: 1000 });
+export default async () => {
+  await tool({ definition: "miss-tool", args: {}, timeoutMs: 1000 });
   return "done";
 };`, "utf8");
 
@@ -664,8 +664,8 @@ export default async (ctx) => {
     // Edit workflow to change timeout
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-miss-meta", description: "test" };
-export default async (ctx) => {
-  await ctx.tool({ definition: "miss-tool", args: {}, timeoutMs: 2000 });
+export default async () => {
+  await tool({ definition: "miss-tool", args: {}, timeoutMs: 2000 });
   return "done";
 };`, "utf8");
 
@@ -679,8 +679,8 @@ export default async (ctx) => {
     // Change metadata
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-miss-meta", description: "test" };
-export default async (ctx) => {
-  await ctx.tool({ definition: "miss-tool", args: {}, timeoutMs: 2000, metadata: { foo: "bar" } });
+export default async () => {
+  await tool({ definition: "miss-tool", args: {}, timeoutMs: 2000, metadata: { foo: "bar" } });
   return "done";
 };`, "utf8");
 
@@ -735,8 +735,8 @@ workflow:
 
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-miss-id", description: "test" };
-export default async (ctx) => {
-  await ctx.tool({ id: "call-1", definition: "miss-tool", args: {} });
+export default async () => {
+  await tool({ id: "call-1", definition: "miss-tool", args: {} });
   return "done";
 };`, "utf8");
 
@@ -748,8 +748,8 @@ export default async (ctx) => {
     // Edit workflow to change call ID
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-miss-id", description: "test" };
-export default async (ctx) => {
-  await ctx.tool({ id: "call-2", definition: "miss-tool", args: {} });
+export default async () => {
+  await tool({ id: "call-2", definition: "miss-tool", args: {} });
   return "done";
 };`, "utf8");
 
@@ -806,8 +806,8 @@ tools:
 
     await fs.writeFile(workflowPath, `
 export const meta = { name: "non-cacheable", description: "test" };
-export default async (ctx) => {
-  await ctx.tool({ definition: "live-tool", args: {} });
+export default async () => {
+  await tool({ definition: "live-tool", args: {} });
   return "done";
 };`, "utf8");
 
@@ -862,11 +862,11 @@ tools:
 
     await fs.writeFile(workflowPath, `
 export const meta = { name: "tool-fail", description: "test" };
-export default async (ctx) => {
+export default async () => {
   try {
-    await ctx.tool({ definition: "fail-tool", args: { fail: true } });
+    await tool({ definition: "fail-tool", args: { fail: true } });
   } catch (e) {}
-  await ctx.agent({ prompt: "after fail" });
+  await agent({ prompt: "after fail" });
   return "done";
 };`, "utf8");
 
@@ -888,8 +888,8 @@ export default async (ctx) => {
     const runsDir = path.join(TEMP_DIR, "legacy-runs");
     await writeConfig(configPath);
     await fs.writeFile(workflowPath, `export const meta = { name: "legacy", description: "legacy" };
-export default async (ctx) => {
-  await ctx.agent({ id: "agent-1", prompt: "legacy" });
+export default async () => {
+  await agent({ id: "agent-1", prompt: "legacy" });
   return "done";
 };`, "utf8");
 
@@ -944,8 +944,8 @@ workflow:
 `, "utf8");
 
     await fs.writeFile(workflowPath, `export const meta = { name: "traversal", description: "traversal" };
-export default async (ctx) => {
-  await ctx.tool({ definition: "tool-1", args: {} });
+export default async () => {
+  await tool({ definition: "tool-1", args: {} });
   return "done";
 };`, "utf8");
 
@@ -983,8 +983,8 @@ export default async (ctx) => {
       const counterPath = path.join(TEMP_DIR, "counter.txt");
       await writeConfig(configPath);
       const content = `export const meta = { name: "thinking-hit", description: "thinking cache test" };
-export default async (ctx) => {
-  const a = await ctx.agent({ id: "a", prompt: "first", thinkingEffort: "medium" });
+export default async () => {
+  const a = await agent({ id: "a", prompt: "first", thinkingEffort: "medium" });
   return [a.text];
 };`;
       await fs.writeFile(workflowPath, content, "utf8");
@@ -1010,8 +1010,8 @@ export default async (ctx) => {
       const counterPath = path.join(TEMP_DIR, "counter.txt");
       await writeConfig(configPath);
       await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-agent", description: "test" };
-export default async (ctx) => {
-  const a = await ctx.agent({ id: "a", prompt: "first", thinkingEffort: "medium" });
+export default async () => {
+  const a = await agent({ id: "a", prompt: "first", thinkingEffort: "medium" });
   return [a.text];
 };`, "utf8");
       process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -1022,8 +1022,8 @@ export default async (ctx) => {
 
       // Change per-agent effort in the workflow file
       await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-agent", description: "test" };
-export default async (ctx) => {
-  const a = await ctx.agent({ id: "a", prompt: "first", thinkingEffort: "high" });
+export default async () => {
+  const a = await agent({ id: "a", prompt: "first", thinkingEffort: "high" });
   return [a.text];
 };`, "utf8");
 
@@ -1043,8 +1043,8 @@ export default async (ctx) => {
       const counterPath = path.join(TEMP_DIR, "counter.txt");
       await writeConfig(configPath);
       await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-cli", description: "test" };
-export default async (ctx) => {
-  const a = await ctx.agent({ id: "a", prompt: "first" });
+export default async () => {
+  const a = await agent({ id: "a", prompt: "first" });
   return [a.text];
 };`, "utf8");
       process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -1071,8 +1071,8 @@ export default async (ctx) => {
       // First run with no provider default thinking effort
       await writeConfig(configPath);
       await fs.writeFile(workflowPath, `export const meta = { name: "thinking-miss-config", description: "test" };
-export default async (ctx) => {
-  const a = await ctx.agent({ id: "a", prompt: "first" });
+export default async () => {
+  const a = await agent({ id: "a", prompt: "first" });
   return [a.text];
 };`, "utf8");
       process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;
@@ -1121,8 +1121,8 @@ workflow:
       const counterPath = path.join(TEMP_DIR, "counter.txt");
       await writeConfig(configPath);
       await fs.writeFile(workflowPath, `export const meta = { name: "thinking-replay", description: "test" };
-export default async (ctx) => {
-  const a = await ctx.agent({ id: "a", prompt: "first" });
+export default async () => {
+  const a = await agent({ id: "a", prompt: "first" });
   return [a.text];
 };`, "utf8");
       process.env.OPEN_DYNAMIC_WORKFLOW_FAKE_PROVIDER_COUNTER = counterPath;

@@ -121,10 +121,10 @@ workflow:
     const writeWorkflow = async (args: any = {}) => {
       await fs.writeFile(workflowPath, `
 export const meta = { name: "test-workflow", description: "test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "agent-1", prompt: "hello" });
-  const t1 = await ctx.tool({ id: "t1", label: "t1", definition: "cacheable-tool", args: ${JSON.stringify(args.t1 || {})} });
-  const t2 = await ctx.tool({ id: "t2", definition: "live-tool", args: {} });
+export default async () => {
+  await agent({ id: "agent-1", prompt: "hello" });
+  const t1 = await tool({ id: "t1", label: "t1", definition: "cacheable-tool", args: ${JSON.stringify(args.t1 || {})} });
+  const t2 = await tool({ id: "t2", definition: "live-tool", args: {} });
   return { t1, t2 };
 };`);
     };
@@ -208,10 +208,10 @@ export default async (ctx) => {
     // D. Resume Run 3: Changed Tool Identity (Expect Miss)
     await fs.writeFile(workflowPath, `
 export const meta = { name: "test-workflow", description: "test" };
-export default async (ctx) => {
-  await ctx.agent({ id: "agent-1", prompt: "hello" });
-  const t1 = await ctx.tool({ id: "t1-new-id", label: "t1-new", definition: "cacheable-tool", args: {} });
-  const t2 = await ctx.tool({ id: "t2", definition: "live-tool", args: {} });
+export default async () => {
+  await agent({ id: "agent-1", prompt: "hello" });
+  const t1 = await tool({ id: "t1-new-id", label: "t1-new", definition: "cacheable-tool", args: {} });
+  const t2 = await tool({ id: "t2", definition: "live-tool", args: {} });
   return { t1, t2 };
 };`);
     // Resume from initialRunId which had t1-id
@@ -257,8 +257,8 @@ workflow:
 
     await fs.writeFile(workflowPath, `
 export const meta = { name: 'traversal', description: 'test' };
-export default async (ctx) => {
-  await ctx.tool({ definition: 'tool', args: {} });
+export default async () => {
+  await tool({ definition: 'tool', args: {} });
 };`);
 
     // 1. Valid Initial Run

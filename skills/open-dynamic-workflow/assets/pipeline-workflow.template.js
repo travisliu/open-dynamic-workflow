@@ -6,6 +6,8 @@ export const meta = {
 
 const items = ["src/auth.js", "src/billing.js", "src/api.js"];
 
+context.set("pipeline-started", true);
+
 phase("review");
 
 const itemResults = await pipeline(
@@ -13,25 +15,28 @@ const itemResults = await pipeline(
   [
     {
       name: "analyze",
-      run: (item, ctx) => ctx.agent({
-        id: ctx.agentId("analyze"),
-        provider: "codex",
-        prompt: `Analyze ${item} for correctness, security, and maintainability risks. Return exactly one JSON object.`,
-        schema: {
-          type: "object",
-          properties: {
-            item: { type: "string" },
-            findings: {
-              type: "array",
-              items: { type: "string" }
-            }
+      run: (item, ctx) => {
+        context.set(`item-status:${item}`, "analyzing");
+        return ctx.agent({
+          id: ctx.agentId("analyze"),
+          provider: "codex",
+          prompt: `Analyze ${item} for correctness, security, and maintainability risks. Return exactly one JSON object.`,
+          schema: {
+            type: "object",
+            properties: {
+              item: { type: "string" },
+              findings: {
+                type: "array",
+                items: { type: "string" }
+              }
+            },
+            required: ["item", "findings"]
           },
-          required: ["item", "findings"]
-        },
-        structuredOutput: {
-          transport: "auto"
-        }
-      })
+          structuredOutput: {
+            transport: "auto"
+          }
+        });
+      }
     },
     {
       name: "plan",
@@ -68,5 +73,6 @@ const summary = await agent({
 
 export default {
   itemResults,
-  summary
+  summary,
+  context: context.snapshot()
 };

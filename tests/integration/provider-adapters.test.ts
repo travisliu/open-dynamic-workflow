@@ -476,9 +476,9 @@ tools:
       workflowPath,
       `
 export const meta = { name: "stdin-large-prompt", description: "stdin prompt transport" };
-export default async (ctx) => {
+export default async () => {
   const prompt = ${JSON.stringify(prompt)};
-  return await ctx.agent({
+  return await agent({
     id: "stdin-large-prompt",
     provider: "codex",
     prompt
@@ -541,9 +541,9 @@ tools:
       workflowPath,
       `
 export const meta = { name: "arg-small-prompt", description: "arg prompt transport" };
-export default async (ctx) => {
+export default async () => {
   const prompt = ${JSON.stringify(prompt)};
-  return await ctx.agent({
+  return await agent({
     id: "arg-small-prompt",
     provider: "opencode",
     prompt
@@ -615,9 +615,9 @@ export const meta = {
   description: "stdin-default prompt transport"
 };
 
-export default async (ctx) => {
+export default async () => {
   const prompt = ${JSON.stringify(prompt)};
-  return await ctx.agent({
+  return await agent({
     id: ${JSON.stringify(testCase.id)},
     provider: ${JSON.stringify(testCase.provider)},
     prompt

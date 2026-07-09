@@ -6,6 +6,8 @@ export const meta = {
 
 phase("execute");
 
+context.set("status", "running");
+
 const result = await agent({
   id: "main-task",
   provider: "codex",
@@ -27,5 +29,6 @@ const result = await agent({
 });
 
 export default {
-  result
+  result,
+  finalStatus: context.get("status")
 };

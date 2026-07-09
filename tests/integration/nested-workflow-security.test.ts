@@ -55,7 +55,7 @@ describe("Nested Workflow Security", () => {
         name: "parent-outside",
         description: "Calls outside workflow"
       };
-      export default async ({ workflow }) => {
+      export default async () => {
         return await workflow({ name: "outside-wf" });
       };
     `);
@@ -108,7 +108,7 @@ describe("Nested Workflow Security", () => {
         name: "parent-outside",
         description: "Calls outside workflow"
       };
-      export default async ({ workflow }) => {
+      export default async () => {
         return await workflow({ name: "outside-wf" });
       };
     `);

@@ -137,7 +137,7 @@ describe("Tool Top-Level Integration", () => {
     const parentWfPath = path.join(workflowDir, "parent.workflow.ts");
     await fs.writeFile(parentWfPath, `
       export const meta = { name: "parent", description: "parent desc" };
-      export default async ({ workflow }) => {
+      export default async () => {
         return await workflow({ name: "child-tool" });
       };
     `);
@@ -168,7 +168,7 @@ describe("Tool Top-Level Integration", () => {
     const parentWfPath = path.join(workflowDir, "parent.workflow.ts");
     await fs.writeFile(parentWfPath, `
       export const meta = { name: "parent", description: "parent desc" };
-      export default async ({ parallel, workflow }) => {
+      export default async () => {
         await parallel([
           async () => { await workflow({ name: "child-tool" }); }
         ]);
@@ -193,7 +193,7 @@ describe("Tool Top-Level Integration", () => {
     const wfPath = path.join(workflowDir, "bypass.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "bypass", description: "desc" };
-      export default async (ctx) => {
+      export default async () => {
         const { tool: t } = ctx;
         return await Promise.resolve().then(() => t({ definition: "echo", args: { msg: "hi" } }));
       };

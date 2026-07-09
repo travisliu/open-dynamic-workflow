@@ -56,17 +56,25 @@ Open Dynamic Workflow exposes these workflow DSL primitives:
 | `log()`      | Emit a workflow log event.                      |
 | `workflow()` | Invoke another workflow as a child.            |
 | `tool()`     | Run a registered deterministic tool definition. |
-| `context`    | Access the JSON-safe nested key-path store for workflow state. |
+| `context`    | Access the run-scoped global JSON-safe key-path store for workflow state. |
 
 ---
 
 ## 2.1. `context` (Key-Path Store)
 
-`context` is a JSON-safe nested key-path store available to top-level workflow execution. It allows storing, merging, appending, and reading state values during a workflow run.
+`context` is a JSON-safe nested key-path store representing a single run-scoped global state store for each workflow run. It is accessed directly as the global `context` binding.
 
 ### Usage Contexts
+All scopes of execution within a workflow run access the same active run-scoped global `context` store:
 * **Top-Level Global**: The global `context` object is directly available within the top-level script execution scope of a workflow.
-* **Workflow Callback Context**: The workflow runtime callback context exposes the same underlying context store via `ctx.context` in default-exported workflow functions.
+* **Default Export Workflow Functions**: Default-exported workflow functions must be declared as a no-argument function and access the global `context` binding directly.
+* **Child Workflows**: Child workflows share the same active run-scoped global context store.
+* **Pipeline Stage Callbacks**: Stage callbacks in `pipeline()` access the same active run-scoped global context store.
+* **Loop Round Callbacks**: Repeated round callbacks in `loop()` access the same active run-scoped global context store.
+
+> [!IMPORTANT]
+> **Unsupported Forms:**
+> The property `ctx.context` is completely unsupported. Additionally, configuring explicit `context` options on `workflow()`, `parallel()`, `pipeline()`, and `loop()` is unsupported. There are no overlay inheritance mechanisms, branch-local context stores, or merge conflict policies. Every part of a workflow run interacts with the single run-scoped global `context` store.
 
 ### Examples
 
@@ -85,6 +93,15 @@ context.merge("features.plan", { constraints: ["No later-phase wiring in phase 1
 
 // Take a snapshot copy of the context
 const data = context.snapshot();
+```
+
+Default-exported workflow functions must be declared with no parameters and access global `context` directly:
+
+```ts
+export default async () => {
+  context.set("results.status", "completed");
+  return context.get("results");
+};
 ```
 
 ### API Reference
@@ -120,7 +137,7 @@ Returns a structured snapshot object containing the materialized values and root
 * `limitBytes` (optional): The maximum snapshot byte limit.
 
 #### `scope<T>(pathPrefix: string, fn: () => Promise<T> | T): Promise<T>`
-Pushes a path prefix, runs the synchronous or asynchronous function `fn` with the prefix applied to all operations within `fn`, and pops the prefix in a `finally` block (ensuring restoration for both successful returns and failures).
+Pushes a path prefix, runs the synchronous or asynchronous function `fn` with the prefix applied to all operations on the global `context` store within `fn`, and pops the prefix in a `finally` block (ensuring restoration for both successful returns and failures).
 
 ### Path Validation Rules
 Paths must conform to the following formatting rules:
@@ -380,6 +397,8 @@ The resolved retry policy is part of the agent-call fingerprint used for resume/
 
 Runs independent task thunks under the configured concurrency limit.
 
+The only argument to `parallel()` is the collection of task thunks (either an array or an object mapping keys to thunks). Independent task thunks executed in parallel access and share workflow state via the global `context` store.
+
 Use `parallel()` when tasks do not depend on each other.
 
 ### Object form
@@ -486,20 +505,22 @@ A pipeline stage is represented as an object:
 ```ts
 interface PipelineStage<I = unknown, O = unknown> {
   name: string;
-  run: (input: I, context: PipelineStageContext) => Promise<O> | O;
+  run: (input: I, ctx: PipelineStageContext) => Promise<O> | O;
   concurrency?: number;
   timeoutMs?: number;
 }
 ```
 
 *   `name`: Unique name for the stage.
-*   `run`: The function executing the stage logic. It takes the stage input (the item or the output from the previous stage) and a `PipelineStageContext` object.
+*   `run`: The function executing the stage logic. It takes the stage input (the item or the output from the previous stage) and a `PipelineStageContext` object as `ctx`.
 *   `concurrency`: Optional concurrency limit override for this specific stage.
 *   `timeoutMs`: Optional timeout override for this specific stage.
 
 ### `PipelineStageContext`
 
-Inside the `run` function, you must use the provided `context` to perform operations:
+Inside the stage `run` callback, the second parameter is `ctx`, which provides operational helpers for execution. This is distinct from the global `context` binding:
+* The run-scoped global `context` store is used to access and mutate workflow state.
+* The operational `ctx` parameter provides helpers such as logging, sleep, abort signals, and invoking agents. `PipelineStageContext` has no `context` field.
 
 ```ts
 interface PipelineStageContext {
@@ -593,6 +614,9 @@ const result = await loop({
   run: async (state, ctx) => {
     const nextState = { ...state, attempt: state.attempt + 1 };
     
+    // Record current loop progress in global context
+    context.set(`history.rounds.attempt_${nextState.attempt}`, "executed");
+
     await ctx.agent({
       id: ctx.agentId(`review`),
       provider: "codex",
@@ -616,7 +640,7 @@ interface LoopInput<TState> {
   label: string;
   initialState: TState;
   options: LoopOptions;
-  run: (state: TState, context: LoopRoundContext) => Promise<LoopRoundResult<TState>>;
+  run: (state: TState, ctx: LoopRoundContext) => Promise<LoopRoundResult<TState>>;
 }
 
 interface LoopOptions {
@@ -633,7 +657,9 @@ interface LoopRoundResult<TState> {
 
 ### `LoopRoundContext`
 
-Inside the round callback, you must use the provided `context` object:
+Inside the round callback, you must use the provided `ctx` parameter for operational helpers. This is distinct from the global `context` binding:
+* The run-scoped global `context` store is used to access and mutate workflow state.
+* The operational `ctx` parameter provides helpers such as logging, sleep, abort signals, and invoking agents or child workflows. `LoopRoundContext` has no `context` field.
 
 ```ts
 interface LoopRoundContext {
@@ -776,7 +802,8 @@ type WorkflowCallInput = {
 
 ### Behavior
 
-* **Isolation**: Child workflows run in a fresh context with their own `args` and `phase` state.
+* **Global Context**: Child workflows share the same active run-scoped global `context` store as the parent workflow. Parent and child reads and writes use the same active run-scoped global context store.
+* **Invocation Scope**: Child workflows run in their own invocation scope with separate `args` and `phase` state.
 * **Cloning**: `args` and results are deep-cloned using JSON-safe rules to prevent mutation leakage.
 * **Cancellation**: If the parent workflow is cancelled, the child and all its descendants are aborted.
 * **Recursion**: Active recursion (e.g., A calling B calling A) is detected and rejected at runtime.

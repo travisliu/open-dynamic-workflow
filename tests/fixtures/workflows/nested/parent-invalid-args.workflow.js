@@ -3,7 +3,7 @@ export const meta = {
   description: "Calls child with invalid args"
 };
 
-export default async ({ workflow, args }) => {
+export default async () => {
   // Use args from input to bypass discovery-time static validation
   return await workflow({
     name: "child-schema",

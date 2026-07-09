@@ -3,6 +3,6 @@ export const meta = {
   description: "Simple child workflow"
 };
 
-export default async ({ args }) => {
+export default async () => {
   return { childEcho: args.message };
 };

@@ -3,8 +3,8 @@ export const meta = {
   description: "Child workflow for loop resume cache test"
 };
 
-export default async (ctx) => {
-  const res = await ctx.agent({
+export default async () => {
+  const res = await agent({
     id: "nested-child-agent",
     provider: "mock",
     prompt: "child agent prompt"

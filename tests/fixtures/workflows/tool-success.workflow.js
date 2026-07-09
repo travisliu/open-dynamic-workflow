@@ -3,7 +3,7 @@ export const meta = {
   description: "A workflow that calls a tool successfully"
 };
 
-export default async ({ tool }) => {
+export default async () => {
   const result = await tool({
     definition: "read-json",
     args: { path: "package.json" }

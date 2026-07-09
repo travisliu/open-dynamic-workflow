@@ -6,6 +6,8 @@ export const meta = {
 
 phase("review");
 
+context.set("reviewType", "code-and-security");
+
 const reviews = await parallel({
   correctness: () => agent({
     id: "correctness-review",
@@ -36,5 +38,6 @@ const summary = await agent({
 
 export default {
   reviews,
-  summary
+  summary,
+  context: context.snapshot()
 };

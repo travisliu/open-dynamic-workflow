@@ -3,7 +3,7 @@ export const meta = {
   description: "A workflow that calls a tool inside parallel() which is invalid"
 };
 
-export default async ({ tool, parallel }) => {
+export default async () => {
   await parallel([
     async () => {
       await tool({

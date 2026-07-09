@@ -2,7 +2,6 @@ import type { JsonValue } from "../types/common.js";
 import { cloneJsonValue } from "./json.js";
 import { collectSecretValues, redactJsonValue } from "../security/env.js";
 import { CONTEXT_LIMITS } from "./limits.js";
-import type { ContextScopeType, ContextScopeMetadata, ContextMergeSummary } from "./types.js";
 
 const secretValues = collectSecretValues(process.env);
 
@@ -28,21 +27,6 @@ export function createPreview(
     valuePreview: redacted,
     truncated: false,
   };
-}
-
-export function emitOverlayCreated(
-  emit: ContextEventEmitter,
-  scopeId: string,
-  scopeType: ContextScopeType,
-  parentScopeId: string | undefined,
-  metadata: ContextScopeMetadata
-): void {
-  emit("context.overlay.created", {
-    scopeId,
-    scopeType,
-    parentScopeId,
-    metadata: redactJsonValue(cloneJsonValue(metadata), secretValues) as Record<string, any>,
-  });
 }
 
 export function emitPathSet(
@@ -98,48 +82,5 @@ export function emitPathDelete(
   emit("context.path.delete", {
     scopeId,
     path,
-  });
-}
-
-export function emitMergeApplied(
-  emit: ContextEventEmitter,
-  scopeId: string,
-  parentScopeId: string | undefined,
-  summary: ContextMergeSummary
-): void {
-  emit("context.merge.applied", {
-    scopeId,
-    parentScopeId,
-    mergedPaths: summary.mergedPaths,
-    rejectedPaths: summary.rejectedPaths,
-    details: redactJsonValue(cloneJsonValue(summary.details ?? {}), secretValues) as Record<string, any>,
-  });
-}
-
-export function emitMergeRejected(
-  emit: ContextEventEmitter,
-  scopeId: string,
-  parentScopeId: string | undefined,
-  summary: ContextMergeSummary
-): void {
-  emit("context.merge.rejected", {
-    scopeId,
-    parentScopeId,
-    rejectedPaths: summary.rejectedPaths,
-    details: redactJsonValue(cloneJsonValue(summary.details ?? {}), secretValues) as Record<string, any>,
-  });
-}
-
-export function emitMergeConflict(
-  emit: ContextEventEmitter,
-  scopeId: string,
-  parentScopeId: string | undefined,
-  summary: ContextMergeSummary
-): void {
-  emit("context.merge.conflict", {
-    scopeId,
-    parentScopeId,
-    conflictPaths: summary.conflictPaths,
-    details: redactJsonValue(cloneJsonValue(summary.details ?? {}), secretValues) as Record<string, any>,
   });
 }

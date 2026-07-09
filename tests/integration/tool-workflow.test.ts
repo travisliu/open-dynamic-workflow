@@ -112,7 +112,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "loop-tool.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "loop-tool", description: "loop tool integration" };
-      export default async ({ loop }) => {
+      export default async () => {
         return await loop({
           label: "quality-gate-loop",
           initialState: { done: false },
@@ -187,7 +187,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "multi-round-loop-tool.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "multi-round-loop-tool", description: "multi-round loop tool integration" };
-      export default async ({ loop }) => {
+      export default async () => {
         return await loop({
           label: "gate-loop",
           initialState: { round: 1 },
@@ -275,7 +275,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "loop-tool-cache.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "loop-tool-cache", description: "loop tool cache integration" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "cache-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -379,7 +379,7 @@ describe("Tool Workflow Integration", () => {
     const parentWfPath = path.join(workflowDir, "parent.workflow.ts");
     await fs.writeFile(parentWfPath, `
       export const meta = { name: "parent", description: "parent desc" };
-      export default async ({ workflow }) => {
+      export default async () => {
         return await workflow({ name: "child-tool" });
       };
     `);
@@ -405,15 +405,15 @@ describe("Tool Workflow Integration", () => {
     const childWfPath = path.join(workflowDir, "child.workflow.ts");
     await fs.writeFile(childWfPath, `
       export const meta = { name: "child-tool", description: "child desc" };
-      export default async (ctx) => {
-        return await ctx.tool({ definition: "echo", args: { msg: "allowed" } });
+      export default async () => {
+        return await tool({ definition: "echo", args: { msg: "allowed" } });
       };
     `);
 
     const parentWfPath = path.join(workflowDir, "parent.workflow.ts");
     await fs.writeFile(parentWfPath, `
       export const meta = { name: "parent", description: "parent desc" };
-      export default async ({ parallel, workflow }) => {
+      export default async () => {
         await parallel([
           async () => { await workflow({ name: "child-tool" }); }
         ]);
@@ -540,8 +540,8 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "bypass.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "bypass", description: "desc" };
-      export default async function(ctx) {
-        const t = ctx.tool;
+      export default async function () {
+        const t = tool;
         async function helper() {
           return await t({ definition: "echo", args: { msg: "hi" } });
         }
@@ -570,12 +570,12 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "runtime-bypass.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "runtime-bypass", description: "desc" };
-      export default async function(ctx) {
+      export default async function () {
         // We use a trick to bypass static validation if possible, 
         // but here we just want to see the runtime error.
         // If static validation catches it, that's also good.
         // To truly test runtime, we'd need a unit test for dsl-tool.
-        const t = ctx.tool; 
+        const t = tool; 
         setTimeout(() => {
           try {
             t({ definition: "echo", args: { msg: "late" } });
@@ -607,7 +607,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "settled-fail.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "settled-fail", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "settled-fail-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -672,7 +672,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "loop-settled-throw.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "loop-settled-throw", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "throw-loop",
         initialState: {},
         options: { maxRounds: 1, failureMode: "settled" },
@@ -714,7 +714,7 @@ describe("Tool Workflow Integration", () => {
     const wfPathThrow = path.join(workflowDir, "timeout-throw.workflow.ts");
     await fs.writeFile(wfPathThrow, `
       export const meta = { name: "timeout-throw", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "timeout-throw-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -751,7 +751,7 @@ describe("Tool Workflow Integration", () => {
     const wfPathSettled = path.join(workflowDir, "timeout-settled.workflow.ts");
     await fs.writeFile(wfPathSettled, `
       export const meta = { name: "timeout-settled", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "timeout-settled-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -805,7 +805,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "cancel.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "cancel-wf", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "cancel-loop",
         initialState: {},
         options: { maxRounds: 1, timeoutMs: 50 },
@@ -870,7 +870,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "true-cancel.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "true-cancel", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "cancel-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -1040,7 +1040,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath1 = path.join(workflowDir, "mismatch-1.workflow.ts");
     await fs.writeFile(wfPath1, `
       export const meta = { name: "mismatch-1", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "mismatch-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -1068,7 +1068,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath2 = path.join(workflowDir, "mismatch-2.workflow.ts");
     await fs.writeFile(wfPath2, `
       export const meta = { name: "mismatch-2", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "mismatch-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -1112,7 +1112,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "pretty-loop-tool.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "pretty-loop-tool", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "pretty-loop",
         initialState: {},
         options: { maxRounds: 1 },
@@ -1155,7 +1155,7 @@ describe("Tool Workflow Integration", () => {
     const wfPath = path.join(workflowDir, "inflight-drain.workflow.ts");
     await fs.writeFile(wfPath, `
       export const meta = { name: "inflight-drain", description: "desc" };
-      export default async ({ loop }) => await loop({
+      export default async () => await loop({
         label: "drain-loop",
         initialState: {},
         options: { maxRounds: 1 },

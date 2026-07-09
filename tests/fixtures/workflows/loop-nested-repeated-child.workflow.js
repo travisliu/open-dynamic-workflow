@@ -3,9 +3,9 @@ export const meta = {
   description: "Child workflow for loop R018 test"
 };
 
-export default async (ctx) => {
-  const res = await ctx.agent({
-    id: ctx.args?.agentId || "test-permissions-agent",
+export default async () => {
+  const res = await agent({
+    id: args?.agentId || "test-permissions-agent",
     provider: "mock",
     prompt: "child agent prompt"
   });

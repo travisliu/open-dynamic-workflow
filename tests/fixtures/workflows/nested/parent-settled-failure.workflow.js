@@ -3,7 +3,7 @@ export const meta = {
   description: "Parent that uses settled failure mode"
 };
 
-export default async ({ workflow }) => {
+export default async () => {
   const result = await workflow({
     name: "child-failure",
     failureMode: "settled"

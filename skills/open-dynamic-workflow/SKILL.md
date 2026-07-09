@@ -55,11 +55,13 @@ When using this skill:
 4. Write the workflow using only supported DSL primitives.
    - Use `agent()` for provider-backed tasks.
    - Use `retry` on `agent()` only when you want provider-backed retries for that logical call; use `retry: false` to disable retry for a specific call.
+   - Use the JSON-safe, run-scoped global `context` binding for workflow state.
+   - Default export functions receive no context parameter; write them as `export default async () => { ... }` using direct global `context` access.
    - Use `parallel()` with task thunks, not already-started promises.
    - Use `pipeline()` with named stage objects.
-   - Use `ctx.agent()` inside pipeline stage `run()` functions.
+   - Use `ctx.agent()` inside pipeline stage `run()` functions. Note that `ctx.context` is unavailable and stage-level workflow state reads/writes use global `context` directly.
    - Use `loop({ label, initialState, options, run })` for iterative stateful work.
-   - Use `ctx.agent()` and `ctx.workflow()` inside loop round callbacks.
+   - Use `ctx.agent()` and `ctx.workflow()` inside loop round callbacks. Note that operational callback `ctx` helpers like IDs and sub-workflows remain, but `ctx.context` is unavailable; use global `context` for workflow state.
    - Return `{ done: true, nextState }` to complete a loop successfully.
    - Use `phase()` to mark major progress points.
    - Use `log()` only for non-sensitive operational metadata.
@@ -127,6 +129,8 @@ When using this skill:
 - Do not call global `agent()` from inside a pipeline stage; use `ctx.agent()`.
 - Do not call global `agent()` from inside a loop round when the work belongs to that round; use `ctx.agent()` and stable IDs such as `ctx.agentId("review")`.
 - Do not call `tool()` inside `parallel()` callbacks, pipeline stages, loop rounds, or `defineAgent.run()`.
+- Do not access context-store fields on callback objects (e.g., `ctx.context` is invalid; use the global `context` binding directly).
+- Do not provide context configuration options to DSL primitives (e.g., context options on `workflow()`, a second `parallel()` options argument, context options on `pipeline()`, or top-level `context` in `loop()` options).
 - Do not write unbounded loops. Use `loop()` with explicit, required `maxRounds`; the global ceiling is configured by `workflow.maxLoopRounds` (default 20).
 - Do not assume automatic patch application, automatic commits, automatic merge, approval gates, DAG pipelines, worktree isolation, container isolation, distributed execution, or resumable runs are available unless explicitly implemented.
 - Do not log secrets, tokens, credentials, full private source dumps, or unnecessary raw provider output.
@@ -445,6 +449,7 @@ Before returning a final Open Dynamic Workflow workflow, confirm:
 - `pipeline()` stages are named objects.
 - Pipeline stages call `ctx.agent()`.
 - `loop()` uses a bounded, required `maxRounds`, round-local `ctx.agent()` calls, and returns `{ done, nextState }` to control execution.
+- The workflow uses the global `context` binding directly for state and does not access `ctx.context` or pass context options to DSL helper calls.
 - Provider choices are intentional and explainable.
 - Structured output schemas are valid JSON Schema objects.
 - Structured output uses a supported transport: `auto`, `prompt`, or `validate-only`.

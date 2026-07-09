@@ -6,6 +6,11 @@ export const meta = {
 
 phase("review");
 
+context.set("review.input", {
+  targets: ["src/auth.ts", "src/billing.ts"],
+  mode: "strict"
+});
+
 const reviews = await parallel({
   codex: () => agent({
     id: "codex-review",
@@ -29,5 +34,6 @@ const summary = await agent({
 
 export default {
   reviews,
-  summary
+  summary,
+  context: context.snapshot()
 };

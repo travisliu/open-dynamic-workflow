@@ -116,8 +116,8 @@ describe("Workflow Context Cache Determinism", () => {
       `
 export const meta = { name: "context-cache-base", description: "base cache workflow" };
 
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "probe",
     provider: "mock",
     prompt: "cache probe"
@@ -135,9 +135,9 @@ export default async (ctx) => {
       `
 export const meta = { name: "context-cache-context", description: "context cache workflow" };
 
-export default async (ctx) => {
+export default async () => {
   context.set("audit.before", "before");
-  const result = await ctx.agent({
+  const result = await agent({
     id: "probe",
     provider: "mock",
     prompt: "cache probe"

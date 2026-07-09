@@ -8,6 +8,11 @@ phase("review");
 
 log("Starting mock review");
 
+context.set("review.input", {
+  targets: ["src/auth.ts", "src/billing.ts"],
+  mode: "strict"
+});
+
 const reviews = await parallel({
   auth: () => agent({
     id: "review-auth",
@@ -47,5 +52,6 @@ const summary = await agent({
 
 export default {
   reviews,
-  summary
+  summary,
+  context: context.snapshot()
 };

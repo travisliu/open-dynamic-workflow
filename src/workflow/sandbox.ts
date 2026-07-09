@@ -75,6 +75,14 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
     runId: { value: runtime.runId, enumerable: true, configurable: false, writable: false },
     artifactsDir: { value: runtime.artifactsDir, enumerable: true, configurable: false, writable: false },
     context: { value: createSandboxContextFacade(runtime.contextRuntime.createFacade()), enumerable: true, configurable: false, writable: false },
+    signal: {
+      get: () => {
+        const activeInvocation = getActiveWorkflowInvocation();
+        return activeInvocation?.signal || runtime.abortController.signal;
+      },
+      enumerable: true,
+      configurable: false
+    },
     setTimeout: { 
       value: (fn: any, ms?: number, ...args: any[]) => {
         if (typeof fn !== "function") {

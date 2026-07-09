@@ -3,7 +3,7 @@ export const meta = {
   description: "Parent workflow that calls a child"
 };
 
-export default async ({ workflow, args }) => {
+export default async () => {
   const result = await workflow({
     name: "child-basic",
     args: { message: args.message || "hello from parent" }

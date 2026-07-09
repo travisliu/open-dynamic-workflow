@@ -100,6 +100,12 @@ describe("Init Renderer Services", () => {
       expect(workflow).toContain('phase("run")');
       expect(workflow).toContain("await agent({");
       expect(workflow).not.toContain("provider:");
+      
+      // Global context assertions
+      expect(workflow).toContain('context.set("projectName", "starter-project")');
+      expect(workflow).toContain('projectName: context.get("projectName")');
+      expect(workflow).not.toContain("ctx.context");
+      expect(workflow).not.toContain("context:");
     });
   });
 });

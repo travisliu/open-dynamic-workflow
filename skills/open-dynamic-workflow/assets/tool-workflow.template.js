@@ -6,11 +6,13 @@ export const meta = {
 
 phase("fetch");
 
+context.set("targetFile", "input.json");
+
 // Invoke a registered deterministic tool to read data
 const data = await tool({
   definition: "read-json",
   args: {
-    path: "input.json"
+    path: context.get("targetFile")
   }
 });
 
@@ -25,5 +27,6 @@ const analysis = await agent({
 
 export default {
   data,
-  analysis
+  analysis,
+  context: context.snapshot()
 };

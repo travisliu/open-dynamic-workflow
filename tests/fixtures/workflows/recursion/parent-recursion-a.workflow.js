@@ -3,6 +3,6 @@ export const meta = {
   description: "Recursive parent A"
 };
 
-export default async ({ workflow }) => {
+export default async () => {
   return await workflow({ name: "parent-recursion-b" });
 };

@@ -352,7 +352,7 @@ describe("Integration - verbose agent logging", () => {
 
     await fs.writeFile(childWf, `
       export const meta = { name: "child-wf", description: "test child" };
-      export default async function workflow({ workflow }) {
+      export default async function () {
         return await workflow({ name: "verbose-agent-logging" });
       }
     `);
@@ -463,8 +463,8 @@ describe("Integration - verbose agent logging", () => {
     const wfPath = path.join(TEMP_DIR, "structured.workflow.js");
     await fs.writeFile(wfPath, `
       export const meta = { name: "structured-wf", description: "test structured" };
-      export default async function workflow(ctx) {
-        return await ctx.agent({
+      export default async function () {
+        return await agent({
           id: "structured-agent",
           prompt: "Extract something",
           schema: { type: "object", properties: { foo: { type: "string" } } },

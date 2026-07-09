@@ -3,12 +3,16 @@ export const meta = {
   description: "Test loop completion (formerly break)"
 };
 
-const result = await loop({
+const loopResult = await loop({
   label: "loop-break",
   initialState: { count: 0 },
   options: { maxRounds: 5 },
   run: async (state, ctx) => {
     const nextCount = state.count + 1;
+
+    // Use global context directly:
+    const prev = context.get(`round_${state.count}`) || "start";
+    context.set(`round_${nextCount}`, `val_${nextCount}_${prev}`);
 
     await ctx.agent({
       id: ctx.agentId(`agent-${nextCount}`),
@@ -30,4 +34,7 @@ const result = await loop({
   }
 });
 
-export default result;
+export default {
+  loopResult,
+  finalContextSnapshot: context.snapshot()
+};

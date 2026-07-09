@@ -89,13 +89,16 @@ export function renderExampleWorkflow(): string {
 
 phase("run");
 
+context.set("projectName", "starter-project");
+
 const result = await agent({
   id: "starter-task",
   prompt: "Explain what this starter Open Dynamic Workflow workflow does."
 });
 
 export default {
-  result
+  result,
+  projectName: context.get("projectName")
 };
 `;
 }

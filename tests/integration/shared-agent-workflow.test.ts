@@ -293,9 +293,9 @@ sharedAgents:
   it("fails when dynamic ID is used via ctx.agent and allowDynamicIds is false", async () => {
     const workflow = `
 export const meta = { name: "dynamic-id-ctx", description: "test" };
-export default async (ctx) => {
+export default async () => {
   const id = "some-agent";
-  await ctx.agent({ definition: id });
+  await agent({ definition: id });
 };
 `;
     const workflowPath = path.join(TEMP_DIR, "workflow-dynamic-ctx.js");

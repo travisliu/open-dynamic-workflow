@@ -87,8 +87,8 @@ tools:
     // High should override CLI (medium) and provider config (low)
     const workflowContent = `
 export const meta = { name: "codex-test", description: "testing codex mapping" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "codex-agent",
     provider: "codex",
     prompt: "Hello Codex",
@@ -157,8 +157,8 @@ tools:
     // No thinking effort inside agent call, so CLI value will win
     const workflowContent = `
 export const meta = { name: "pi-test", description: "testing pi mapping" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "pi-agent",
     provider: "pi",
     prompt: "Hello Pi"
@@ -219,8 +219,8 @@ tools:
 
     const workflowContent = `
 export const meta = { name: "opencode-test", description: "testing opencode mapping" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "opencode-agent",
     provider: "opencode",
     prompt: "Hello OpenCode"
@@ -281,13 +281,13 @@ tools:
     // Case 2: agent thinking effort is "off"
     const workflowContent = `
 export const meta = { name: "opencode-absent-off", description: "testing absent vs off" };
-export default async (ctx) => {
-  const a = await ctx.agent({
+export default async () => {
+  const a = await agent({
     id: "opencode-absent",
     provider: "opencode",
     prompt: "Hello OpenCode Absent"
   });
-  const b = await ctx.agent({
+  const b = await agent({
     id: "opencode-off",
     provider: "opencode",
     prompt: "Hello OpenCode Off",
@@ -371,8 +371,8 @@ tools:
     // Agent definition uses thinkingEffort: high on gemini
     const workflowContent = `
 export const meta = { name: "gemini-test", description: "testing unsupported provider" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "gemini-agent",
     provider: "gemini",
     prompt: "Hello Gemini",
@@ -444,8 +444,8 @@ tools:
     // Codex with xhigh is unsupported
     const workflowContent = `
 export const meta = { name: "codex-test", description: "testing codex unsupported value" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "codex-agent",
     provider: "codex",
     prompt: "Hello Codex",
@@ -516,8 +516,8 @@ tools:
     // OpenCode call with thinkingEffort AND opencodeVariant in metadata
     const workflowContent = `
 export const meta = { name: "opencode-conflict", description: "testing conflict" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "opencode-agent",
     provider: "opencode",
     prompt: "Hello OpenCode",
@@ -594,8 +594,8 @@ tools:
     // Workflow uses args.thinking to pass dynamic value to agent call
     const workflowContent = `
 export const meta = { name: "cache-test", description: "testing cache fingerprinting" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "pi-agent",
     provider: "pi",
     prompt: "Hello Caching Pi",
@@ -685,8 +685,8 @@ tools:
     // We pass secret values in env/metadata to assert they don't leak
     const workflowContent = `
 export const meta = { name: "security-test", description: "testing metadata sanitization" };
-export default async (ctx) => {
-  const result = await ctx.agent({
+export default async () => {
+  const result = await agent({
     id: "opencode-agent",
     provider: "opencode",
     prompt: "Hello OpenCode Security",
@@ -776,8 +776,8 @@ tools:
 
     const workflowContent = `
 export const meta = { name: "report-schema-test", description: "testing report schema" };
-export default async (ctx) => {
-  return await ctx.agent({
+export default async () => {
+  return await agent({
     id: "opencode-agent",
     provider: "opencode",
     prompt: "Hello OpenCode",

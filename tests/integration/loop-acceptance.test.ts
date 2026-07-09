@@ -93,6 +93,13 @@ describe("Loop Acceptance (AAA)", () => {
     expect(parsed.loops[0].status).toBe("succeeded");
     expect(parsed.loops[0].roundsCompleted).toBe(2);
 
+    // Check global context writes persisted across rounds and are visible after the loop completes
+    expect(parsed.result).toBeDefined();
+    expect(parsed.result.finalContextSnapshot).toEqual({
+      round_1: "val_1_start",
+      round_2: "val_2_val_1_start",
+    });
+
     // Check artifacts
     const runs = await fs.readdir(TEMP_DIR);
     const runDir = path.join(TEMP_DIR, runs[0]);
