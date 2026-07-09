@@ -19,6 +19,11 @@ export function exitCodeForError(error: unknown): ExitCode {
     switch (error.code) {
       case ErrorCode.CLI_USAGE_ERROR:
       case ErrorCode.CONFIG_VALIDATION_ERROR:
+      case ErrorCode.PROFILE_FILE_INVALID:
+      case ErrorCode.PROFILE_VALIDATION_ERROR:
+      case ErrorCode.PROFILE_CONTEXT_INVALID:
+      case ErrorCode.PROFILE_RESERVED_PATH:
+      case ErrorCode.PROFILE_OPTION_CONFLICT:
         return ExitCode.CLI_USAGE_ERROR;
       
       case ErrorCode.WORKFLOW_PARSE_ERROR:
@@ -42,6 +47,8 @@ export function exitCodeForError(error: unknown): ExitCode {
       case ErrorCode.PROVIDER_UNAVAILABLE:
       case ErrorCode.WORKFLOW_TARGET_NOT_FOUND:
       case ErrorCode.WORKFLOW_FILE_NOT_FOUND:
+      case ErrorCode.PROFILE_NOT_FOUND:
+      case ErrorCode.PROFILE_FILE_NOT_FOUND:
         return ExitCode.ResourceNotFound;
 
       case ErrorCode.SECURITY_POLICY_VIOLATION:

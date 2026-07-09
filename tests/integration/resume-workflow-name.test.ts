@@ -53,9 +53,62 @@ async function runCli(args: string[]) {
 }
 
 describe("Integration - resume workflow by name", () => {
+  const WORKFLOWS_SRC = path.resolve("tests/fixtures/workflows/run-by-name");
+  const WORKFLOWS_DEST = path.join(TEMP_DIR, "workflows");
+  const CONFIG_DEST = path.join(TEMP_DIR, "config.yaml");
+
   beforeEach(async () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
     await fs.mkdir(TEMP_DIR, { recursive: true });
+    await fs.mkdir(WORKFLOWS_DEST, { recursive: true });
+    await fs.cp(WORKFLOWS_SRC, WORKFLOWS_DEST, { recursive: true });
+
+    // Write a local config file pointing to the copied workflows
+    await fs.writeFile(
+      CONFIG_DEST,
+      `defaultProvider: mock
+concurrency: 1
+timeoutMs: 10000
+
+providers:
+  mock:
+    command: mock
+    responses:
+      default:
+        text: "mock response"
+      review-auth:
+        json:
+          findings: []
+  opencode:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+    format: json
+
+workflow:
+  discovery:
+    include:
+      - workflows/**/*.js
+  maxDepth: 5
+
+reporting:
+  mode: pretty
+
+security:
+  passEnv: []
+  redactEnv: []
+  allowWorkflowImports: false
+
+sharedAgents:
+  dir: agents
+  maxDefinitions: 100
+  allowDynamicIds: false
+  strictPromptTemplateVariables: true
+
+tools:
+  dir: non-existent-tools
+`
+    );
   });
 
   afterEach(async () => {
@@ -67,8 +120,10 @@ describe("Integration - resume workflow by name", () => {
     const initialResult = await runCli([
       "run",
       "review",
+      "--cwd",
+      TEMP_DIR,
       "--config",
-      "tests/fixtures/config/run-by-name.config.yaml",
+      CONFIG_DEST,
       "--out",
       TEMP_DIR,
       "--report",
@@ -83,6 +138,8 @@ describe("Integration - resume workflow by name", () => {
     const resumeResult = await runCli([
       "resume",
       runId,
+      "--cwd",
+      TEMP_DIR,
       "--out",
       TEMP_DIR,
       "--report",
@@ -111,8 +168,10 @@ describe("Integration - resume workflow by name", () => {
     const initialResult = await runCli([
       "run",
       "review",
+      "--cwd",
+      TEMP_DIR,
       "--config",
-      "tests/fixtures/config/run-by-name.config.yaml",
+      CONFIG_DEST,
       "--out",
       TEMP_DIR,
       "--report",
@@ -121,7 +180,7 @@ describe("Integration - resume workflow by name", () => {
 
     const initialReport = JSON.parse(initialResult.stdout);
     const runId = initialReport.runId;
-    const recordedFile = initialReport.workflow.file;
+    const recordedFile = path.resolve(TEMP_DIR, initialReport.workflow.file);
 
     // 2. Modify the recorded workflow file's meta.name
     const originalContent = await fs.readFile(recordedFile, "utf8");
@@ -132,6 +191,8 @@ describe("Integration - resume workflow by name", () => {
       const resumeResult = await runCli([
         "resume",
         runId,
+        "--cwd",
+        TEMP_DIR,
         "--out",
         TEMP_DIR
       ]);
@@ -149,8 +210,10 @@ describe("Integration - resume workflow by name", () => {
     const initialResult = await runCli([
       "run",
       "review",
+      "--cwd",
+      TEMP_DIR,
       "--config",
-      "tests/fixtures/config/run-by-name.config.yaml",
+      CONFIG_DEST,
       "--out",
       TEMP_DIR,
       "--report",
@@ -164,8 +227,10 @@ describe("Integration - resume workflow by name", () => {
       "review",
       "--resume",
       runId,
+      "--cwd",
+      TEMP_DIR,
       "--config",
-      "tests/fixtures/config/run-by-name.config.yaml",
+      CONFIG_DEST,
       "--out",
       TEMP_DIR,
       "--report",

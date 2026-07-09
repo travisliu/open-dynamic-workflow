@@ -111,6 +111,7 @@ export interface OpenDynamicWorkflowConfig {
   sharedAgents: SharedAgentsConfig;
   workflow: WorkflowConfig;
   orchestration?: OrchestrationConfig;
+  profiles?: WorkflowProfileCatalog | undefined;
 }
 
 export interface ResolvedConfig extends OpenDynamicWorkflowConfig {
@@ -145,4 +146,73 @@ export interface CliRunOptions {
   retryBackoff?: RetryBackoff | undefined;
   retryDisableDelay?: boolean | undefined;
   noRetry?: boolean | undefined;
+}
+
+export type ProfileName = string;
+
+export interface WorkflowProfile {
+  description?: string | undefined;
+  extends?: ProfileName | ProfileName[] | undefined;
+  args?: JsonObject | undefined;
+  context?: JsonObject | undefined;
+  run?: WorkflowProfileRunOptions | undefined;
+}
+
+export interface WorkflowProfileRunOptions {
+  provider?: ProviderName | undefined;
+  model?: string | undefined;
+  concurrency?: number | undefined;
+  timeoutMs?: number | undefined;
+  maxAgentCalls?: number | undefined;
+  failFast?: boolean | undefined;
+  report?: ReporterMode | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
+  retry?: false | Partial<RetryConfigInput> | ResolvedRetryPolicy | undefined;
+}
+
+export type WorkflowProfileCatalog = Record<ProfileName, WorkflowProfile>;
+
+export interface ProfilesFileDocument {
+  description?: string | undefined;
+  version?: string | undefined;
+  profiles: WorkflowProfileCatalog;
+}
+
+export type ProfileSource =
+  | "config"
+  | "external"
+  | "external-override"
+  | "recorded";
+
+export interface ProfileCatalogEntry {
+  name: ProfileName;
+  profile: WorkflowProfile;
+  source: Exclude<ProfileSource, "recorded">;
+  sourcePath?: string | undefined;
+  overridesConfigProfile: boolean;
+}
+
+export interface ResolvedWorkflowProfile {
+  description?: string | undefined;
+  args: JsonObject;
+  context: JsonObject;
+  run: WorkflowProfileRunOptions;
+}
+
+export interface ProfileDiagnostic {
+  severity: "warning" | "info";
+  code: string;
+  message: string;
+  path?: string | undefined;
+}
+
+export interface ResolvedProfileSelection {
+  selected: ProfileName;
+  source: ProfileSource;
+  profilesPath?: string | undefined;
+  hasExternalFile: boolean;
+  resolved: ResolvedWorkflowProfile;
+  hash: string;
+  inheritanceChain: ProfileName[];
+  diagnostics: ProfileDiagnostic[];
 }

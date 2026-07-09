@@ -224,7 +224,48 @@ Expected result:
 * The loop result containing the final state directly, or a settled success/failure envelope.
 * Commands such as `npx @travisliu/open-dynamic-workflow validate workflows/loop-review.ts` and `npx @travisliu/open-dynamic-workflow run workflows/loop-review.ts`.
 
+### Global workflow context
+
+Each workflow run receives exactly one JSON-safe global `context` store. It is not process-wide state and is not a per-branch store. The same store is visible in:
+- Top-level workflow code
+- No-argument default-exported workflow functions
+- Child workflows
+- Pipeline stage callbacks
+- Loop round callbacks
+
+Here is a compact, syntactically valid workflow snippet using the global context:
+
+```ts
+import { agent, context } from "@travisliu/open-dynamic-workflow";
+
+export default async function() {
+  // Set initial state
+  context.set("status", "initialized");
+  
+  const result = await agent({
+    id: "run-step",
+    prompt: `Analyze project files. Status is ${context.get("status")}`
+  });
+  
+  context.set("analysis.output", result.content);
+  return {
+    status: context.get("status"),
+    snapshot: context.snapshot()
+  };
+}
+```
+
+#### Distinction between global `context` and callback `ctx`
+
+*   **Global `context`** holds workflow state (read/write workflow state). Note that a default-exported workflow function receives no callback parameter.
+*   **Callback `ctx`** provides stage/round operational lifecycle helpers (such as `ctx.agent()`, `ctx.workflow()`, and logging/signals). The property `ctx.context` is completely unsupported.
+
+#### Concurrency Guidance
+
+Parallel tasks share the same run store. To avoid race conditions, you should initialize state before a fan-out (e.g. before calling `parallel()`), read state after a fan-in, or write to independent deterministic paths.
+
 ### Prompting Tips
+
 
 * Name the workflow you want.
 * Describe the input files, documents, or targets.

@@ -3,6 +3,7 @@ export type ReporterMode = "pretty" | "json" | "jsonl";
 
 import type { ThinkingEffort } from "../types/thinking-effort.js";
 import type { RetryConfigInput, ResolvedRetryPolicy } from "../types/retry.js";
+import type { JsonObject } from "../types/common.js";
 
 export interface ProviderModelArgConfig {
   flag: string;
@@ -60,6 +61,75 @@ export interface OrchestrationConfig {
   concurrency?: number;
 }
 
+export type ProfileName = string;
+
+export interface WorkflowProfile {
+  description?: string | undefined;
+  extends?: ProfileName | ProfileName[] | undefined;
+  args?: JsonObject | undefined;
+  context?: JsonObject | undefined;
+  run?: WorkflowProfileRunOptions | undefined;
+}
+
+export interface WorkflowProfileRunOptions {
+  provider?: ProviderName | undefined;
+  model?: string | undefined;
+  concurrency?: number | undefined;
+  timeoutMs?: number | undefined;
+  maxAgentCalls?: number | undefined;
+  failFast?: boolean | undefined;
+  report?: ReporterMode | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
+  retry?: false | Partial<RetryConfigInput> | ResolvedRetryPolicy | undefined;
+}
+
+export type WorkflowProfileCatalog = Record<ProfileName, WorkflowProfile>;
+
+export interface ProfilesFileDocument {
+  description?: string | undefined;
+  version?: string | undefined;
+  profiles: WorkflowProfileCatalog;
+}
+
+export type ProfileSource =
+  | "config"
+  | "external"
+  | "external-override"
+  | "recorded";
+
+export interface ProfileCatalogEntry {
+  name: ProfileName;
+  profile: WorkflowProfile;
+  source: Exclude<ProfileSource, "recorded">;
+  sourcePath?: string | undefined;
+  overridesConfigProfile: boolean;
+}
+
+export interface ResolvedWorkflowProfile {
+  description?: string | undefined;
+  args: JsonObject;
+  context: JsonObject;
+  run: WorkflowProfileRunOptions;
+}
+
+export interface ProfileDiagnostic {
+  severity: "warning" | "info";
+  code: string;
+  message: string;
+  path?: string | undefined;
+}
+
+export interface ResolvedProfileSelection {
+  selected: ProfileName;
+  source: ProfileSource;
+  profilesPath?: string | undefined;
+  hasExternalFile: boolean;
+  resolved: ResolvedWorkflowProfile;
+  hash: string;
+  inheritanceChain: ProfileName[];
+  diagnostics: ProfileDiagnostic[];
+}
+
 // --- Raw Public Configuration Types ---
 
 export interface ResourcePathConfig {
@@ -109,6 +179,7 @@ export interface OpenDynamicWorkflowConfig {
   };
   failFast?: boolean;
   retry?: false | RetryConfigInput | ResolvedRetryPolicy | undefined;
+  profiles?: WorkflowProfileCatalog | undefined;
 }
 
 // --- Resolved Runtime Configuration Types ---
