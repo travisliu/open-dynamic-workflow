@@ -141,13 +141,6 @@ Values stored in the context must be strictly JSON-safe:
 * **Snapshot Limit**: The entire materialized context store must not exceed 1 MB serialized JSON.
 * **Fast Failure**: Validation and size checks are performed before mutation; any violating operation fails fast and leaves the store unmodified.
 
-### Phase 1 Limitations
-The context store is strictly constrained during this phase:
-* Global `context` is supported only in top-level workflow code.
-* `ctx.context` is supported only in default-exported top-level workflow functions.
-* Loop, pipeline, child workflow, and parallel isolated context behaviors are out of scope.
-* Context events, artifacts persistence, and replay patches are out of scope.
-
 ---
 
 ## 3. `agent()`
