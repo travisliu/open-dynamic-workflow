@@ -326,7 +326,8 @@ export function validateWorkflow(
       "failureMode",
       "timeoutMs",
       "concurrency",
-      "metadata"
+      "metadata",
+      "context"
     ]);
 
     for (const prop of firstArg.properties) {
@@ -580,7 +581,7 @@ export function validateWorkflow(
       report(prop, `${callPrefix} contains unsupported property type.`);
     }
 
-    const allowedKeys = new Set(["label", "initialState", "options", "run"]);
+    const allowedKeys = new Set(["label", "initialState", "options", "run", "context"]);
     for (const key of seenKeys) {
       if (key === "runRound") {
         report(firstArg, `${callPrefix} does not support 'runRound'. Use 'run' instead.`);
@@ -1164,7 +1165,7 @@ export function validateWorkflow(
 
           const optionsArg = node.arguments[2];
           if (optionsArg && ts.isObjectLiteralExpression(optionsArg)) {
-            const allowedOptionKeys = ["label", "strategy", "concurrency", "stageConcurrency", "preserveOrder", "failFast"];
+            const allowedOptionKeys = ["label", "strategy", "concurrency", "stageConcurrency", "preserveOrder", "failFast", "context"];
             for (const prop of optionsArg.properties) {
               if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop) || ts.isSpreadAssignment(prop) || ts.isMethodDeclaration(prop)) {
                 const propName = ts.isPropertyAssignment(prop) || ts.isMethodDeclaration(prop)

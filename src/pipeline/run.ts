@@ -75,6 +75,20 @@ export async function runPipeline<I = unknown, O = unknown>(
         runtime,
         input.signal
       );
+      if (runtime.contextRuntime) {
+        const allOverlayResults: any[] = [];
+        for (const itemRes of results) {
+          for (const stageRes of itemRes.stages) {
+            if (stageRes.status === "succeeded" && (stageRes as any).contextOverlayResult) {
+              allOverlayResults.push((stageRes as any).contextOverlayResult);
+              delete (stageRes as any).contextOverlayResult;
+            }
+          }
+        }
+        if (allOverlayResults.length > 0) {
+          runtime.contextRuntime.mergeOverlayResults(allOverlayResults);
+        }
+      }
     }
   } catch (err) {
     errorToThrow = err;

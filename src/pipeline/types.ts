@@ -1,5 +1,11 @@
 import type { AgentCallInput, AgentResult } from "../types/agent.js";
 import type { SerializedError } from "../types/errors.js";
+import type { WorkflowContext } from "../types/context.js";
+import type { ContextMergeStrategy } from "../context/index.js";
+
+export interface PipelineContextOptions {
+  merge?: Record<string, ContextMergeStrategy>;
+}
 
 export type PipelineStrategy = "item-streaming" | "stage-barrier";
 
@@ -10,6 +16,7 @@ export interface PipelineOptions {
   stageConcurrency?: Record<string, number>;
   preserveOrder?: boolean;
   failFast?: boolean;
+  context?: PipelineContextOptions;
 }
 
 export interface NormalizedPipelineOptions {
@@ -19,6 +26,7 @@ export interface NormalizedPipelineOptions {
   stageConcurrency: Record<string, number>;
   preserveOrder: boolean;
   failFast: boolean;
+  context?: PipelineContextOptions;
 }
 
 export interface PipelineStageContext {
@@ -28,6 +36,7 @@ export interface PipelineStageContext {
   itemIndex: number;
   stageIndex: number;
   stageName: string;
+  context: WorkflowContext;
   agent(input: AgentCallInput): Promise<AgentResult>;
   log(message: string, data?: unknown): void;
   agentId(suffix?: string): string;

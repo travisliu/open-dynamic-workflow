@@ -1,5 +1,11 @@
 import type { SerializedError } from "../types/errors.js";
 import type { ToolCallInput, ToolSettledResult } from "../types/tool.js";
+import type { WorkflowContext } from "../types/context.js";
+import type { ContextMergeStrategy } from "../context/index.js";
+
+export interface LoopContextOptions {
+  merge?: Record<string, ContextMergeStrategy> | undefined;
+}
 
 export type LoopFailureMode = "throw" | "settled";
 export type LoopStatus = "succeeded" | "failed" | "cancelled" | "timed_out" | "max_rounds";
@@ -15,6 +21,7 @@ export interface LoopInput<TState> {
   label: string;
   initialState: TState;
   options: LoopOptions;
+  context?: LoopContextOptions | undefined;
   run: LoopRunFunction<TState>;
 }
 
@@ -34,6 +41,7 @@ export interface LoopContext {
   roundIndex: number;  // zero-based
   roundNumber: number; // one-based
   signal: AbortSignal;
+  context: WorkflowContext;
   agent: (input: any) => Promise<any>;
   workflow: (input: any) => Promise<any>;
   tool<TOutput = unknown>(
@@ -87,6 +95,7 @@ export interface NormalizedLoopInput<TState> {
     maxRounds: number;
     timeoutMs?: number;
   };
+  context?: LoopContextOptions | undefined;
   run: LoopRunFunction<TState>;
 }
 

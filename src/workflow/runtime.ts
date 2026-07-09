@@ -17,7 +17,7 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { loadRuntimeCallCache } from "../artifacts/call-cache.js";
 import type { SharedAgentRegistry } from "../shared-agents/registry.js";
-import { createWorkflowContextRuntime } from "../context/index.js";
+import { createWorkflowContextRuntime, writeContextArtifacts } from "../context/index.js";
 
 import { DefaultWorkflowInvocationManager } from "./invocation-manager.js";
 import type { WorkflowInvocationContext } from "./invocation-types.js";
@@ -93,7 +93,14 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     const runLimitTracker = new RunLimitTracker({
       maxAgentCalls: input.cli.maxAgentCalls ?? input.config.maxAgentCalls
     });
-    const contextRuntime = createWorkflowContextRuntime({ runId });
+    const contextRuntime = createWorkflowContextRuntime({
+      runId,
+      emitEvent: (type, payload) => {
+        if (deps.eventSink) {
+          deps.eventSink.emit(type as any, payload);
+        }
+      }
+    });
 
     const runtime: RuntimeState = {
       artifactStore: deps.artifactStore,
@@ -130,6 +137,22 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       loopSummaries: [],
       runLimitTracker,
       contextRuntime
+    };
+
+    const finalizeContextArtifacts = async () => {
+      if (deps.artifactStore) {
+        return await writeContextArtifacts({
+          runId: runtime.runId,
+          artifactStore: deps.artifactStore,
+          contextRuntime: runtime.contextRuntime,
+          emitEvent: (type, payload) => {
+            if (deps.eventSink) {
+              deps.eventSink.emit(type as any, payload);
+            }
+          }
+        });
+      }
+      return undefined;
     };
 
     const invocationManager = new DefaultWorkflowInvocationManager({
@@ -192,16 +215,18 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         throw new OpenDynamicWorkflowError(ErrorCode.WORKFLOW_CANCELLED, String(runtimeAbortController.signal.reason || "Workflow cancelled before execution started."));
       }
 
-      const workflowResult = await withDslExecutionScope({
-        runId: runtime.runId,
-        workflowInvocationId: runtime.runId,
-        location: "workflow-top-level",
-        toolAllowed: true,
-        topLevelWindow: false
-      }, () => invocationManager.executeRoot(
-        registry.require(input.parsedWorkflow.meta.name),
-        runtime.args
-      ));
+      const workflowResult = await runtime.contextRuntime.runWithRootScope(() =>
+        withDslExecutionScope({
+          runId: runtime.runId,
+          workflowInvocationId: runtime.runId,
+          location: "workflow-top-level",
+          toolAllowed: true,
+          topLevelWindow: false
+        }, () => invocationManager.executeRoot(
+          registry.require(input.parsedWorkflow.meta.name),
+          runtime.args
+        ))
+      );
 
       // Wait for scheduler to drain all pending tasks
       await scheduler.drain();
@@ -221,7 +246,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           const finishTime = deps.clock ? deps.clock.now() : new Date();
           const durationMs = finishTime.getTime() - startTime.getTime();
           // Build failed run result for fail-fast
-          const result = buildFailedRunResult(runtime, new Error(reasonMsg), durationMs, finishTime.toISOString(), deps.artifactStore);
+          const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
+          const result = buildFailedRunResult(runtime, new Error(reasonMsg), durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary);
           if (deps.eventSink) {
             deps.eventSink.emit("workflow.failed", {
               status: "failed",
@@ -242,7 +268,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           const finishTime = deps.clock ? deps.clock.now() : new Date();
           const durationMs = finishTime.getTime() - startTime.getTime();
           // Build cancelled run result
-          const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), reasonMsg, deps.artifactStore);
+          const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
+          const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), reasonMsg, deps.artifactStore, contextSummary);
           if (deps.eventSink) {
             deps.eventSink.emit("workflow.cancelled", {
               status: "cancelled",
@@ -266,7 +293,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       const durationMs = finishTime.getTime() - startTime.getTime();
 
       // Build succeeded run result
-      const result = buildSucceededRunResult(runtime, workflowResult, durationMs, finishTime.toISOString(), deps.artifactStore);
+      const contextSummary = await finalizeContextArtifacts();
+      const result = buildSucceededRunResult(runtime, workflowResult, durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary);
       if (deps.eventSink) {
         deps.eventSink.emit("workflow.completed", {
           status: "succeeded",
@@ -314,7 +342,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
                              (err?.name === "OpenDynamicWorkflowError" && (err?.code === ErrorCode.WORKFLOW_CANCELLED || err?.code === ErrorCode.USER_CANCELLED));
 
       if (isCancellation) {
-        const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), err.message, deps.artifactStore);
+        const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
+        const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), err.message, deps.artifactStore, contextSummary);
         if (deps.eventSink) {
           deps.eventSink.emit("workflow.cancelled", {
             status: "cancelled",
@@ -330,7 +359,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       }
 
       // Build failed run result
-      const result = buildFailedRunResult(runtime, err, durationMs, finishTime.toISOString(), deps.artifactStore);
+      const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
+      const result = buildFailedRunResult(runtime, err, durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary);
       if (deps.eventSink) {
         deps.eventSink.emit("workflow.failed", {
           status: "failed",
@@ -428,12 +458,47 @@ export async function executeWorkflowModule(runtime: RuntimeState, invocationCon
   }
 }
 
+function buildReportContextSummary(
+  runtime: RuntimeState,
+  contextSummary?: any
+) {
+  if (!runtime.contextRuntime) {
+    return undefined;
+  }
+  const summary = runtime.contextRuntime.getSummary();
+  const completedPatches = runtime.contextRuntime.getCompletedPatches();
+
+  let truncatedPreviewCount = 0;
+  for (const patch of completedPatches) {
+    for (const op of patch.patchOperations) {
+      if (op.truncated) {
+        truncatedPreviewCount++;
+      }
+    }
+    for (const inh of patch.inheritedPaths) {
+      if (inh.truncated) {
+        truncatedPreviewCount++;
+      }
+    }
+  }
+
+  return {
+    rootFinalArtifact: contextSummary?.rootFinalArtifactPath,
+    summaryArtifact: contextSummary?.summaryArtifactPath,
+    overlayCount: summary.totalOverlays,
+    conflictCount: summary.conflictCount,
+    rejectedWriteCount: summary.rejectionCount,
+    truncatedPreviewCount,
+  };
+}
+
 export function buildSucceededRunResult(
   runtime: RuntimeState,
   workflowResult: unknown,
   durationMs: number,
   finishedAt: string,
-  artifactStore?: ArtifactStore
+  artifactStore?: ArtifactStore,
+  contextSummary?: any
 ): WorkflowRunResult {
   const runArtifacts = artifactStore ? artifactStore.getRunArtifacts() : undefined;
   const reportPath = runArtifacts?.reportPath || path.join(runtime.artifactsDir, "report.json");
@@ -455,7 +520,8 @@ export function buildSucceededRunResult(
     artifactsDir: runtime.artifactsDir,
     reportPath,
     eventsPath,
-    limitSummary: runtime.runLimitTracker?.summary()
+    limitSummary: runtime.runLimitTracker?.summary(),
+    context: buildReportContextSummary(runtime, contextSummary)
   };
 
   if (workflowResult !== undefined) {
@@ -470,7 +536,8 @@ export function buildFailedRunResult(
   error: unknown,
   durationMs: number,
   finishedAt: string,
-  artifactStore?: ArtifactStore
+  artifactStore?: ArtifactStore,
+  contextSummary?: any
 ): WorkflowRunResult {
   const runArtifacts = artifactStore ? artifactStore.getRunArtifacts() : undefined;
   const reportPath = runArtifacts?.reportPath || path.join(runtime.artifactsDir, "report.json");
@@ -495,7 +562,8 @@ export function buildFailedRunResult(
     reportPath,
     eventsPath,
     limitSummary: runtime.runLimitTracker?.summary(),
-    error: serialized
+    error: serialized,
+    context: buildReportContextSummary(runtime, contextSummary)
   };
 
   return result;
@@ -506,7 +574,8 @@ export function buildCancelledRunResult(
   durationMs: number,
   finishedAt: string,
   reason?: string,
-  artifactStore?: ArtifactStore
+  artifactStore?: ArtifactStore,
+  contextSummary?: any
 ): WorkflowRunResult {
   const runArtifacts = artifactStore ? artifactStore.getRunArtifacts() : undefined;
   const reportPath = runArtifacts?.reportPath || path.join(runtime.artifactsDir, "report.json");
@@ -535,7 +604,8 @@ export function buildCancelledRunResult(
     reportPath,
     eventsPath,
     limitSummary: runtime.runLimitTracker?.summary(),
-    error: errorPayload
+    error: errorPayload,
+    context: buildReportContextSummary(runtime, contextSummary)
   };
 
   return result;

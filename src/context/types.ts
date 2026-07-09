@@ -43,6 +43,121 @@ export interface WorkflowContext {
   scope<T>(pathPrefix: string, fn: () => Promise<T> | T): Promise<T>;
 }
 
-export interface WorkflowContextRuntime {
-  createFacade(): WorkflowContext;
+export type ContextScopeType =
+  | "root"
+  | "workflow"
+  | "loop-round"
+  | "pipeline-stage"
+  | "parallel-branch"
+  | "manual-scope";
+
+export type ContextMergeStrategy = "append" | "merge" | "replace" | "rejectOnConflict";
+
+export type ContextInheritRule = string | { path: string; required?: boolean };
+
+export interface NormalizedContextInheritRule {
+  path: string;
+  required: boolean;
 }
+
+export type ContextScopeMetadata = Record<string, JsonValue | undefined>;
+
+export interface ContextPatchOperation {
+  id: string;
+  sequence: number;
+  path: string;
+  op: ContextOperationName;
+  valuePreview?: JsonValue | undefined;
+  valueArtifactRef?: string | undefined;
+  truncated?: boolean | undefined;
+}
+
+export interface ContextInheritedPathArtifact {
+  path: string;
+  required: boolean;
+  found: boolean;
+  valuePreview?: JsonValue | undefined;
+  truncated?: boolean | undefined;
+}
+
+export interface ContextMergeSummary {
+  mergedPaths: string[];
+  rejectedPaths: string[];
+  conflictPaths: string[];
+  details?: Record<
+    string,
+    {
+      strategy: ContextMergeStrategy;
+      status: "merged" | "rejected" | "conflict";
+      reason?: string | undefined;
+    }
+  > | undefined;
+}
+
+export interface ContextOverlayPatchArtifact {
+  scopeId: string;
+  scopeType: ContextScopeType;
+  parentScopeId?: string | undefined;
+  metadata: ContextScopeMetadata;
+  inheritedPaths: ContextInheritedPathArtifact[];
+  patchOperations: ContextPatchOperation[];
+  mergeSummary?: ContextMergeSummary | undefined;
+  merged: boolean;
+}
+
+export interface ContextFinalizationSummary {
+  rootFinalArtifactPath?: string | undefined;
+  summaryArtifactPath?: string | undefined;
+  overlayPatchArtifactPaths?: Record<string, string> | undefined;
+  totalOverlays: number;
+  mergedOverlays: number;
+  failedOverlays: number;
+  conflictCount: number;
+  rejectionCount: number;
+}
+
+export interface ContextRuntimeSummary {
+  totalOverlays: number;
+  mergedOverlays: number;
+  conflictCount: number;
+  rejectionCount: number;
+}
+
+export interface ContextOverlayOptions {
+  scopeId: string;
+  scopeType: ContextScopeType;
+  parentScopeId?: string | undefined;
+  metadata?: ContextScopeMetadata | undefined;
+  inherit?: ContextInheritRule[] | undefined;
+  mergeRules?: Record<string, ContextMergeStrategy> | undefined;
+  orderKey?: string | number | undefined;
+  mergeMode?: "immediate" | "deferred" | undefined;
+}
+
+export interface ContextOverlayResult<T> {
+  scopeId: string;
+  success: boolean;
+  result?: T | undefined;
+  error?: any;
+  patch: ContextOverlayPatchArtifact;
+  mergeSummary?: ContextMergeSummary | undefined;
+}
+
+export interface WorkflowContextRuntime {
+  runWithRootScope<T>(fn: () => Promise<T> | T): Promise<T>;
+  runWithOverlay<T>(
+    options: ContextOverlayOptions,
+    fn: () => Promise<T> | T
+  ): Promise<ContextOverlayResult<T>>;
+  mergeOverlayResults(
+    results: ContextOverlayResult<unknown>[],
+    options?: { groupId?: string }
+  ): ContextMergeSummary;
+  getActiveScopeId(): string;
+  getSummary(): ContextRuntimeSummary;
+  getCompletedPatches(): ContextOverlayPatchArtifact[];
+  createFacade(): WorkflowContext;
+  getRootFrame?(): any;
+}
+
+

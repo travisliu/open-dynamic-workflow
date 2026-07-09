@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createSandboxContext } from "../../../src/workflow/sandbox.js";
 import { createDsl } from "../../../src/workflow/dsl.js";
 import type { RuntimeState } from "../../../src/workflow/types.js";
+import { createWorkflowContextRuntime } from "../../../src/context/index.js";
 import * as vm from "node:vm";
 
 describe("DSL pipeline exposure", () => {
@@ -31,7 +32,8 @@ describe("DSL pipeline exposure", () => {
     eventSink: {} as any,
     abortController: new AbortController(),
     agentCounter: 0,
-    startedAt: new Date().toISOString()
+    startedAt: new Date().toISOString(),
+    contextRuntime: createWorkflowContextRuntime({ runId: "run-123" })
   };
 
   it("exposes pipeline in createDsl", () => {

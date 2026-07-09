@@ -61,7 +61,16 @@ export type EventType =
   | "loop.failed"
   | "loop.cancelled"
   | "loop.timed_out"
-  | "loop.max_rounds";
+  | "loop.max_rounds"
+  | "context.overlay.created"
+  | "context.path.set"
+  | "context.path.merge"
+  | "context.path.append"
+  | "context.path.delete"
+  | "context.merge.applied"
+  | "context.merge.rejected"
+  | "context.merge.conflict"
+  | "context.artifact.written";
 
 export interface EventEnvelope<TPayload = unknown> {
   schemaVersion: "open-dynamic-workflow.event.v1";

@@ -35,6 +35,15 @@ export type ParallelResult<TTasks> = TTasks extends Array<() => Promise<infer TV
 
 export type WorkflowFailureMode = "throw" | "settled";
 
+export type ContextMergeStrategy = "append" | "merge" | "replace" | "rejectOnConflict";
+
+export type ContextInheritRule = string | { path: string; required?: boolean };
+
+export interface WorkflowContextOptions {
+  inherit?: ContextInheritRule[] | undefined;
+  merge?: Record<string, ContextMergeStrategy> | undefined;
+}
+
 export interface WorkflowCallInput {
   name: string;
   args?: JsonObject;
@@ -42,6 +51,7 @@ export interface WorkflowCallInput {
   timeoutMs?: number;
   concurrency?: number;
   metadata?: JsonObject;
+  context?: WorkflowContextOptions | undefined;
 }
 
 export type WorkflowThrowCallInput = Omit<WorkflowCallInput, "failureMode"> & {
@@ -100,6 +110,12 @@ export interface WorkflowRunLimitSummary {
   message?: string | undefined;
 }
 
+export interface ParallelOptions {
+  context?: {
+    merge?: Record<string, ContextMergeStrategy>;
+  };
+}
+
 export interface WorkflowRuntimeContext {
   args: JsonObject;
   cwd: string;
@@ -108,7 +124,10 @@ export interface WorkflowRuntimeContext {
   artifactsDir: string;
   context: WorkflowContext;
   agent(input: AgentCallInput): Promise<AgentResult>;
-  parallel<TTasks extends ParallelTasks<unknown>>(tasks: TTasks): Promise<ParallelResult<TTasks>>;
+  parallel<TTasks extends ParallelTasks<unknown>>(
+    tasks: TTasks,
+    options?: ParallelOptions
+  ): Promise<ParallelResult<TTasks>>;
   phase(name: string): void;
   log(message: string, data?: unknown): void;
   pipeline<I, O>(
@@ -170,4 +189,12 @@ export interface WorkflowRunResult {
   eventsPath: string;
   limitSummary?: WorkflowRunLimitSummary | undefined;
   error?: SerializedError | undefined;
+  context?: {
+    rootFinalArtifact?: string | undefined;
+    summaryArtifact?: string | undefined;
+    overlayCount: number;
+    conflictCount: number;
+    rejectedWriteCount: number;
+    truncatedPreviewCount: number;
+  } | undefined;
 }

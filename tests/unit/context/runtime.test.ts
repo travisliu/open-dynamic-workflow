@@ -289,7 +289,9 @@ describe("Workflow Context Runtime", () => {
     expect(snap.metadata).toEqual({
       scopeId: "test-run-123",
       visibleScopes: ["test-run-123"],
-      sourcePaths: {},
+      sourcePaths: {
+        a: "test-run-123",
+      },
       deletedPaths: [],
       serializedBytes: expect.any(Number),
       limitBytes: expect.any(Number),
@@ -405,5 +407,113 @@ describe("Workflow Context Runtime", () => {
       })
     );
     expect(rawStore2.mergeTarget).toEqual({ initial: "value" });
+  });
+
+  it("throws CONTEXT_MERGE_CONFLICT when deferred overlay appends into non-array target", async () => {
+    // Arrange
+    const runtime = createWorkflowContextRuntime({ runId: "test-run" });
+    const ctx = runtime.createFacade();
+    ctx.set("target", "not-an-array");
+
+    const overlayResult = await runtime.runWithOverlay(
+      {
+        scopeId: "child-append",
+        scopeType: "pipeline-stage",
+        mergeMode: "deferred",
+        mergeRules: { target: "append" },
+      },
+      async () => {
+        const childCtx = runtime.createFacade();
+        childCtx.append("target", "value");
+      }
+    );
+
+    // Act & Assert
+    expect(() => runtime.mergeOverlayResults([overlayResult])).toThrow(
+      expect.objectContaining({
+        code: ErrorCode.CONTEXT_MERGE_CONFLICT,
+      })
+    );
+  });
+
+  it("applies only append deltas on inherited arrays", async () => {
+    // Arrange
+    const runtime = createWorkflowContextRuntime({ runId: "test-run" });
+    const ctx = runtime.createFacade();
+    ctx.set("items", [1]);
+
+    const overlayResult = await runtime.runWithOverlay(
+      {
+        scopeId: "child-overlay",
+        scopeType: "pipeline-stage",
+        mergeMode: "deferred",
+        mergeRules: { items: "append" },
+        inherit: ["items"],
+      },
+      async () => {
+        const childCtx = runtime.createFacade();
+        childCtx.append("items", 2);
+      }
+    );
+
+    // Act
+    runtime.mergeOverlayResults([overlayResult]);
+
+    // Assert
+    expect(ctx.get("items")).toEqual([1, 2]);
+  });
+
+  it("preserves multiple appends call order", async () => {
+    // Arrange
+    const runtime = createWorkflowContextRuntime({ runId: "test-run" });
+    const ctx = runtime.createFacade();
+    ctx.set("items", [1]);
+
+    const overlayResult = await runtime.runWithOverlay(
+      {
+        scopeId: "child-overlay",
+        scopeType: "pipeline-stage",
+        mergeMode: "deferred",
+        mergeRules: { items: "append" },
+        inherit: ["items"],
+      },
+      async () => {
+        const childCtx = runtime.createFacade();
+        childCtx.append("items", 2);
+        childCtx.append("items", 3);
+      }
+    );
+
+    // Act
+    runtime.mergeOverlayResults([overlayResult]);
+
+    // Assert
+    expect(ctx.get("items")).toEqual([1, 2, 3]);
+  });
+
+  it("appends full array values when child sets array on rule path", async () => {
+    // Arrange
+    const runtime = createWorkflowContextRuntime({ runId: "test-run" });
+    const ctx = runtime.createFacade();
+    ctx.set("items", [1]);
+
+    const overlayResult = await runtime.runWithOverlay(
+      {
+        scopeId: "child-overlay",
+        scopeType: "pipeline-stage",
+        mergeMode: "deferred",
+        mergeRules: { items: "append" },
+      },
+      async () => {
+        const childCtx = runtime.createFacade();
+        childCtx.set("items", [2, 3]);
+      }
+    );
+
+    // Act
+    runtime.mergeOverlayResults([overlayResult]);
+
+    // Assert
+    expect(ctx.get("items")).toEqual([1, 2, 3]);
   });
 });

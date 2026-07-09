@@ -77,6 +77,18 @@ export async function runStage(input: RunStageInput): Promise<PipelineStageResul
     itemIndex,
     stageIndex,
     stageName: stage.name,
+    context: runtime.contextRuntime
+      ? runtime.contextRuntime.createFacade()
+      : {
+          get: () => undefined,
+          has: () => false,
+          set: () => {},
+          delete: () => false,
+          merge: () => {},
+          append: () => {},
+          snapshot: () => ({ values: {}, metadata: { scopeId: "", visibleScopes: [], sourcePaths: {}, deletedPaths: [] } } as any),
+          scope: (prefix: string, fn: any) => fn()
+        },
     agent: async (agentInput) => {
       if (stageAbortController.signal.aborted) {
         throw stageAbortController.signal.reason || new Error("Aborted");
@@ -138,6 +150,7 @@ export async function runStage(input: RunStageInput): Promise<PipelineStageResul
   let error: unknown;
   let status: "succeeded" | "failed" | "timed_out" | "cancelled" = "succeeded";
   let onAbortListener: (() => void) | undefined;
+  let contextOverlayResult: any;
 
   try {
     if (stageAbortController.signal.aborted) {
@@ -154,11 +167,42 @@ export async function runStage(input: RunStageInput): Promise<PipelineStageResul
         stageAbortController.signal.addEventListener("abort", onAbortListener);
       });
 
-      const executionPromise = withActivePipelineContext(activeCtx, async () => {
-        return withToolForbidden("pipeline-stage", async () => {
-          return await stage.run(item, stageContext);
+      let executionPromise: Promise<unknown>;
+      if (!runtime.contextRuntime) {
+        executionPromise = withActivePipelineContext(activeCtx, async () => {
+          return withToolForbidden("pipeline-stage", async () => {
+            return await stage.run(item, stageContext);
+          });
         });
-      });
+      } else {
+        const parentScopeId = runtime.contextRuntime.getActiveScopeId?.() || runtime.runId;
+        const scopeId = `${pipelineId}:item-${itemIndex}:stage-${stageIndex}`;
+        executionPromise = runtime.contextRuntime.runWithOverlay({
+          scopeId,
+          scopeType: "pipeline-stage",
+          parentScopeId,
+          metadata: {
+            pipelineId,
+            itemIndex,
+            stageIndex,
+            stageName: stage.name
+          },
+          mergeRules: options.context?.merge,
+          orderKey: itemIndex * 10000 + stageIndex,
+          mergeMode: "deferred"
+        }, () => withActivePipelineContext(activeCtx, async () => {
+          return withToolForbidden("pipeline-stage", async () => {
+            return await stage.run(item, stageContext);
+          });
+        })).then((overlayRes) => {
+          contextOverlayResult = overlayRes;
+          if (overlayRes.success) {
+            return overlayRes.result;
+          } else {
+            throw overlayRes.error || new Error("Pipeline stage failed");
+          }
+        });
+      }
 
       value = await Promise.race([executionPromise, abortPromise]);
     }
@@ -196,6 +240,9 @@ export async function runStage(input: RunStageInput): Promise<PipelineStageResul
       value,
       activeCtx.childAgentIds
     );
+    if (contextOverlayResult) {
+      (result as any).contextOverlayResult = contextOverlayResult;
+    }
   } else {
     let actualError = error;
     if (!actualError) {

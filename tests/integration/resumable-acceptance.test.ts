@@ -271,7 +271,7 @@ export default async (ctx) => {
       if (stat.isFile()) {
         // ok
       } else if (stat.isDirectory()) {
-        expect(["agents", "workflows", "tools"]).toContain(file);
+        expect(["agents", "workflows", "tools", "context"]).toContain(file);
       }
     }
   });

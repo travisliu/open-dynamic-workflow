@@ -1,7 +1,7 @@
 import { InvalidDslCallError } from "../workflow/errors.js";
-import type { NormalizedLoopInput, LoopFailureMode } from "./types.js";
+import type { NormalizedLoopInput, LoopFailureMode, LoopContextOptions } from "./types.js";
 
-const ALLOWED_TOP_LEVEL_KEYS = ["label", "initialState", "options", "run"];
+const ALLOWED_TOP_LEVEL_KEYS = ["label", "initialState", "options", "run", "context"];
 const ALLOWED_OPTION_KEYS = ["maxRounds", "failureMode", "timeoutMs"];
 
 /**
@@ -30,7 +30,7 @@ export function validateAndNormalizeLoopArgs<TState>(
   }
 
   // Require label, initialState, options, and run
-  const { label, initialState, options, run } = input as any;
+  const { label, initialState, options, run, context: rawContext } = input as any;
 
   if (label === undefined) {
     throw new InvalidDslCallError("loop() missing required field 'label'.");
@@ -100,6 +100,34 @@ export function validateAndNormalizeLoopArgs<TState>(
     }
   }
 
+  let context: LoopContextOptions | undefined;
+  if (rawContext !== undefined) {
+    if (rawContext === null || typeof rawContext !== "object" || Array.isArray(rawContext)) {
+      throw new InvalidDslCallError("loop() context must be a plain object.");
+    }
+    const allowedContextKeys = ["merge"];
+    for (const key of Object.keys(rawContext)) {
+      if (!allowedContextKeys.includes(key)) {
+        throw new InvalidDslCallError(`loop() context contains unsupported key '${key}'.`);
+      }
+    }
+    const merge = rawContext.merge;
+    if (merge !== undefined) {
+      if (merge === null || typeof merge !== "object" || Array.isArray(merge)) {
+        throw new InvalidDslCallError("loop() context.merge must be a plain object.");
+      }
+      const allowedStrategies = ["append", "merge", "replace", "rejectOnConflict"];
+      for (const [key, val] of Object.entries(merge)) {
+        if (!allowedStrategies.includes(val as string)) {
+          throw new InvalidDslCallError(
+            `loop() context.merge strategy for '${key}' must be one of ${allowedStrategies.join(", ")}, got '${val}'.`
+          );
+        }
+      }
+    }
+    context = rawContext;
+  }
+
   return {
     label,
     initialState,
@@ -108,6 +136,7 @@ export function validateAndNormalizeLoopArgs<TState>(
       maxRounds,
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
     },
+    context,
     run,
   };
 }
