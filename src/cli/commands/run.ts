@@ -15,6 +15,7 @@ import { loadToolRegistry } from "../../tools/load.js";
 import { DefaultToolExecutor } from "../../tools/executor.js";
 import * as path from "node:path";
 import { detectProjectInitHintContext, attachHintToError } from "../../errors/project-init-hint.js";
+import { resolveRunProfile } from "../profile-resolution.js";
 
 export interface RunCommandDeps {
   runtimeRunner: RuntimeRunner;
@@ -77,30 +78,74 @@ export async function runWorkflowService(
 
   const retryCliOptions = parseRetryCliOptions(rawOptions);
 
-  const cliOverrides: any = {};
-  if (rawOptions.provider !== undefined) cliOverrides.provider = rawOptions.provider;
-  if (rawOptions.model !== undefined) cliOverrides.model = rawOptions.model;
-  if (concurrency !== undefined) cliOverrides.concurrency = concurrency;
-  if (timeoutMs !== undefined) cliOverrides.timeoutMs = timeoutMs;
-  if (maxAgentCalls !== undefined) cliOverrides.maxAgentCalls = maxAgentCalls;
-  if (reportMode !== undefined) cliOverrides.report = reportMode;
-  if (rawOptions.verbose !== undefined) cliOverrides.verbose = !!rawOptions.verbose;
+  const explicitCliOverrides: any = {};
+  if (rawOptions.provider !== undefined) explicitCliOverrides.provider = rawOptions.provider;
+  if (rawOptions.model !== undefined) explicitCliOverrides.model = rawOptions.model;
+  if (concurrency !== undefined) explicitCliOverrides.concurrency = concurrency;
+  if (timeoutMs !== undefined) explicitCliOverrides.timeoutMs = timeoutMs;
+  if (maxAgentCalls !== undefined) explicitCliOverrides.maxAgentCalls = maxAgentCalls;
+  if (reportMode !== undefined) explicitCliOverrides.report = reportMode;
+  if (rawOptions.verbose !== undefined) explicitCliOverrides.verbose = !!rawOptions.verbose;
+  if (rawOptions.failFast !== undefined) {
+    explicitCliOverrides.failFast = typeof rawOptions.failFast === "boolean" ? rawOptions.failFast : !!rawOptions.failFast;
+  }
 
-  if (retryCliOptions.retryMaxAttempts !== undefined) cliOverrides.retryMaxAttempts = retryCliOptions.retryMaxAttempts;
-  if (retryCliOptions.retryDelayMs !== undefined) cliOverrides.retryDelayMs = retryCliOptions.retryDelayMs;
-  if (retryCliOptions.retryMaxDelayMs !== undefined) cliOverrides.retryMaxDelayMs = retryCliOptions.retryMaxDelayMs;
-  if (retryCliOptions.retryBackoff !== undefined) cliOverrides.retryBackoff = retryCliOptions.retryBackoff;
-  if (retryCliOptions.retryDisableDelay !== undefined) cliOverrides.retryDisableDelay = retryCliOptions.retryDisableDelay;
-  if (retryCliOptions.noRetry !== undefined) cliOverrides.noRetry = retryCliOptions.noRetry;
+  if (retryCliOptions.retryMaxAttempts !== undefined) explicitCliOverrides.retryMaxAttempts = retryCliOptions.retryMaxAttempts;
+  if (retryCliOptions.retryDelayMs !== undefined) explicitCliOverrides.retryDelayMs = retryCliOptions.retryDelayMs;
+  if (retryCliOptions.retryMaxDelayMs !== undefined) explicitCliOverrides.retryMaxDelayMs = retryCliOptions.retryMaxDelayMs;
+  if (retryCliOptions.retryBackoff !== undefined) explicitCliOverrides.retryBackoff = retryCliOptions.retryBackoff;
+  if (retryCliOptions.retryDisableDelay !== undefined) explicitCliOverrides.retryDisableDelay = retryCliOptions.retryDisableDelay;
+  if (retryCliOptions.noRetry !== undefined) explicitCliOverrides.noRetry = retryCliOptions.noRetry;
 
-  // Load config
-  const config = await loadConfig({
+  // Load base config
+  const baseConfig = await loadConfig({
     cwd,
     configPath: rawOptions.config,
     outDir: rawOptions.out,
-    cli: cliOverrides,
+    cli: explicitCliOverrides,
     diagnosticContext: strict ? "run-strict" : "run"
   });
+
+  // Resolve profile before discovery
+  const {
+    profileRunAsCli,
+    finalCliArgs,
+    selection,
+    contextSeed,
+    reportProfile
+  } = await resolveRunProfile({
+    cwd: baseConfig.cwd,
+    configPath: baseConfig.configPath,
+    baseConfig,
+    rawOptions,
+    explicitCliOverrides,
+    explicitArgs: parsedArgs
+  });
+
+  const mergedCliOverrides = { ...profileRunAsCli.config, ...explicitCliOverrides };
+  if (
+    explicitCliOverrides.retryMaxAttempts !== undefined ||
+    explicitCliOverrides.retryDelayMs !== undefined ||
+    explicitCliOverrides.retryMaxDelayMs !== undefined ||
+    explicitCliOverrides.retryBackoff !== undefined ||
+    explicitCliOverrides.retryDisableDelay !== undefined
+  ) {
+    if (explicitCliOverrides.noRetry === undefined) {
+      delete mergedCliOverrides.noRetry;
+    }
+  }
+
+  // Load final config
+  let config = baseConfig;
+  if (selection) {
+    config = await loadConfig({
+      cwd,
+      configPath: rawOptions.config,
+      outDir: rawOptions.out,
+      cli: mergedCliOverrides,
+      diagnosticContext: strict ? "run-strict" : "run"
+    });
+  }
 
   const { precollectAllResourcesForLoad, checkDiscoveryPolicy } = await import("../../discovery/precollect.js");
 
@@ -241,6 +286,7 @@ export async function runWorkflowService(
     cwd: config.cwd,
     outDir: config.outDir,
     configPath: config.configPath,
+    args: finalCliArgs,
     rawOptions: {
       provider: rawOptions.provider,
       model: rawOptions.model,
@@ -254,11 +300,21 @@ export async function runWorkflowService(
       maxAgentCalls: rawOptions.maxAgentCalls,
       resume: rawOptions.resume,
       noCache: noCache,
-      failFast: !!rawOptions.failFast,
+      failFast: config.failFast ?? false,
       verbose: !!rawOptions.verbose,
       thinkingEffort: rawOptions.thinkingEffort,
       strict: strict
-    }
+    },
+    ...(selection ? {
+      profile: {
+        selected: selection.selected,
+        source: selection.source,
+        ...(selection.profilesPath !== undefined ? { profilesPath: selection.profilesPath } : {}),
+        resolved: selection.resolved,
+        hash: selection.hash,
+        inheritanceChain: selection.inheritanceChain
+      }
+    } : {})
   });
 
   const reporter = createReporter({
@@ -333,7 +389,7 @@ export async function runWorkflowService(
         workflowFile: rootDefinition.sourcePath,
         provider: rawOptions.provider,
         model: rawOptions.model,
-        args: parsedArgs,
+        args: finalCliArgs,
         cwd: config.cwd,
         outDir: runOutDir,
         report: config.reporting.mode,
@@ -343,13 +399,15 @@ export async function runWorkflowService(
         resume: rawOptions.resume,
         noCache,
         dryRun: false,
-        failFast: !!rawOptions.failFast,
+        failFast: config.failFast ?? false,
         verbose: config.reporting.verbose,
-        thinkingEffort
+        thinkingEffort: thinkingEffort ?? profileRunAsCli.thinkingEffort
       },
       signal: abortController.signal,
       sharedAgentRegistry,
-      toolRegistry
+      toolRegistry,
+      profileContextSeed: contextSeed,
+      profileReport: reportProfile
     }, (() => {
       let pipelineCounter = 0;
       return {

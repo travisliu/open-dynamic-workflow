@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as vm from "node:vm";
 import type { ParsedWorkflow, WorkflowRunResult, ResolvedWorkflowIdentity } from "../types/workflow.js";
-import type { ResolvedConfig, CliRunOptions } from "../types/config.js";
+import type { ResolvedConfig, CliRunOptions, RuntimeProfileContextSeed, ProfileReportMetadata } from "../types/config.js";
 
 import type { ArtifactStore } from "../types/artifacts.js";
 import type { AgentExecutor } from "../agents/execution-types.js";
@@ -16,7 +16,7 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { loadRuntimeCallCache } from "../artifacts/call-cache.js";
 import type { SharedAgentRegistry } from "../shared-agents/registry.js";
-import { createWorkflowContextRuntime, writeContextArtifacts } from "../context/index.js";
+import { createWorkflowContextRuntime, writeContextArtifacts, seedProfileContext } from "../context/index.js";
 
 import { DefaultWorkflowInvocationManager } from "./invocation-manager.js";
 import type { WorkflowInvocationContext } from "./invocation-types.js";
@@ -36,13 +36,15 @@ export interface IdGenerator {
 
 export interface RuntimeRunInput {
   parsedWorkflow: ParsedWorkflow;
-  workflowRegistry?: WorkflowRegistry;
-  workflowIdentity?: ResolvedWorkflowIdentity;
+  workflowRegistry?: WorkflowRegistry | undefined;
+  workflowIdentity?: ResolvedWorkflowIdentity | undefined;
   config: ResolvedConfig;
   cli: CliRunOptions;
-  signal?: AbortSignal;
-  sharedAgentRegistry?: SharedAgentRegistry;
-  toolRegistry?: ToolRegistry;
+  signal?: AbortSignal | undefined;
+  sharedAgentRegistry?: SharedAgentRegistry | undefined;
+  toolRegistry?: ToolRegistry | undefined;
+  profileContextSeed?: RuntimeProfileContextSeed | undefined;
+  profileReport?: ProfileReportMetadata | undefined;
 }
 
 export interface RuntimeDependencies {
@@ -187,6 +189,48 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
       }
     }
 
+    // Seeding and Event emission for Profile context
+    if (input.profileContextSeed) {
+      try {
+        seedProfileContext({
+          contextRuntime: runtime.contextRuntime,
+          seed: input.profileContextSeed
+        });
+      } catch (err: any) {
+        const finishTime = deps.clock ? deps.clock.now() : new Date();
+        const durationMs = finishTime.getTime() - startTime.getTime();
+        const result = buildFailedRunResult(
+          runtime,
+          err,
+          durationMs,
+          finishTime.toISOString(),
+          deps.artifactStore,
+          undefined,
+          input.profileReport
+        );
+        if (deps.eventSink) {
+          deps.eventSink.emit("workflow.failed", {
+            status: "failed",
+            durationMs,
+            error: result.error!,
+            limitSummary: result.limitSummary
+          });
+        }
+        if (deps.artifactStore) {
+          await deps.artifactStore.updateManifest("failed", result.error);
+        }
+        return result;
+      }
+    }
+
+    if (input.profileReport) {
+      if (deps.eventSink) {
+        deps.eventSink.emit("profile.resolved", {
+          profile: input.profileReport
+        });
+      }
+    }
+
     // Emit workflow.resolved if present
     if (deps.eventSink && input.workflowIdentity) {
       deps.eventSink.emit("workflow.resolved", {
@@ -245,7 +289,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           const durationMs = finishTime.getTime() - startTime.getTime();
           // Build failed run result for fail-fast
           const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
-          const result = buildFailedRunResult(runtime, new Error(reasonMsg), durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary);
+          const result = buildFailedRunResult(runtime, new Error(reasonMsg), durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary, input.profileReport);
           if (deps.eventSink) {
             deps.eventSink.emit("workflow.failed", {
               status: "failed",
@@ -267,7 +311,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
           const durationMs = finishTime.getTime() - startTime.getTime();
           // Build cancelled run result
           const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
-          const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), reasonMsg, deps.artifactStore, contextSummary);
+          const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), reasonMsg, deps.artifactStore, contextSummary, input.profileReport);
           if (deps.eventSink) {
             deps.eventSink.emit("workflow.cancelled", {
               status: "cancelled",
@@ -292,7 +336,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
 
       // Build succeeded run result
       const contextSummary = await finalizeContextArtifacts();
-      const result = buildSucceededRunResult(runtime, workflowResult, durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary);
+      const result = buildSucceededRunResult(runtime, workflowResult, durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary, input.profileReport);
       if (deps.eventSink) {
         deps.eventSink.emit("workflow.completed", {
           status: "succeeded",
@@ -341,7 +385,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
 
       if (isCancellation) {
         const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
-        const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), err.message, deps.artifactStore, contextSummary);
+        const result = buildCancelledRunResult(runtime, durationMs, finishTime.toISOString(), err.message, deps.artifactStore, contextSummary, input.profileReport);
         if (deps.eventSink) {
           deps.eventSink.emit("workflow.cancelled", {
             status: "cancelled",
@@ -358,7 +402,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
 
       // Build failed run result
       const contextSummary = await finalizeContextArtifacts().catch(() => undefined);
-      const result = buildFailedRunResult(runtime, err, durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary);
+      const result = buildFailedRunResult(runtime, err, durationMs, finishTime.toISOString(), deps.artifactStore, contextSummary, input.profileReport);
       if (deps.eventSink) {
         deps.eventSink.emit("workflow.failed", {
           status: "failed",
@@ -463,7 +507,8 @@ export function buildSucceededRunResult(
   durationMs: number,
   finishedAt: string,
   artifactStore?: ArtifactStore,
-  contextSummary?: any
+  contextSummary?: any,
+  profileReport?: ProfileReportMetadata
 ): WorkflowRunResult {
   const runArtifacts = artifactStore ? artifactStore.getRunArtifacts() : undefined;
   const reportPath = runArtifacts?.reportPath || path.join(runtime.artifactsDir, "report.json");
@@ -486,11 +531,16 @@ export function buildSucceededRunResult(
     reportPath,
     eventsPath,
     limitSummary: runtime.runLimitTracker?.summary(),
-    context: buildReportContextSummary(runtime, contextSummary)
+    context: buildReportContextSummary(runtime, contextSummary),
+    concurrency: runtime.config.concurrency
   };
 
   if (workflowResult !== undefined) {
     result.result = workflowResult;
+  }
+
+  if (profileReport) {
+    result.profile = profileReport;
   }
 
   return result;
@@ -502,7 +552,8 @@ export function buildFailedRunResult(
   durationMs: number,
   finishedAt: string,
   artifactStore?: ArtifactStore,
-  contextSummary?: any
+  contextSummary?: any,
+  profileReport?: ProfileReportMetadata
 ): WorkflowRunResult {
   const runArtifacts = artifactStore ? artifactStore.getRunArtifacts() : undefined;
   const reportPath = runArtifacts?.reportPath || path.join(runtime.artifactsDir, "report.json");
@@ -528,8 +579,13 @@ export function buildFailedRunResult(
     eventsPath,
     limitSummary: runtime.runLimitTracker?.summary(),
     error: serialized,
-    context: buildReportContextSummary(runtime, contextSummary)
+    context: buildReportContextSummary(runtime, contextSummary),
+    concurrency: runtime.config.concurrency
   };
+
+  if (profileReport) {
+    result.profile = profileReport;
+  }
 
   return result;
 }
@@ -540,7 +596,8 @@ export function buildCancelledRunResult(
   finishedAt: string,
   reason?: string,
   artifactStore?: ArtifactStore,
-  contextSummary?: any
+  contextSummary?: any,
+  profileReport?: ProfileReportMetadata
 ): WorkflowRunResult {
   const runArtifacts = artifactStore ? artifactStore.getRunArtifacts() : undefined;
   const reportPath = runArtifacts?.reportPath || path.join(runtime.artifactsDir, "report.json");
@@ -570,8 +627,13 @@ export function buildCancelledRunResult(
     eventsPath,
     limitSummary: runtime.runLimitTracker?.summary(),
     error: errorPayload,
-    context: buildReportContextSummary(runtime, contextSummary)
+    context: buildReportContextSummary(runtime, contextSummary),
+    concurrency: runtime.config.concurrency
   };
+
+  if (profileReport) {
+    result.profile = profileReport;
+  }
 
   return result;
 }

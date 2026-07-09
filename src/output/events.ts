@@ -3,8 +3,10 @@ import type { SerializedError } from "../types/errors.js";
 import type { AgentPermissions, AgentResultStatus } from "../types/agent.js";
 import type { WorkflowRunLimitSummary } from "../types/workflow.js";
 import type { ThinkingEffort } from "../types/thinking-effort.js";
+import type { ProfileReportMetadata } from "../types/config.js";
 
 export type EventType =
+  | "profile.resolved"
   | "workflow.started"
   | "workflow.resolved"
   | "workflow.completed"
@@ -75,6 +77,10 @@ export interface EventEnvelope<TPayload = unknown> {
   timestamp: string;
   type: EventType;
   payload: TPayload;
+}
+
+export interface ProfileResolvedPayload {
+  profile: ProfileReportMetadata;
 }
 
 export interface WorkflowStartedPayload {

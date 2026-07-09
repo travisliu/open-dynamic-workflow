@@ -8,6 +8,8 @@ import { loadToolRegistry } from "../../tools/load.js";
 import { printValidationSuccess } from "../print.js";
 import * as path from "node:path";
 import { detectProjectInitHintContext, attachHintToError } from "../../errors/project-init-hint.js";
+import { validateProfileOptions } from "../profile-resolution.js";
+import type { ProfileDiagnostic } from "../../types/config.js";
 
 export interface ValidateCommandInput {
   workflowFile: string;
@@ -22,6 +24,7 @@ export interface ValidateWorkflowServiceInput {
 export interface ValidateWorkflowServiceResult {
   workflowName: string;
   workflowFileRelative: string;
+  profileDiagnostics?: ProfileDiagnostic[];
 }
 
 export async function validateWorkflowService(
@@ -39,6 +42,17 @@ export async function validateWorkflowService(
     },
     diagnosticContext: strict ? "validate-strict" : "validate"
   });
+
+  let profileDiagnostics: ProfileDiagnostic[] = [];
+  if (rawOptions.profile !== undefined || rawOptions.profiles !== undefined) {
+    const profileResult = await validateProfileOptions({
+      cwd,
+      configPath: rawOptions.config,
+      rawOptions,
+      config
+    });
+    profileDiagnostics = profileResult.diagnostics;
+  }
 
   const { precollectAllResourcesForLoad, checkDiscoveryPolicy } = await import("../../discovery/precollect.js");
 
@@ -100,7 +114,8 @@ export async function validateWorkflowService(
 
   return {
     workflowName: rootDefinition.name,
-    workflowFileRelative: resolved.workflowFileRelative
+    workflowFileRelative: resolved.workflowFileRelative,
+    profileDiagnostics
   };
 }
 

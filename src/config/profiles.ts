@@ -15,8 +15,12 @@ import type {
   ResolvedProfileSelection,
   ProfileSource,
   WorkflowProfileCatalog,
-  ProfileName
+  ProfileName,
+  WorkflowProfileRunOptions
 } from "./types.js";
+import type { JsonObject } from "../types/common.js";
+import type { ThinkingEffort } from "../types/thinking-effort.js";
+import type { ConfigCliOverrides } from "./merge.js";
 
 function hasOwn(obj: any, key: PropertyKey): boolean {
   return Object.prototype.hasOwnProperty.call(obj, key);
@@ -340,4 +344,102 @@ export function canonicalProfileHash(profile: ResolvedWorkflowProfile): string {
   const jsonStr = JSON.stringify(sorted);
   const hashHex = createHash("sha256").update(jsonStr).digest("hex");
   return `sha256:${hashHex}`;
+}
+
+/**
+ * Converts profile run options to CLI overrides, mapping only allowed FR-6 keys.
+ */
+export function profileRunOptionsToCliOverrides(run?: WorkflowProfileRunOptions | undefined): {
+  config: ConfigCliOverrides;
+  thinkingEffort?: ThinkingEffort | undefined;
+} {
+  const configOverrides: ConfigCliOverrides = {};
+  let thinkingEffort: ThinkingEffort | undefined;
+
+  if (!run) {
+    return { config: configOverrides };
+  }
+
+  if (run.provider !== undefined) configOverrides.provider = run.provider;
+  if (run.model !== undefined) configOverrides.model = run.model;
+  if (run.concurrency !== undefined) configOverrides.concurrency = run.concurrency;
+  if (run.timeoutMs !== undefined) configOverrides.timeoutMs = run.timeoutMs;
+  if (run.maxAgentCalls !== undefined) configOverrides.maxAgentCalls = run.maxAgentCalls;
+  if (run.failFast !== undefined) configOverrides.failFast = run.failFast;
+  if (run.report !== undefined) configOverrides.report = run.report;
+  
+  if (run.thinkingEffort !== undefined) {
+    thinkingEffort = run.thinkingEffort;
+  }
+
+  if (run.retry !== undefined) {
+    const retry = run.retry;
+    if (retry === false) {
+      configOverrides.noRetry = true;
+    } else if (typeof retry === "object" && retry !== null) {
+      if ("enabled" in retry && retry.enabled === false) {
+        configOverrides.noRetry = true;
+        if (retry.policy?.disableDelay !== undefined) {
+          configOverrides.retryDisableDelay = retry.policy.disableDelay;
+        }
+      } else {
+        const sourceObj: any = ("policy" in retry && retry.policy && typeof retry.policy === "object") ? retry.policy : retry;
+        if (sourceObj.maxAttempts !== undefined) configOverrides.retryMaxAttempts = sourceObj.maxAttempts;
+        if (sourceObj.delayMs !== undefined) configOverrides.retryDelayMs = sourceObj.delayMs;
+        if (sourceObj.maxDelayMs !== undefined) configOverrides.retryMaxDelayMs = sourceObj.maxDelayMs;
+        if (sourceObj.backoff !== undefined) configOverrides.retryBackoff = sourceObj.backoff;
+        if (sourceObj.disableDelay !== undefined) configOverrides.retryDisableDelay = sourceObj.disableDelay;
+        
+        if (sourceObj.maxAttempts === 1) {
+          configOverrides.noRetry = true;
+        }
+      }
+    }
+  }
+
+  return {
+    config: configOverrides,
+    thinkingEffort,
+  };
+}
+
+/**
+ * Shallow merges profile args and explicit args, cloning values so nested elements are not shared.
+ */
+export function mergeProfileArgs(
+  profileArgs: JsonObject | undefined,
+  explicitArgs: JsonObject | undefined
+): JsonObject {
+  const result: JsonObject = {};
+  if (profileArgs) {
+    for (const [key, value] of Object.entries(profileArgs)) {
+      if (value !== undefined) {
+        result[key] = JSON.parse(JSON.stringify(value));
+      }
+    }
+  }
+  if (explicitArgs) {
+    for (const [key, value] of Object.entries(explicitArgs)) {
+      if (value !== undefined) {
+        const profileVal = profileArgs ? profileArgs[key] : undefined;
+        let coercedValue = value;
+        if (typeof value === "string") {
+          if (typeof profileVal === "number") {
+            const num = Number(value);
+            if (!isNaN(num)) {
+              coercedValue = num;
+            }
+          } else if (typeof profileVal === "boolean") {
+            if (value === "true") {
+              coercedValue = true;
+            } else if (value === "false") {
+              coercedValue = false;
+            }
+          }
+        }
+        result[key] = JSON.parse(JSON.stringify(coercedValue));
+      }
+    }
+  }
+  return result;
 }

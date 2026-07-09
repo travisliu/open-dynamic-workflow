@@ -1,5 +1,6 @@
 import type { AgentCallInput, AgentResult } from "./agent.js";
 import type { JsonObject, JsonValue, WorkflowStatus } from "./common.js";
+import type { ProfileReportMetadata } from "./config.js";
 
 import type { SerializedError } from "./errors.js";
 import type { PipelineStage, PipelineOptions, PipelineResult, PipelineSummary } from "../pipeline/types.js";
@@ -142,4 +143,6 @@ export interface WorkflowRunResult {
     rootFinalArtifact?: string | undefined;
     summaryArtifact?: string | undefined;
   } | undefined;
+  profile?: ProfileReportMetadata;
+  concurrency?: number | undefined;
 }

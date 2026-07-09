@@ -118,7 +118,7 @@ export interface ResolvedConfig extends OpenDynamicWorkflowConfig {
   cwd: string;
   outDir: string;
   configPath?: string;
-  cliArgs: Record<string, string | boolean | number>;
+  cliArgs?: Record<string, string | boolean | number> | undefined;
   retry?: ResolvedRetryPolicy | undefined;
 }
 
@@ -183,6 +183,25 @@ export type ProfileSource =
   | "external"
   | "external-override"
   | "recorded";
+
+export interface RuntimeProfileContextSeed {
+  context: JsonObject;
+  metadata: {
+    name: string;
+    source: ProfileSource;
+    hasExternalFile: boolean;
+    hash: string;
+    profilesPath?: string | undefined;
+  };
+  reservedPath: "$profile";
+}
+
+export interface ProfileReportMetadata {
+  selected: string;
+  source: ProfileSource;
+  profilesPath?: string | undefined;
+  hash: string;
+}
 
 export interface ProfileCatalogEntry {
   name: ProfileName;

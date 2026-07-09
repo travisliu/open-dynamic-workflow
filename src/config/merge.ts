@@ -16,6 +16,7 @@ export interface ConfigCliOverrides {
   retryBackoff?: "fixed" | "exponential" | undefined;
   retryDisableDelay?: boolean | undefined;
   noRetry?: boolean | undefined;
+  failFast?: boolean | undefined;
 }
 
 export function mergeConfig(
@@ -74,6 +75,7 @@ export function mergeConfig(
   if (cli.maxAgentCalls !== undefined) merged.maxAgentCalls = cli.maxAgentCalls;
   if (cli.report) merged.reporting.mode = cli.report;
   if (cli.verbose !== undefined) merged.reporting.verbose = cli.verbose;
+  if (cli.failFast !== undefined) merged.failFast = cli.failFast;
 
   const cliOverrides = {
     maxAttempts: cli.retryMaxAttempts,

@@ -20,6 +20,23 @@ function collectArgs(value: string, previous: string[]): string[] {
 }
 
 export async function main(argv: string[]): Promise<void> {
+  // Inspect raw argv before options are collapsed to reject duplicate profile/profiles options
+  let profileCount = 0;
+  let profilesCount = 0;
+  for (const arg of argv) {
+    if (arg === "--profile" || arg.startsWith("--profile=")) {
+      profileCount++;
+    } else if (arg === "--profiles" || arg.startsWith("--profiles=")) {
+      profilesCount++;
+    }
+  }
+  if (profileCount > 1) {
+    throw new OpenDynamicWorkflowError(ErrorCode.CLI_USAGE_ERROR, "Duplicate option '--profile' is not allowed.");
+  }
+  if (profilesCount > 1) {
+    throw new OpenDynamicWorkflowError(ErrorCode.CLI_USAGE_ERROR, "Duplicate option '--profiles' is not allowed.");
+  }
+
   const program = new Command();
   const version = await getPackageVersion();
 
@@ -122,6 +139,8 @@ Examples:
     .option("--retry-backoff <type>", "Retry backoff type (fixed, exponential)")
     .option("--retry-disable-delay", "Disable retry delay (run attempts immediately)")
     .option("--no-retry", "Disable retries")
+    .option("--profile <name>", "Select a named run profile from config or --profiles file.")
+    .option("--profiles <path>", "Load an external YAML profiles file.")
     .addHelpText(
       "after",
       `
@@ -131,6 +150,8 @@ Examples:
   ${displayName} run my-workflow --arg key1=val1 --arg key2=val2
   ${displayName} run my-workflow --report json
   ${displayName} run my-workflow --dry-run
+  ${displayName} run my-workflow --profile fast
+  ${displayName} run my-workflow --profiles .profiles.yml --profile ci
 `
     )
     .action(async (workflowFile, options) => {
@@ -166,6 +187,8 @@ Examples:
     .option("--cwd <path>", "Custom working directory")
     .option("-v, --verbose", "Enable verbose logging")
     .option("--strict", "Fail before loading when strict discovery or path diagnostics are present")
+    .option("--profile <name>", "Select a named run profile from config or --profiles file.")
+    .option("--profiles <path>", "Load an external YAML profiles file.")
     .addHelpText(
       "after",
       `
@@ -173,6 +196,8 @@ Examples:
   ${displayName} validate my-workflow
   ${displayName} validate workflows/my-workflow.ts
   ${displayName} validate my-workflow --verbose
+  ${displayName} validate my-workflow --profile fast
+  ${displayName} validate my-workflow --profiles .profiles.yml --profile ci
 `
     )
     .action(async (target, options) => {
