@@ -47,8 +47,7 @@ import type {
   PipelineOptions, 
   PipelineResult, 
   WorkflowCallInput, 
-  WorkflowSettledResult,
-  ParallelOptions
+  WorkflowSettledResult
 } from "../types/workflow.js";
 
 function normalizeToolCallInput(input: unknown, runtime: RuntimeState): ToolCallInput {
@@ -710,49 +709,20 @@ export function createDsl(runtime: RuntimeState) {
     }
   };
 
-  const parallelFunction = async <T>(
+  async function parallelFunction<T>(
     tasks: Record<string, () => Promise<T>> | Array<() => Promise<T>>,
-    options?: ParallelOptions
-  ): Promise<Record<string, T> | T[]> => {
-    if (!tasks || typeof tasks !== "object") {
-      throw new InvalidDslCallError("parallel() requires an array or an object of task thunks.");
+    ...extra: any[]
+  ): Promise<Record<string, T> | T[]> {
+    if (extra.length > 0) {
+      const secondArg = extra[0];
+      if (secondArg && typeof secondArg === "object" && !Array.isArray(secondArg) && Object.prototype.hasOwnProperty.call(secondArg, "context")) {
+        throw new InvalidDslCallError("parallel() options contain unsupported key 'context'.");
+      }
+      throw new InvalidDslCallError("parallel() does not support options.");
     }
 
-    if (options !== undefined) {
-      if (!options || typeof options !== "object" || Array.isArray(options)) {
-        throw new InvalidDslCallError("parallel() options must be an object.");
-      }
-      const rawContext = options.context;
-      if (rawContext !== undefined) {
-        if (!rawContext || typeof rawContext !== "object" || Array.isArray(rawContext)) {
-          throw new InvalidDslCallError("parallel() options.context must be an object.");
-        }
-        const allowedKeys = ["merge"];
-        for (const k of Object.keys(rawContext)) {
-          if (!allowedKeys.includes(k)) {
-            throw new InvalidDslCallError(`parallel() options.context has invalid key '${k}'.`);
-          }
-        }
-        const merge = rawContext.merge;
-        if (merge !== undefined) {
-          if (!merge || typeof merge !== "object" || Array.isArray(merge)) {
-            throw new InvalidDslCallError("parallel() options.context.merge must be a plain object.");
-          }
-          const allowedStrategies = ["append", "merge", "replace", "rejectOnConflict"];
-          for (const [key, val] of Object.entries(merge)) {
-            if (!allowedStrategies.includes(val as string)) {
-              throw new InvalidDslCallError(
-                `parallel() options.context.merge strategy for '${key}' must be one of ${allowedStrategies.join(", ")}, got '${val}'.`
-              );
-            }
-          }
-        }
-      }
-      for (const k of Object.keys(options)) {
-        if (k !== "context") {
-          throw new InvalidDslCallError(`parallel() options has invalid key '${k}'.`);
-        }
-      }
+    if (!tasks || typeof tasks !== "object") {
+      throw new InvalidDslCallError("parallel() requires an array or an object of task thunks.");
     }
 
     const activeLoop = getActiveLoopContext();
@@ -762,120 +732,25 @@ export function createDsl(runtime: RuntimeState) {
 
     const sequence = (runtime.callSequence ?? 0) + 1;
     runtime.callSequence = sequence;
-    const mergeRules = options?.context?.merge;
 
     if (Array.isArray(tasks)) {
-      if (!runtime.contextRuntime) {
-        const promises = tasks.map(async (task, idx) => {
-          if (typeof task !== "function") {
-            throw new InvalidDslCallError(`parallel() task at index ${idx} must be a function.`);
-          }
-          return withToolForbidden("parallel-task", () => task());
-        });
-        return Promise.all(promises);
-      }
-
-      const overlayResults: any[] = [];
       const promises = tasks.map(async (task, idx) => {
         if (typeof task !== "function") {
           throw new InvalidDslCallError(`parallel() task at index ${idx} must be a function.`);
         }
-        const scopeId = `parallel:${sequence}:index:${String(idx).padStart(4, "0")}`;
-        const parentScopeId = runtime.contextRuntime.getActiveScopeId?.() || runtime.runId;
-        
-        const res = await runtime.contextRuntime.runWithOverlay({
-          scopeId,
-          scopeType: "parallel-branch",
-          parentScopeId,
-          metadata: {
-            parallelSequence: sequence,
-            index: idx
-          },
-          mergeRules,
-          orderKey: scopeId,
-          mergeMode: "deferred"
-        }, () => withToolForbidden("parallel-task", () => task()));
-        
-        overlayResults[idx] = res;
-        if (!res.success) {
-          throw res.error || new Error(`Parallel branch ${idx} failed`);
-        }
-        return res.result as T;
+        return withToolForbidden("parallel-task", () => task());
       });
-
-      const results = await Promise.all(promises);
-
-      const mergeSummary = runtime.contextRuntime.mergeOverlayResults(overlayResults);
-      if (mergeSummary && mergeSummary.conflictPaths && mergeSummary.conflictPaths.length > 0) {
-        throw new OpenDynamicWorkflowError(
-          ErrorCode.CONTEXT_MERGE_CONFLICT,
-          `Context merge conflict detected in parallel branches: ${mergeSummary.conflictPaths.join(", ")}`
-        );
-      }
-
-      return results;
+      return Promise.all(promises);
     } else {
-      if (!runtime.contextRuntime) {
-        const keys = Object.keys(tasks);
-        const promises = keys.map(async (key) => {
-          const task = tasks[key];
-          if (typeof task !== "function") {
-            throw new InvalidDslCallError(`parallel() task '${key}' must be a function.`);
-          }
-          return withToolForbidden("parallel-task", () => task());
-        });
-        const results = await Promise.all(promises);
-        const resultObj: Record<string, T> = {};
-        for (let i = 0; i < keys.length; i++) {
-          const key = keys[i]!;
-          resultObj[key] = results[i]! as T;
-        }
-        return resultObj;
-      }
-
       const keys = Object.keys(tasks);
-      const sortedKeys = [...keys].sort();
-      const overlayResultsMap: Record<string, any> = {};
-
       const promises = keys.map(async (key) => {
         const task = tasks[key];
         if (typeof task !== "function") {
           throw new InvalidDslCallError(`parallel() task '${key}' must be a function.`);
         }
-        const scopeId = `parallel:${sequence}:key:${key}`;
-        const parentScopeId = runtime.contextRuntime.getActiveScopeId?.() || runtime.runId;
-        
-        const res = await runtime.contextRuntime.runWithOverlay({
-          scopeId,
-          scopeType: "parallel-branch",
-          parentScopeId,
-          metadata: {
-            parallelSequence: sequence,
-            key
-          },
-          mergeRules,
-          orderKey: scopeId,
-          mergeMode: "deferred"
-        }, () => withToolForbidden("parallel-task", () => task()));
-
-        overlayResultsMap[key] = res;
-        if (!res.success) {
-          throw res.error || new Error(`Parallel branch '${key}' failed`);
-        }
-        return res.result as T;
+        return withToolForbidden("parallel-task", () => task());
       });
-
       const results = await Promise.all(promises);
-
-      const orderedOverlayResults = sortedKeys.map(k => overlayResultsMap[k]);
-      const mergeSummary = runtime.contextRuntime.mergeOverlayResults(orderedOverlayResults);
-      if (mergeSummary && mergeSummary.conflictPaths && mergeSummary.conflictPaths.length > 0) {
-        throw new OpenDynamicWorkflowError(
-          ErrorCode.CONTEXT_MERGE_CONFLICT,
-          `Context merge conflict detected in parallel branches: ${mergeSummary.conflictPaths.join(", ")}`
-        );
-      }
-
       const resultObj: Record<string, T> = {};
       for (let i = 0; i < keys.length; i++) {
         const key = keys[i]!;
@@ -883,7 +758,7 @@ export function createDsl(runtime: RuntimeState) {
       }
       return resultObj;
     }
-  };
+  }
 
   const executeToolCall = async (
     input: ToolCallInput,

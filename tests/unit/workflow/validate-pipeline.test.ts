@@ -74,4 +74,13 @@ describe("Validate Workflow Pipeline AST Validation", () => {
     const issues = validateWorkflow(parsed, options);
     expect(issues.some(i => i.message.includes("stages must be named stage objects, not function shorthands"))).toBe(true);
   });
+  it("fails when options specify context options", () => {
+    const parsed = createParsed(`
+      await pipeline(items, [
+        { name: "stage-1", run: async (item) => item }
+      ], { context: { merge: { x: "replace" } } });
+    `);
+    const issues = validateWorkflow(parsed, options);
+    expect(issues.some(i => i.message.toLowerCase().includes("unsupported") && i.message.toLowerCase().includes("context"))).toBe(true);
+  });
 });

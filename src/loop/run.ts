@@ -343,18 +343,6 @@ export async function runLoop<TState = unknown>(
         roundIndex,
         roundNumber,
         signal: loopSignal,
-        context: runtime.contextRuntime
-          ? runtime.contextRuntime.createFacade()
-          : {
-              get: () => undefined,
-              has: () => false,
-              set: () => {},
-              delete: () => false,
-              merge: () => {},
-              append: () => {},
-              snapshot: () => ({ values: {}, metadata: { scopeId: "", visibleScopes: [], sourcePaths: {}, deletedPaths: [] } } as any),
-              scope: (prefix: string, fn: any) => fn()
-            },
         dsl,
       });
 
@@ -396,62 +384,11 @@ export async function runLoop<TState = unknown>(
 
         const runStateArg = cloneJsonValue(inputStateSnapshot, "run state argument") as TState;
         
-        let roundPromise: Promise<any>;
+        const roundPromise = withActiveLoopContext(activeRoundContext as ActiveLoopContext, () =>
+          withToolForbidden("loop-round", () => normalized.run(runStateArg, ctx))
+        );
 
-        if (!runtime.contextRuntime) {
-          roundPromise = (async () => {
-            const res = await withActiveLoopContext(activeRoundContext as ActiveLoopContext, async () => {
-              return withToolForbidden("loop-round", () => {
-                return normalized.run(runStateArg, ctx);
-              });
-            });
-            return {
-              success: true,
-              result: res,
-              scopeId: roundId,
-              patch: {
-                scopeId: roundId,
-                scopeType: "loop-round",
-                metadata: {},
-                inheritedPaths: [],
-                patchOperations: [],
-                merged: false
-              }
-            };
-          })();
-        } else {
-          const parentScopeId = runtime.contextRuntime.getActiveScopeId?.() || runtime.runId;
-          roundPromise = runtime.contextRuntime.runWithOverlay({
-            scopeId: roundId,
-            scopeType: "loop-round",
-            parentScopeId,
-            metadata: {
-              loopId,
-              label: normalized.label,
-              roundIndex,
-              roundNumber,
-              workflowInvocationId
-            },
-            mergeRules: normalized.context?.merge,
-            orderKey: roundIndex,
-            mergeMode: "immediate"
-          }, () =>
-            withActiveLoopContext(activeRoundContext as ActiveLoopContext, async () => {
-              return withToolForbidden("loop-round", () => {
-                return normalized.run(runStateArg, ctx);
-              });
-            })
-          );
-        }
-
-        const finalRoundPromise = roundPromise.then(res => {
-          if (!res.success) {
-            throw res.error || new Error(`Loop round failed: ${roundNumber}`);
-          }
-          return res.result;
-        });
-
-        roundResult = await Promise.race([finalRoundPromise, abortPromise]);
+        roundResult = await Promise.race([roundPromise, abortPromise]);
       } catch (err: any) {
         roundError = err;
         if (signal.aborted) {

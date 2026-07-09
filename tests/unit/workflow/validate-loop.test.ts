@@ -368,4 +368,20 @@ describe("Workflow static validation: loop()", () => {
     `);
     expect(validateWorkflow(w1, { allowImports: false })).toHaveLength(0);
   });
+
+  it("rejects loop calls containing context options", () => {
+    const workflow = makeWorkflow(`
+      export default async (ctx) => {
+        await ctx.loop({
+          label: "my-loop",
+          initialState: {},
+          options: { maxRounds: 5 },
+          context: { merge: { x: "replace" } },
+          run: async () => ({ done: true, nextState: {} })
+        });
+      }
+    `);
+    const issues = validateWorkflow(workflow, { allowImports: false });
+    expect(issues.some(i => i.message.toLowerCase().includes("unsupported") && i.message.toLowerCase().includes("context"))).toBe(true);
+  });
 });

@@ -153,6 +153,34 @@ describe("Loop Validation Helpers", () => {
     ).toThrow("timeoutMs must be a positive integer.");
   });
 
+  it("rejects loop input containing context options", () => {
+    expect(() =>
+      validateAndNormalizeLoopArgs(
+        {
+          label: "loop",
+          initialState: {},
+          options: { maxRounds: 5 },
+          context: { merge: { x: "replace" } },
+          run: mockRun,
+        } as any,
+        ceiling
+      )
+    ).toThrow(/unsupported.*context|context.*unsupported/);
+  });
+
+  it("returned normalized input does not have an own context property", () => {
+    const result = validateAndNormalizeLoopArgs(
+      {
+        label: "test-loop",
+        initialState: { ok: true },
+        options: { maxRounds: 5 },
+        run: mockRun,
+      },
+      ceiling
+    );
+    expect(result).not.toHaveProperty("context");
+  });
+
   describe("validateLoopRunResult", () => {
     it("accepts valid round result", () => {
       expect(() =>

@@ -580,7 +580,7 @@ export function validateWorkflow(
       report(prop, `${callPrefix} contains unsupported property type.`);
     }
 
-    const allowedKeys = new Set(["label", "initialState", "options", "run", "context"]);
+    const allowedKeys = new Set(["label", "initialState", "options", "run"]);
     for (const key of seenKeys) {
       if (key === "runRound") {
         report(firstArg, `${callPrefix} does not support 'runRound'. Use 'run' instead.`);
@@ -1164,7 +1164,7 @@ export function validateWorkflow(
 
           const optionsArg = node.arguments[2];
           if (optionsArg && ts.isObjectLiteralExpression(optionsArg)) {
-            const allowedOptionKeys = ["label", "strategy", "concurrency", "stageConcurrency", "preserveOrder", "failFast", "context"];
+            const allowedOptionKeys = ["label", "strategy", "concurrency", "stageConcurrency", "preserveOrder", "failFast"];
             for (const prop of optionsArg.properties) {
               if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop) || ts.isSpreadAssignment(prop) || ts.isMethodDeclaration(prop)) {
                 const propName = ts.isPropertyAssignment(prop) || ts.isMethodDeclaration(prop)
@@ -1197,6 +1197,22 @@ export function validateWorkflow(
           });
           return;
         } else if (calleeText === "parallel") {
+          if (node.arguments.length > 1) {
+            report(node, "parallel() accepts at most 1 argument.");
+            const secondArg = node.arguments[1];
+            if (secondArg && ts.isObjectLiteralExpression(secondArg)) {
+              for (const prop of secondArg.properties) {
+                if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop) || ts.isSpreadAssignment(prop) || ts.isMethodDeclaration(prop)) {
+                  const propName = ts.isPropertyAssignment(prop) || ts.isMethodDeclaration(prop)
+                    ? (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name) ? prop.name.text : prop.name.getText())
+                    : ts.isShorthandPropertyAssignment(prop) ? prop.name.text : "";
+                  if (propName === "context") {
+                    report(prop, "parallel() options contain unsupported key 'context'.");
+                  }
+                }
+              }
+            }
+          }
           nextForbiddenContext = true;
           node.arguments.forEach((arg) => {
             visit(arg, true, nextFunctionDepth, nextInsideLoopRun, nextLoopContextNames, true, nextInsideMainWorkflow);

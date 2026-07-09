@@ -218,4 +218,63 @@ describe("DSL: parallel() with object input", () => {
     expect(typeof out).toBe("object");
     expect(Object.keys(out as object).length).toBe(0);
   });
+
+  it("rejects second argument with context options before executing any task thunk", async () => {
+    const runtime = makeRuntimeState();
+    const dsl = createDsl(runtime);
+    let runCount = 0;
+
+    await expect(
+      dsl.parallel(
+        {
+          taskA: async () => {
+            runCount++;
+            return "ok";
+          }
+        },
+        { context: { merge: { x: "replace" } } } as any
+      )
+    ).rejects.toThrow(InvalidDslCallError);
+
+    expect(runCount).toBe(0);
+
+    try {
+      await dsl.parallel(
+        { taskA: async () => "ok" },
+        { context: { merge: { x: "replace" } } } as any
+      );
+    } catch (err: any) {
+      expect(err.message).toMatch(/unsupported/i);
+      expect(err.message).toMatch(/context/i);
+    }
+  });
+
+  it("rejects any generic second argument", async () => {
+    const runtime = makeRuntimeState();
+    const dsl = createDsl(runtime);
+    let runCount = 0;
+
+    await expect(
+      dsl.parallel(
+        {
+          taskA: async () => {
+            runCount++;
+            return "ok";
+          }
+        },
+        { otherOption: true } as any
+      )
+    ).rejects.toThrow(InvalidDslCallError);
+
+    expect(runCount).toBe(0);
+
+    try {
+      await dsl.parallel(
+        { taskA: async () => "ok" },
+        { otherOption: true } as any
+      );
+    } catch (err: any) {
+      expect(err.message).toContain("does not support options");
+    }
+  });
 });

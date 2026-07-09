@@ -68,6 +68,7 @@ const stages = [
   {
     name: "first-phase",
     run: async (item, ctx) => {
+      context.set("stage1_" + ctx.itemIndex, "wrote-" + ctx.itemIndex);
       const response = await ctx.agent({
         id: ctx.agentId("agentA"),
         label: \`label-A-\${ctx.itemIndex}\`,
@@ -79,12 +80,13 @@ const stages = [
   {
     name: "second-phase",
     run: async (item, ctx) => {
+      const savedVal = context.get("stage1_" + ctx.itemIndex);
       const response = await ctx.agent({
         id: ctx.agentId("agentB"),
         label: \`label-B-\${ctx.itemIndex}\`,
         prompt: \`analyze \${item}\`
       });
-      return response.text;
+      return response.text + "-" + savedVal;
     }
   }
 ];
@@ -137,6 +139,6 @@ providers:
     // Assert stage 2 output from item 1
     const stage2Item1Path = path.join(runDir, `pipelines/${pipelineId}/items/1/stages/second-phase/stage-result.json`);
     const stage2Item1Data = JSON.parse(await fs.readFile(stage2Item1Path, "utf8"));
-    expect(stage2Item1Data.value).toBe("response-B-1");
+    expect(stage2Item1Data.value).toBe("response-B-1-wrote-1");
   });
 });

@@ -4,7 +4,7 @@ import { createLoopAgentId, createLoopToolId } from "./id.js";
 import type { AgentCallInput, AgentResult } from "../types/agent.js";
 import type { WorkflowCallInput, WorkflowSettledResult } from "../types/workflow.js";
 import type { ToolCallInput } from "../types/tool.js";
-import type { WorkflowContext } from "../types/context.js";
+
 
 /**
  * Internal state for the active loop round.
@@ -88,7 +88,7 @@ export interface CreateLoopRoundContextInput {
   roundIndex: number;
   roundNumber: number;
   signal: AbortSignal;
-  context: WorkflowContext;
+
   dsl: {
     agent: (input: AgentCallInput) => Promise<AgentResult>;
     workflow: (input: WorkflowCallInput) => Promise<any>;
@@ -103,7 +103,7 @@ export interface CreateLoopRoundContextInput {
 export function createLoopRoundContext(
   input: CreateLoopRoundContextInput
 ): LoopContext {
-  const { loopId, label, roundIndex, roundNumber, dsl, context } = input;
+  const { loopId, label, roundIndex, roundNumber, dsl } = input;
   let agentCounter = 0;
 
   return {
@@ -112,7 +112,7 @@ export function createLoopRoundContext(
     roundIndex,
     roundNumber,
     signal: input.signal,
-    context,
+
 
     agent: async (agentInput: AgentCallInput): Promise<AgentResult> => {
       let agentId: string;

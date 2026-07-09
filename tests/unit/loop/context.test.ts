@@ -36,6 +36,12 @@ describe("Loop Context Helpers", () => {
       expect(ctx.roundNumber).toBe(1);
     });
 
+    it("does not expose ctx.context", () => {
+      const ctx = createLoopRoundContext(input);
+      expect(ctx).not.toHaveProperty("context");
+      expect((ctx as any).context).toBeUndefined();
+    });
+
     it("ctx.agent preserves explicit agent IDs", async () => {
       const ctx = createLoopRoundContext(input);
       const activeCtx = { loopId: "loop-1", label: "bounded-repair-loop", roundIndex: 0, roundNumber: 1, roundId: "round-1", childAgentIds: [], childWorkflowInvocationIds: [], signal: input.signal };

@@ -146,4 +146,24 @@ describe("Pipeline Argument Validation and Normalization", () => {
       )
     ).toThrow(InvalidDslCallError);
   });
+
+  it("rejects context option as unsupported", () => {
+    expect(() =>
+      validateAndNormalizePipelineArgs(
+        [],
+        [{ name: "stage1", run: dummyRun }],
+        { context: { merge: { x: "replace" } } } as any
+      )
+    ).toThrow(/unsupported.*context|context.*unsupported/i);
+  });
+
+  it("proves normalized options do not have context property", () => {
+    const { normalizedOptions } = validateAndNormalizePipelineArgs(
+      [],
+      [{ name: "stage1", run: dummyRun }],
+      { strategy: "stage-barrier" }
+    );
+    expect(Object.prototype.hasOwnProperty.call(normalizedOptions, "context")).toBe(false);
+  });
 });
+

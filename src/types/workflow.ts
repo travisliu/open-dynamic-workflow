@@ -35,8 +35,6 @@ export type ParallelResult<TTasks> = TTasks extends Array<() => Promise<infer TV
 
 export type WorkflowFailureMode = "throw" | "settled";
 
-export type ContextMergeStrategy = "append" | "merge" | "replace" | "rejectOnConflict";
-
 export interface WorkflowCallInput {
   name: string;
   args?: JsonObject;
@@ -101,13 +99,6 @@ export interface WorkflowRunLimitSummary {
   exceededBy?: "maxAgentCalls" | undefined;
   message?: string | undefined;
 }
-
-export interface ParallelOptions {
-  context?: {
-    merge?: Record<string, ContextMergeStrategy>;
-  };
-}
-
 
 
 export interface WorkflowIdentity {

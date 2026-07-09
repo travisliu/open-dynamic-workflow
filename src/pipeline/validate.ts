@@ -14,8 +14,7 @@ const ALLOWED_OPTION_KEYS = [
   "concurrency",
   "stageConcurrency",
   "preserveOrder",
-  "failFast",
-  "context"
+  "failFast"
 ];
 
 export function validateAndNormalizePipelineArgs(
@@ -169,9 +168,6 @@ export function validateAndNormalizePipelineArgs(
       }
     }
 
-    if (opts.context !== undefined) {
-      normalizedOptions.context = opts.context;
-    }
   }
 
   return {

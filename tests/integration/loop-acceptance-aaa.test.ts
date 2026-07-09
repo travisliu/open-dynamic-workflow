@@ -96,7 +96,7 @@ describe("Loop Acceptance (AAA)", () => {
     expect(parsed.status).toBe("succeeded");
     
     // Result contains the final nextState directly
-    expect(parsed.result).toEqual({ count: 2 });
+    expect(parsed.result.loopResult).toEqual({ count: 2 });
     
     expect(parsed.loops).toBeDefined();
     expect(parsed.loops[0].status).toBe("succeeded");
@@ -634,8 +634,8 @@ security:
     // 3. Create child workflow
     await fs.writeFile(childWfPath, `
       export const meta = { name: "loop-tool-child", description: "child desc" };
-      export default async (ctx) => {
-        return await ctx.tool({ definition: "echo", args: { msg: "from-child" } });
+      export default async () => {
+        return await tool({ definition: "echo", args: { msg: "from-child" } });
       };
     `);
 

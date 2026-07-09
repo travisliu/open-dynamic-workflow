@@ -730,5 +730,21 @@ describe("Validate Workflow Restrictions", () => {
       const issues = validateWorkflow(parsed, options);
       expect(issues).toHaveLength(0);
     });
+
+    it("rejects parallel calls containing context options", () => {
+      const parsed = createParsed(`
+        await parallel([async () => 1], { context: { merge: { x: "replace" } } });
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues.some(i => i.message.toLowerCase().includes("unsupported") && i.message.toLowerCase().includes("context"))).toBe(true);
+    });
+
+    it("accepts valid parallel calls without context options", () => {
+      const parsed = createParsed(`
+        await parallel([async () => 1]);
+      `);
+      const issues = validateWorkflow(parsed, options);
+      expect(issues).toHaveLength(0);
+    });
   });
 });

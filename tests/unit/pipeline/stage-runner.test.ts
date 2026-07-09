@@ -276,4 +276,53 @@ describe("runStage", () => {
     expect(scheduledIds).toContain("pipeline-1-item-0-parallelStage-1");
     expect(scheduledIds).toContain("pipeline-1-item-0-parallelStage-2");
   });
+
+  it("proves ctx.context is absent while all operational fields are present", async () => {
+    let recordedKeys: string[] = [];
+    let hasContextOwnProp = false;
+    let contextValue: any = null;
+
+    const stage: PipelineStage<string, string> = {
+      name: "testCtxStage",
+      run: async (item, ctx) => {
+        recordedKeys = Object.keys(ctx);
+        hasContextOwnProp = Object.prototype.hasOwnProperty.call(ctx, "context");
+        contextValue = (ctx as any).context;
+        return "done";
+      }
+    };
+
+    const result = await runStage({
+      stage,
+      stageIndex: 0,
+      item: "hello",
+      itemIndex: 0,
+      pipelineId: "pipeline-1",
+      options,
+      runtime: dummyState,
+      parentSignal: new AbortController().signal
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(hasContextOwnProp).toBe(false);
+    expect(contextValue).toBeUndefined();
+
+    const expectedOperationalKeys = [
+      "agent",
+      "agentId",
+      "log",
+      "signal",
+      "sleep",
+      "pipelineId",
+      "runId",
+      "artifactsDir",
+      "itemIndex",
+      "stageIndex",
+      "stageName"
+    ];
+    for (const key of expectedOperationalKeys) {
+      expect(recordedKeys).toContain(key);
+    }
+  });
 });
+
