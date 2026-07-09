@@ -101,7 +101,7 @@ export function seedProfileContext(options: {
 }): void {
   validateProfileContextSeed(options.seed);
 
-  const facade = options.contextRuntime.createFacade();
+  const facade = options.contextRuntime.createFacade({ suppressEvents: true });
 
   // Create the existing facade and write every top-level user context value with facade.set(key, value).
   for (const [key, value] of Object.entries(options.seed.context)) {

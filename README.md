@@ -392,6 +392,76 @@ Configuration precedence:
 
 Be careful before sharing `.openflow/runs/<runId>` artifacts, because they may contain prompts, source snippets, stdout, stderr, and model outputs.
 
+## Run Profiles
+
+Profiles allow bundling reusable execution parameters (arguments, workflow context, and runner options) under a single named configuration.
+
+### Example Profile Catalog
+
+Profiles can be configured inline in the project's config file (e.g., `.open-dynamic-workflow/config.yaml`) or loaded from an external file:
+
+```yaml
+profiles:
+  base:
+    args:
+      iterations: 3
+    context:
+      mode: "normal"
+      quality: { level: "standard" }
+    run:
+      provider: "mock"
+      concurrency: 2
+
+  fast:
+    extends: base
+    args:
+      iterations: 1
+    context:
+      mode: "fast"
+```
+
+To run with a profile:
+```bash
+odw run workflows/my-workflow.js --profile fast
+```
+Or to load profiles from an external catalog:
+```bash
+odw run workflows/my-workflow.js --profiles custom-profiles.yaml --profile fast
+```
+
+### Precedence
+
+Execution settings are applied in the following ascending order of precedence (highest overrides lowest):
+1. **Built-in defaults**
+2. **Active project configuration** (e.g., `config.yaml`)
+3. **Selected resolved profile** (from config catalog or external profiles file)
+4. **Explicit CLI run flags** (e.g., `--concurrency`, `--timeout-ms`)
+5. **Explicit `--arg` values** (e.g., `--arg key=value`)
+
+### Inheritance & Overlay
+
+Profiles can inherit properties from other profiles using the `extends` field (accepts a profile name or an array of profile names).
+If an external profiles file is loaded (using `--profiles <path>`), its profiles overlay same-named profiles from the project configuration *before* any inheritance hierarchy is resolved. For the complete schema, see the [configuration reference](file:///root/projects/odw/skills/open-dynamic-workflow/references/configuration.md).
+
+### Deterministic Resume & Artifact Sensitivity
+
+When a run is resumed, it reuses the exact profile settings resolved at start:
+- **`odw resume <runId>`** and **`odw run <workflow> --resume <runId>`** (without profile flags) reuse the recorded profile snapshot.
+- Specifying explicit `--profile` or `--profiles` on `odw run --resume` will discard the recorded profile and resolve fresh inputs.
+
+> [!IMPORTANT]
+> The full resolved profile snapshot is written to `run-input.json` in the run artifacts directory. Because this file contains actual input arguments and context values, it is sensitive and should be handled securely. Reporting tools (pretty, JSON, and JSONL) only display compact metadata (name, source, path, and stable hash) to avoid exposing credentials or sensitive values.
+
+For example, the pretty summary reporter outputs profile selection compactly:
+```text
+Summary
+  status:    succeeded
+  workflows: 1 succeeded
+  agents:    1 succeeded
+  duration:  1.2s
+  profile:   fast (config)
+```
+
 ## License
 
 MIT

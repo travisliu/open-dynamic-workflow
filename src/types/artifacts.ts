@@ -1,3 +1,5 @@
+import type { ProfileSource, ResolvedWorkflowProfile } from "./config.js";
+
 export interface AgentArtifacts {
   dir: string;
   promptPath: string;
@@ -91,4 +93,30 @@ export interface ArtifactStore {
   updateManifest(status: "succeeded" | "failed" | "cancelled", error?: any): Promise<string>;
   getRunArtifacts(): RunArtifacts;
   isRunCreated(): boolean;
+}
+
+export interface RecordedRunProfileInput {
+  selected: string;
+  source: ProfileSource;
+  profilesPath?: string | undefined;
+  resolved: ResolvedWorkflowProfile;
+  hash: string;
+  inheritanceChain?: string[] | undefined;
+  resumedFromRecordedProfile?: true | undefined;
+}
+
+export interface RunInputArtifactV1 {
+  schemaVersion: "open-dynamic-workflow.run-input.v1";
+  runId: string;
+  workflowFile: string;
+  requestedTarget?: string | undefined;
+  targetKind?: "workflow-name" | "workflow-file" | undefined;
+  workflowName?: string | undefined;
+  cwd?: string | undefined;
+  outDir?: string | undefined;
+  configPath?: string | undefined;
+  args?: Record<string, any> | undefined;
+  rawOptions?: Record<string, any> | undefined;
+  profile?: RecordedRunProfileInput | undefined;
+  [key: string]: any;
 }

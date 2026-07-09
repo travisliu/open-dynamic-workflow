@@ -16,6 +16,8 @@ import { DefaultToolExecutor } from "../../tools/executor.js";
 import * as path from "node:path";
 import { detectProjectInitHintContext, attachHintToError } from "../../errors/project-init-hint.js";
 import { resolveRunProfile } from "../profile-resolution.js";
+import { readRunInput } from "../run-input.js";
+import { createRecordedRunProfile } from "../run-input-profile.js";
 
 export interface RunCommandDeps {
   runtimeRunner: RuntimeRunner;
@@ -106,21 +108,41 @@ export async function runWorkflowService(
     diagnosticContext: strict ? "run-strict" : "run"
   });
 
+  // Detect if we are resuming and have a recorded profile
+  let recordedProfile: any = rawOptions.recordedProfile;
+  if (!recordedProfile && rawOptions.resume) {
+    try {
+      const { runInput } = await readRunInput(rawOptions.resume, rawOptions.out, cwd);
+      recordedProfile = runInput.profile;
+    } catch (err) {
+      if (err instanceof OpenDynamicWorkflowError && err.code === ErrorCode.PROFILE_VALIDATION_ERROR) {
+        throw err;
+      }
+      throw err;
+    }
+  }
+
   // Resolve profile before discovery
   const {
     profileRunAsCli,
     finalCliArgs,
     selection,
     contextSeed,
-    reportProfile
+    reportProfile,
+    resumedFromRecordedProfile
   } = await resolveRunProfile({
     cwd: baseConfig.cwd,
     configPath: baseConfig.configPath,
     baseConfig,
     rawOptions,
     explicitCliOverrides,
-    explicitArgs: parsedArgs
+    explicitArgs: parsedArgs,
+    recordedProfile
   });
+  
+  if (resumedFromRecordedProfile && reportProfile) {
+    reportProfile.resumedFromRecordedProfile = true;
+  }
 
   const mergedCliOverrides = { ...profileRunAsCli.config, ...explicitCliOverrides };
   if (
@@ -306,14 +328,7 @@ export async function runWorkflowService(
       strict: strict
     },
     ...(selection ? {
-      profile: {
-        selected: selection.selected,
-        source: selection.source,
-        ...(selection.profilesPath !== undefined ? { profilesPath: selection.profilesPath } : {}),
-        resolved: selection.resolved,
-        hash: selection.hash,
-        inheritanceChain: selection.inheritanceChain
-      }
+      profile: createRecordedRunProfile(selection, resumedFromRecordedProfile ? { resumedFromRecordedProfile: true } : undefined)
     } : {})
   });
 

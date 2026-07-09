@@ -1,12 +1,32 @@
 import type { Reporter, ReporterStartInput, ReporterStreams, ReporterOptions } from "./reporter.js";
 import type { EventEnvelope } from "./events.js";
 import type { WorkflowRunResult } from "../types/workflow.js";
+import type { ProfileReportMetadata } from "../types/config.js";
 import { renderVerboseEvent } from "./verbose-formatter.js";
 import { PrettyViewBuilder } from "./pretty-view-builder.js";
 import { resolveFailedSubpaths } from "./failed-artifacts.js";
 import type { PrettyExecutionNode } from "./pretty-view.js";
 import { formatDuration, getStatusMarker, formatPermission, formatStatusCounts } from "./pretty-format.js";
 import { createPreview } from "../tools/serialization.js";
+
+function formatProfile(profile: ProfileReportMetadata): string {
+  const selected = profile.selected;
+  const source = profile.source;
+  const path = profile.profilesPath;
+  if (source === "recorded") {
+    return `  profile:   ${selected} (reused from recorded run input)`;
+  }
+  if (source === "external-override") {
+    return `  profile:   ${selected} (external override${path ? `: ${path}` : ""})`;
+  }
+  if (source === "external") {
+    return `  profile:   ${selected} (external${path ? `: ${path}` : ""})`;
+  }
+  if (source === "config") {
+    return `  profile:   ${selected} (config)`;
+  }
+  return `  profile:   ${selected} (${source}${path ? `: ${path}` : ""})`;
+}
 
 function formatNumber(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
@@ -208,6 +228,9 @@ export class PrettyReporter implements Reporter {
         this.stdout.write(
           `  limits:    agent calls ${formatNumber(result.limitSummary.agentCalls)}/${formatNumber(result.limitSummary.limits.maxAgentCalls)}${suffix}\n`
         );
+      }
+      if (result.profile) {
+        this.stdout.write(formatProfile(result.profile) + "\n");
       }
       this.stdout.write("\n");
 

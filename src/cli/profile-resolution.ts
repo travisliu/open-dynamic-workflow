@@ -17,6 +17,8 @@ import type {
 import type { ConfigCliOverrides } from "../config/merge.js";
 import type { JsonObject } from "../types/common.js";
 import type { ThinkingEffort } from "../types/thinking-effort.js";
+import type { RecordedRunProfileInput } from "../types/artifacts.js";
+import { recordedProfileToRunProfile } from "./run-input-profile.js";
 
 export interface ValidateProfileOptionsInput {
   cwd: string;
@@ -95,6 +97,7 @@ export interface ResolveRunProfileInput {
   rawOptions: unknown;
   explicitCliOverrides: ConfigCliOverrides;
   explicitArgs: JsonObject;
+  recordedProfile?: RecordedRunProfileInput | undefined;
 }
 
 export interface ResolveRunProfileResult {
@@ -107,9 +110,61 @@ export interface ResolveRunProfileResult {
   contextSeed?: RuntimeProfileContextSeed;
   reportProfile?: ProfileReportMetadata;
   diagnostics: ProfileDiagnostic[];
+  resumedFromRecordedProfile?: boolean;
+}
+
+export function resolveResumeProfileBehavior(
+  mode: "resume" | "run-resume",
+  hasExplicitFlags: boolean,
+  recorded: RecordedRunProfileInput | undefined
+): "reuse" | "fresh" | "none" {
+  if (mode === "run-resume" && hasExplicitFlags) {
+    return "fresh";
+  }
+  if (recorded) {
+    return "reuse";
+  }
+  return "none";
 }
 
 export async function resolveRunProfile(input: ResolveRunProfileInput): Promise<ResolveRunProfileResult> {
+  const rawOptions = (input.rawOptions || {}) as any;
+  const hasExplicitFlags = rawOptions.profile !== undefined || rawOptions.profiles !== undefined;
+  const mode = rawOptions.recordedProfile ? "resume" : (rawOptions.resume ? "run-resume" : undefined);
+
+  if (mode) {
+    const behavior = resolveResumeProfileBehavior(mode, hasExplicitFlags, input.recordedProfile);
+    if (behavior === "reuse" && input.recordedProfile) {
+      const selection: ResolvedProfileSelection = {
+        selected: input.recordedProfile.selected,
+        source: "recorded",
+        profilesPath: input.recordedProfile.profilesPath,
+        hasExternalFile: input.recordedProfile.profilesPath !== undefined,
+        resolved: input.recordedProfile.resolved,
+        hash: input.recordedProfile.hash,
+        inheritanceChain: input.recordedProfile.inheritanceChain || [],
+        diagnostics: [],
+      };
+
+      const {
+        profileRunAsCli,
+        finalCliArgs,
+        contextSeed,
+        reportProfile,
+      } = recordedProfileToRunProfile(input.recordedProfile, input.explicitArgs);
+
+      return {
+        profileRunAsCli,
+        finalCliArgs,
+        selection,
+        contextSeed,
+        reportProfile,
+        diagnostics: [],
+        resumedFromRecordedProfile: true,
+      };
+    }
+  }
+
   const { selection, diagnostics } = await validateProfileOptions({
     cwd: input.cwd,
     configPath: input.configPath,
@@ -156,3 +211,4 @@ export async function resolveRunProfile(input: ResolveRunProfileInput): Promise<
     diagnostics,
   };
 }
+

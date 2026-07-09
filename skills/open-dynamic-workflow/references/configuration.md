@@ -414,3 +414,67 @@ See [path-safety.ts](../../../src/config/path-safety.ts) and [collect-files.ts](
 ### Glob Syntax Support
 *   **Supported**: Standard wildcards (`*` single-segment, `**` recursive). Suffix wildcards (e.g., `**/*.workflow.*`) are filtered by runtime-supported extensions (`.ts`, `.js`, `.mjs`, `.cjs`).
 *   **Unsupported**: Advanced glob syntax like brace expansion is rejected/warned. Explicit lines must be used instead.
+
+---
+
+## 7. Run Profiles Configuration (`profiles`)
+
+Profiles provide named presets for arguments, context parameters, and execution flags. They can be defined under the root `profiles` key in the project config file or in an external profiles catalog YAML file.
+
+### Profile Schema
+
+A profile catalog is a map of named profile configurations. Each profile supports:
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `description` | `string` | Optional text description of the profile's purpose. |
+| `extends` | `string \| string[]` | Profile name or array of names to inherit from. |
+| `args` | `object` | JSON-safe arguments merged into the workflow's input parameters. |
+| `context` | `object` | JSON-safe context values seeded into the workflow's global context. |
+| `run` | `object` | Safe execution-related settings mapping to the run validator. |
+
+#### Allowed Safe `run` Options (`WorkflowProfileRunOptions`)
+
+To prevent arbitrary security overrides, only the following safe execution options are allowed inside `profile.run`:
+
+*   `provider`: Default AI provider for the run.
+*   `model`: Global model override.
+*   `concurrency`: Concurrency limit for parallel steps.
+*   `timeoutMs`: Execution timeout.
+*   `maxAgentCalls`: Maximum live provider calls ceiling.
+*   `failFast`: Boolean flag to abort execution on first error.
+*   `report`: Output formatting mode (`pretty`, `json`, `jsonl`).
+*   `thinkingEffort`: Reasoner thinking effort level.
+*   `retry`: Custom retry policy config overrides (or `false` to disable retries).
+
+#### Forbidden Customization Categories
+
+Profiles are restricted from modifying system security or provider adapters. The following configurations are forbidden in profiles and will fail validation:
+*   **Provider Command Construction**: Redefining provider `command` paths or changing CLI subprocess `args` templates.
+*   **Security & Path Settings**: Overriding security policies (such as `allowWorkflowImports` or `passEnv`/`redactEnv` lists) or discovery locations (`sharedAgents`, `tools`, `workflow.include`/`exclude`).
+*   **Arbitrary Configuration Overlays**: Any options outside of `WorkflowProfileRunOptions`.
+*   **Environment Interpolation**: Interpolating environment variables into profile arguments or context values.
+
+### Catalog Overlay and Inheritance
+
+Profiles support hierarchical inheritance. The resolution process is as follows:
+1.  **Overlay**: If an external profiles file is supplied (via `--profiles`), its named profiles overlay and replace same-named profiles from the project configuration.
+2.  **Inheritance**: The selected profile's inheritance chain is resolved via `extends`. Fields from parent profiles are merged, with child fields overriding parents.
+3.  **Validation**: The fully merged profile is validated against the schema before execution starts.
+
+### Context Seeding & Reserved `$profile` Metadata
+
+At startup, the resolved profile `context` map is seeded into the workflow context. Additionally, the runtime populates a reserved `$profile` namespace with the following read-only metadata:
+*   `$profile.name`: Name of the selected profile.
+*   `$profile.source`: Profile source (`"config"`, `"external"`, `"external-override"`, `"recorded"`).
+*   `$profile.hasExternalFile`: Boolean indicating if loaded from an external file.
+*   `$profile.hash`: Stable SHA-256 hash of the fully resolved profile parameters.
+*   `$profile.profilesPath`: String path to the external profiles file (if applicable).
+
+*Note: Context seeding is purely a way to configure runtime parameters; it does not constitute a sandboxed execution boundary or hostile-code isolation container.*
+
+### Hash & Artifact Boundary
+
+To prevent accidental leakage of sensitive keys, tokens, or inputs:
+1.  **Resolved Snapshot**: The full resolved profile parameters (including `args`, `context`, and `run`) are written exclusively to `run-input.json` in the run artifacts directory.
+2.  **Report Redaction**: Reporting layers (pretty summary lines, `report.json`, and `events.jsonl` event streams) intentionally carry only the compact profile metadata (selection, source, optional path, and stable hash). They never output or expose resolved bodies or sensitive credential-like sentinel values.

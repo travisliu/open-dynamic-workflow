@@ -201,6 +201,7 @@ export interface ProfileReportMetadata {
   source: ProfileSource;
   profilesPath?: string | undefined;
   hash: string;
+  resumedFromRecordedProfile?: true | undefined;
 }
 
 export interface ProfileCatalogEntry {

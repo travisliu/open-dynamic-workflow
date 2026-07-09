@@ -57,6 +57,6 @@ export interface WorkflowContextRuntime {
   runWithRootScope<T>(fn: () => Promise<T> | T): Promise<T>;
   getActiveScopeId(): string;
   getSummary(): ContextRuntimeSummary;
-  createFacade(): WorkflowContext;
+  createFacade(options?: { suppressEvents?: boolean }): WorkflowContext;
   getRootSnapshotData(): JsonObject;
 }

@@ -84,6 +84,8 @@ Use `open-dynamic-workflow list workflows` to see runnable names and their resol
 
 | Option | Description |
 | :--- | :--- |
+| `--profile <name>` | Select a profile to run (e.g., `fast`, `deep`) from configuration or external catalog. |
+| `--profiles <path>` | Path to an external YAML file containing profiles to load. |
 | `--provider <name>` | Override the default provider. |
 | `--model <name>` | Override the default model. |
 | `--concurrency <num>` | Limit maximum parallel agent calls (integer >= 1). |
@@ -108,7 +110,9 @@ Use `open-dynamic-workflow list workflows` to see runnable names and their resol
 
 ```bash
 open-dynamic-workflow run review
-open-dynamic-workflow run workflows/review.ts
+open-dynamic-workflow run review --profile fast
+open-dynamic-workflow run review --profiles custom-profiles.yaml --profile deep
+open-dynamic-workflow run review --resume <previous-run-id> --profile custom-profile
 open-dynamic-workflow run review --provider codex
 open-dynamic-workflow run review --provider mock
 open-dynamic-workflow run review --concurrency 2
@@ -138,7 +142,11 @@ open-dynamic-workflow resume <runId-or-path> [options]
 ```
 
 ### Common options
-...
+
+* `--out <path>`: Output directory for artifacts (optional).
+* `--report <mode>`: Output formatting mode (pretty, json, jsonl).
+* `--max-agent-calls <num>`: Max agent calls limit override.
+
 ### Example
 
 ```bash
@@ -150,6 +158,11 @@ open-dynamic-workflow resume <previous-run-id>
 Resume/cache is intentionally conservative. Open Dynamic Workflow replays the workflow script and compares each `agent()` call in order. A cached result is reused only while the prefix is unchanged: the call sequence must match, `id` or `label` must match when present, and the call fingerprint must match.
 
 `open-dynamic-workflow resume` reuses the exact `workflowFile` recorded in the original run's `run-input.json`, even if the original run was started by name. This ensures deterministic replay even if name resolution would now point to a different file.
+
+#### Profile Resume & Precedence Rules
+Recorded profiles are reused by default to ensure deterministic replay:
+* **`open-dynamic-workflow resume <runId>`**: Reuses the recorded profile snapshot from the initial execution's `run-input.json`. It accepts no profile flags and does not re-read the configuration catalog or the stored external files.
+* **`open-dynamic-workflow run <workflow> --resume <runId>`**: Reuses the recorded profile settings by default. However, passing explicit `--profile` or `--profiles` flags will override and discard the recorded settings, resolving fresh profile definitions from config or the current external catalog path instead.
 
 Use stable `id` values for loops, such as `id: \`round-${i}\``. Using `Date.now()`, `Math.random()`, and argument-free `new Date()` will trigger validation warnings (e.g., `Avoid Date.now(): it prevents deterministic resume/cache behavior. Use tool() instead.`) because they prevent deterministic replay. If you need non-deterministic values like timestamps or random numbers, wrap them in a custom `tool()` call so they are cached on the first run and replayed deterministically on subsequent runs.
 
@@ -308,3 +321,27 @@ When the default project configuration file (`.open-dynamic-workflow/config.yaml
         *   In `json` and `jsonl` modes, preflight setup failures write exactly one parseable JSON/JSONL error envelope containing `error.hint` to `stdout`, and no human-readable error messages are written to `stdout` or `stderr`.
 
 Initialization is optional: if no config file exists, the system automatically falls back to built-in defaults. Explicitly specifying a custom configuration path using `--config` suppresses the initialization hint unless that path resolves to the default project configuration path.
+
+---
+
+## Profile Output Surfaces
+
+Profile selection information is reported across three main output surfaces, each displaying only compact metadata to prevent credential leakage:
+
+* **Pretty Summary Line**: Appears in `Summary` after duration/limits:
+  * Config case: `  profile:   fast (config)`
+  * External catalog case: `  profile:   deep (external: path.yaml)`
+  * External override case: `  profile:   deep (external override: path.yaml)`
+  * Resumed/Recorded case: `  profile:   fast (reused from recorded run input)`
+* **JSON final-result `profile` key**: Optional compact metadata containing selection, source, optional path, hash, and optional resumed marker:
+  ```json
+  "profile": {
+    "selected": "fast",
+    "source": "config",
+    "hash": "sha256:..."
+  }
+  ```
+* **JSONL `profile.resolved` event**: Emitted before workflow execution starts, carrying the same compact metadata:
+  ```json
+  {"schemaVersion":"open-dynamic-workflow.event.v1","type":"profile.resolved","payload":{"profile":{"selected":"fast","source":"config","hash":"sha256:..."}},...}
+  ```

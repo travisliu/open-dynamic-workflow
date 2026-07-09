@@ -69,90 +69,95 @@ export function createWorkflowContextRuntime(options: {
     }
   }
 
-  const facade: WorkflowContext = {
-    get<T = unknown>(path: string): T | undefined {
-      const prefixStack = getActivePrefixStack();
-      const { normalized, segments } = resolvePath(prefixStack, path, "get");
-      return contextGet(data, segments, "get", normalized) as T;
-    },
+  function createFacadeInstance(facadeOptions?: { suppressEvents?: boolean }): WorkflowContext {
+    const suppress = facadeOptions?.suppressEvents ?? false;
+    return {
+      get<T = unknown>(path: string): T | undefined {
+        const prefixStack = getActivePrefixStack();
+        const { normalized, segments } = resolvePath(prefixStack, path, "get");
+        return contextGet(data, segments, "get", normalized) as T;
+      },
 
-    has(path: string): boolean {
-      const prefixStack = getActivePrefixStack();
-      const { normalized, segments } = resolvePath(prefixStack, path, "has");
-      return contextHas(data, segments, "has", normalized);
-    },
+      has(path: string): boolean {
+        const prefixStack = getActivePrefixStack();
+        const { normalized, segments } = resolvePath(prefixStack, path, "has");
+        return contextHas(data, segments, "has", normalized);
+      },
 
-    set(path: string, value: JsonValue): void {
-      const prefixStack = getActivePrefixStack();
-      const { normalized, segments } = resolvePath(prefixStack, path, "set");
-      const { value: validatedValue } = validateJsonValue(value, {
-        operation: "set",
-        path: normalized,
-        maxBytes: CONTEXT_LIMITS.maxValueBytes,
-      });
-      clearMatchingTombstones(normalized);
-      contextSet(data, segments, validatedValue, "set", normalized);
-      if (emitEvent) {
-        emitPathSet(emitEvent, runId, normalized, validatedValue);
-      }
-    },
-
-    delete(path: string): boolean {
-      const prefixStack = getActivePrefixStack();
-      const { normalized, segments } = resolvePath(prefixStack, path, "delete");
-      const deleted = contextDelete(data, segments, "delete", normalized);
-      if (deleted) {
-        tombstones.add(normalized);
-        if (emitEvent) {
-          emitPathDelete(emitEvent, runId, normalized);
+      set(path: string, value: JsonValue): void {
+        const prefixStack = getActivePrefixStack();
+        const { normalized, segments } = resolvePath(prefixStack, path, "set");
+        const { value: validatedValue } = validateJsonValue(value, {
+          operation: "set",
+          path: normalized,
+          maxBytes: CONTEXT_LIMITS.maxValueBytes,
+        });
+        clearMatchingTombstones(normalized);
+        contextSet(data, segments, validatedValue, "set", normalized);
+        if (emitEvent && !suppress) {
+          emitPathSet(emitEvent, runId, normalized, validatedValue);
         }
-      }
-      return deleted;
-    },
+      },
 
-    merge(path: string, value: JsonObject): void {
-      const prefixStack = getActivePrefixStack();
-      const { normalized, segments } = resolvePath(prefixStack, path, "merge");
-      const { value: validatedValue } = validateJsonValue(value, {
-        operation: "merge",
-        path: normalized,
-        maxBytes: CONTEXT_LIMITS.maxValueBytes,
-      });
-      clearMatchingTombstones(normalized);
-      contextMerge(data, segments, validatedValue as JsonObject, "merge", normalized);
-      if (emitEvent) {
-        emitPathMerge(emitEvent, runId, normalized, validatedValue);
-      }
-    },
+      delete(path: string): boolean {
+        const prefixStack = getActivePrefixStack();
+        const { normalized, segments } = resolvePath(prefixStack, path, "delete");
+        const deleted = contextDelete(data, segments, "delete", normalized);
+        if (deleted) {
+          tombstones.add(normalized);
+          if (emitEvent && !suppress) {
+            emitPathDelete(emitEvent, runId, normalized);
+          }
+        }
+        return deleted;
+      },
 
-    append(path: string, value: JsonValue): void {
-      const prefixStack = getActivePrefixStack();
-      const { normalized, segments } = resolvePath(prefixStack, path, "append");
-      const { value: validatedValue } = validateJsonValue(value, {
-        operation: "append",
-        path: normalized,
-        maxBytes: CONTEXT_LIMITS.maxValueBytes,
-      });
-      clearMatchingTombstones(normalized);
-      contextAppend(data, segments, validatedValue, "append", normalized);
-      if (emitEvent) {
-        emitPathAppend(emitEvent, runId, normalized, validatedValue);
-      }
-    },
+      merge(path: string, value: JsonObject): void {
+        const prefixStack = getActivePrefixStack();
+        const { normalized, segments } = resolvePath(prefixStack, path, "merge");
+        const { value: validatedValue } = validateJsonValue(value, {
+          operation: "merge",
+          path: normalized,
+          maxBytes: CONTEXT_LIMITS.maxValueBytes,
+        });
+        clearMatchingTombstones(normalized);
+        contextMerge(data, segments, validatedValue as JsonObject, "merge", normalized);
+        if (emitEvent && !suppress) {
+          emitPathMerge(emitEvent, runId, normalized, validatedValue);
+        }
+      },
 
-    snapshot(options?: { metadata: boolean }): any {
-      return materializeSnapshot({ scopeId: runId, data, tombstones }, options);
-    },
+      append(path: string, value: JsonValue): void {
+        const prefixStack = getActivePrefixStack();
+        const { normalized, segments } = resolvePath(prefixStack, path, "append");
+        const { value: validatedValue } = validateJsonValue(value, {
+          operation: "append",
+          path: normalized,
+          maxBytes: CONTEXT_LIMITS.maxValueBytes,
+        });
+        clearMatchingTombstones(normalized);
+        contextAppend(data, segments, validatedValue, "append", normalized);
+        if (emitEvent && !suppress) {
+          emitPathAppend(emitEvent, runId, normalized, validatedValue);
+        }
+      },
 
-    async scope<T>(pathPrefix: string, fn: () => Promise<T> | T): Promise<T> {
-      const prefixStack = getActivePrefixStack();
-      const { normalized } = parseContextPath(pathPrefix, { operation: "scope" });
-      const nextStack = [...prefixStack, normalized];
-      return prefixStorage.run(nextStack, async () => {
-        return await fn();
-      });
-    },
-  };
+      snapshot(options?: { metadata: boolean }): any {
+        return materializeSnapshot({ scopeId: runId, data, tombstones }, options);
+      },
+
+      async scope<T>(pathPrefix: string, fn: () => Promise<T> | T): Promise<T> {
+        const prefixStack = getActivePrefixStack();
+        const { normalized } = parseContextPath(pathPrefix, { operation: "scope" });
+        const nextStack = [...prefixStack, normalized];
+        return prefixStorage.run(nextStack, async () => {
+          return await fn();
+        });
+      },
+    };
+  }
+
+  const defaultFacade = createFacadeInstance();
 
   return {
     async runWithRootScope<T>(fn: () => Promise<T> | T): Promise<T> {
@@ -171,8 +176,11 @@ export function createWorkflowContextRuntime(options: {
       };
     },
 
-    createFacade() {
-      return facade;
+    createFacade(facadeOptions?: { suppressEvents?: boolean }) {
+      if (facadeOptions?.suppressEvents) {
+        return createFacadeInstance(facadeOptions);
+      }
+      return defaultFacade;
     },
 
     getRootSnapshotData() {

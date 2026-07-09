@@ -637,7 +637,7 @@ export function validateProfileName(name: unknown, path: string): asserts name i
   }
 }
 
-function validateObjectOwnPropertiesOnly(
+export function validateObjectOwnPropertiesOnly(
   obj: unknown,
   path: string,
   errorOnInvalidType?: string
