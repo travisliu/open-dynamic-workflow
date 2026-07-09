@@ -465,30 +465,10 @@ function buildReportContextSummary(
   if (!runtime.contextRuntime) {
     return undefined;
   }
-  const summary = runtime.contextRuntime.getSummary();
-  const completedPatches = runtime.contextRuntime.getCompletedPatches();
-
-  let truncatedPreviewCount = 0;
-  for (const patch of completedPatches) {
-    for (const op of patch.patchOperations) {
-      if (op.truncated) {
-        truncatedPreviewCount++;
-      }
-    }
-    for (const inh of patch.inheritedPaths) {
-      if (inh.truncated) {
-        truncatedPreviewCount++;
-      }
-    }
-  }
 
   return {
     rootFinalArtifact: contextSummary?.rootFinalArtifactPath,
     summaryArtifact: contextSummary?.summaryArtifactPath,
-    overlayCount: summary.totalOverlays,
-    conflictCount: summary.conflictCount,
-    rejectedWriteCount: summary.rejectionCount,
-    truncatedPreviewCount,
   };
 }
 

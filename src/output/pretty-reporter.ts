@@ -231,21 +231,11 @@ export class PrettyReporter implements Reporter {
       }
       
       if (result.context) {
-        const ctx = result.context as any;
-        this.stdout.write(`  context/root-final.json\n`);
-        this.stdout.write(`  context/summary.json\n`);
-        const stats: string[] = [];
-        if (ctx.overlayCount !== undefined) {
-          stats.push(`${ctx.overlayCount} overlays`);
+        if (result.context.rootFinalArtifact) {
+          this.stdout.write(`  ${result.context.rootFinalArtifact}\n`);
         }
-        if (ctx.conflictCount !== undefined) {
-          stats.push(`${ctx.conflictCount} conflicts`);
-        }
-        if (ctx.rejectedWriteCount !== undefined) {
-          stats.push(`${ctx.rejectedWriteCount} rejected`);
-        }
-        if (stats.length > 0) {
-          this.stdout.write(`  context: ${stats.join(", ")}\n`);
+        if (result.context.summaryArtifact) {
+          this.stdout.write(`  ${result.context.summaryArtifact}\n`);
         }
       }
     } catch (err) {

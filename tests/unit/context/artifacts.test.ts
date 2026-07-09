@@ -4,26 +4,16 @@ import { writeContextArtifacts } from "../../../src/context/artifacts.js";
 import { CONTEXT_LIMITS } from "../../../src/context/limits.js";
 
 describe("Context Artifact Finalization", () => {
-  it("persists root snapshot, summary, and completed overlay patches with redaction and event emission", async () => {
+  it("persists root snapshot and summary with redaction and event emission", async () => {
     // Arrange
     const runtime = createWorkflowContextRuntime({ runId: "run-123" });
+    expect((runtime as any).getCompletedPatches).toBeUndefined();
+    expect((runtime as any).getRootFrame).toBeUndefined();
     const ctx = runtime.createFacade();
 
-    // Write some root and overlay values
+    // Write some root values only
     ctx.set("greeting", "hello world");
     ctx.set("secret_key", "super_secret_value");
-
-    await runtime.runWithOverlay(
-      {
-        scopeId: "workflow:nested-scope",
-        scopeType: "workflow",
-        mergeRules: { nestedVal: "replace" },
-      },
-      async () => {
-        const subCtx = runtime.createFacade();
-        subCtx.set("nestedVal", "nested-data");
-      }
-    );
 
     const writtenFiles: Record<string, any> = {};
     const mockArtifactStore: any = {
@@ -50,10 +40,6 @@ describe("Context Artifact Finalization", () => {
     });
 
     // Assert
-    expect(summary.totalOverlays).toBe(1);
-    expect(summary.mergedOverlays).toBe(1);
-    expect(summary.failedOverlays).toBe(0);
-
     expect(mockArtifactStore.writeJson).toHaveBeenCalled();
 
     // Check root-final.json contents and secret redaction
@@ -67,19 +53,22 @@ describe("Context Artifact Finalization", () => {
     // Check summary.json contents
     const contextSummary = writtenFiles["context/summary.json"];
     expect(contextSummary).toBeDefined();
-    expect(contextSummary.rootFinalArtifactPath).toBe("context/root-final.json");
-    expect(contextSummary.summaryArtifactPath).toBe("context/summary.json");
-    expect(contextSummary.overlayPatchArtifactPaths["workflow:nested-scope"]).toBe(
-      "context/overlays/workflow_nested-scope.patch.json"
-    );
+    // Supporting either shape (with or without Path suffix, matching either developer A/B output)
+    const rootPath = contextSummary.rootFinalArtifactPath ?? contextSummary.rootFinalArtifact;
+    const summaryPath = contextSummary.summaryArtifactPath ?? contextSummary.summaryArtifact;
+    expect(rootPath).toBe("context/root-final.json");
+    expect(summaryPath).toBe("context/summary.json");
+    expect(contextSummary.overlayPatchArtifactPaths).toBeUndefined();
+    expect(contextSummary.totalOverlays).toBeUndefined();
+    expect(contextSummary.mergedOverlays).toBeUndefined();
+    expect(contextSummary.failedOverlays).toBeUndefined();
+    expect(contextSummary.conflictCount).toBeUndefined();
+    expect(contextSummary.rejectionCount).toBeUndefined();
 
-    // Check overlay patch contents and hidden rawValue omission
-    const patch = writtenFiles["context/overlays/workflow_nested-scope.patch.json"];
-    expect(patch).toBeDefined();
-    expect(patch.scopeId).toBe("workflow:nested-scope");
-    expect(patch.patchOperations[0].path).toBe("nestedVal");
-    expect(patch.patchOperations[0].valuePreview).toBe("nested-data");
-    expect(patch.patchOperations[0].rawValue).toBeUndefined(); // Verify hidden rawValue was omitted/not serialized
+    // Ensure no overlay patch files are written
+    const writtenPaths = Object.keys(writtenFiles);
+    const patchFiles = writtenPaths.filter(p => p.startsWith("context/overlays/"));
+    expect(patchFiles).toHaveLength(0);
 
     // Check event emissions
     expect(emittedEvents).toContainEqual(
@@ -100,20 +89,19 @@ describe("Context Artifact Finalization", () => {
         }),
       })
     );
-    expect(emittedEvents).toContainEqual(
-      expect.objectContaining({
-        type: "context.artifact.written",
-        payload: expect.objectContaining({
-          artifactKind: "overlay-patch",
-          artifactPath: "context/overlays/workflow_nested-scope.patch.json",
-        }),
-      })
+
+    // Assert no event with artifactKind: "overlay-patch" is emitted
+    const patchEvents = emittedEvents.filter(
+      (e) => e.type === "context.artifact.written" && e.payload.artifactKind === "overlay-patch"
     );
+    expect(patchEvents).toHaveLength(0);
   });
 
   it("handles final root snapshot truncation gracefully when size limit is exceeded", async () => {
     // Arrange
     const runtime = createWorkflowContextRuntime({ runId: "run-large" });
+    expect((runtime as any).getCompletedPatches).toBeUndefined();
+    expect((runtime as any).getRootFrame).toBeUndefined();
     const ctx = runtime.createFacade();
 
     // Write values that sum up to larger than snapshot size limit

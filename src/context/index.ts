@@ -9,18 +9,6 @@ export type {
   WorkflowContextSnapshot,
   WorkflowContextSnapshotMetadata,
   NormalizedContextPath,
-  ContextScopeType,
-  ContextMergeStrategy,
-  ContextInheritRule,
-  NormalizedContextInheritRule,
-  ContextScopeMetadata,
-  ContextPatchOperation,
-  ContextInheritedPathArtifact,
-  ContextMergeSummary,
-  ContextOverlayPatchArtifact,
   ContextFinalizationSummary,
   ContextRuntimeSummary,
-  ContextOverlayOptions,
-  ContextOverlayResult,
 } from "./types.js";
-

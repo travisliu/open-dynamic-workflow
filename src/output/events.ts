@@ -62,14 +62,10 @@ export type EventType =
   | "loop.cancelled"
   | "loop.timed_out"
   | "loop.max_rounds"
-  | "context.overlay.created"
   | "context.path.set"
   | "context.path.merge"
   | "context.path.append"
   | "context.path.delete"
-  | "context.merge.applied"
-  | "context.merge.rejected"
-  | "context.merge.conflict"
   | "context.artifact.written";
 
 export interface EventEnvelope<TPayload = unknown> {

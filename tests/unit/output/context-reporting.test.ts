@@ -76,10 +76,6 @@ describe("Context reporting", () => {
       context: {
         rootFinalArtifact: "context/root-final.json",
         summaryArtifact: "context/summary.json",
-        overlayCount: 4,
-        conflictCount: 1,
-        rejectedWriteCount: 2,
-        truncatedPreviewCount: 3,
       },
     } as any;
 
@@ -90,10 +86,11 @@ describe("Context reporting", () => {
     const parsed = JSON.parse(getStdout().trim());
     expect(parsed.context).toEqual(result.context);
     expect(parsed.context.rootFinalArtifact).toBe("context/root-final.json");
-    expect(parsed.context.overlayCount).toBe(4);
+    expect(parsed.context.summaryArtifact).toBe("context/summary.json");
+    expect(parsed.context.overlayCount).toBeUndefined();
   });
 
-  it("renders a compact pretty summary for context artifacts and counts", () => {
+  it("renders a compact pretty summary for context artifacts", () => {
     // Arrange
     const { streams, getStdout } = createMockStreams();
     const reporter = new PrettyReporter(streams);
@@ -112,10 +109,6 @@ describe("Context reporting", () => {
       context: {
         rootFinalArtifact: "context/root-final.json",
         summaryArtifact: "context/summary.json",
-        overlayCount: 4,
-        conflictCount: 1,
-        rejectedWriteCount: 2,
-        truncatedPreviewCount: 3,
       },
     } as any;
 
@@ -128,8 +121,8 @@ describe("Context reporting", () => {
     expect(output).toContain("Artifacts");
     expect(output).toContain("context/root-final.json");
     expect(output).toContain("context/summary.json");
-    expect(output).toContain("4 overlays");
-    expect(output).toContain("1 conflicts");
-    expect(output).toContain("2 rejected");
+    expect(output).not.toContain("overlays");
+    expect(output).not.toContain("conflicts");
+    expect(output).not.toContain("rejected");
   });
 });
