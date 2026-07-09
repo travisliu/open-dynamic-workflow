@@ -157,7 +157,7 @@ function cloneContextValueBoundary(
       for (let i = 0; i < value.length; i++) {
         const desc = descriptors[String(i)];
         const val = desc ? desc.value : undefined;
-        clonedArr.push(cloneContextValueBoundary(val, seen, operation, path));
+        clonedArr.push(cloneContextValueBoundary(val, seen, operation, `${path}[${i}]`));
       }
       seen.delete(value);
       return clonedArr;
@@ -170,7 +170,12 @@ function cloneContextValueBoundary(
       (proto !== null && Object.getPrototypeOf(proto) === null);
 
     if (!isValidPlainObject) {
-      const constructorName = proto?.constructor?.name || "unknown";
+      let constructorName = "unknown";
+      try {
+        constructorName = proto?.constructor?.name || "unknown";
+      } catch {
+        constructorName = "unknown (getter threw)";
+      }
       throw new OpenDynamicWorkflowError(
         ErrorCode.CONTEXT_INVALID_VALUE,
         `Context operation '${operation}' failed for path '${path}': value is not a plain object or array (prototype: ${constructorName})`
@@ -197,13 +202,20 @@ function cloneContextValueBoundary(
       );
     }
 
-    // Reconstruct the object in the host realm (with either null or Object.prototype)
     const clonedObj = proto === null ? Object.create(null) : {};
     const keys = Object.keys(value as object);
     for (const key of keys) {
       const desc = descriptors[key];
       const val = desc ? desc.value : undefined;
-      clonedObj[key] = cloneContextValueBoundary(val, seen, operation, path);
+      if (val === undefined) {
+        continue;
+      }
+      Object.defineProperty(clonedObj, key, {
+        value: cloneContextValueBoundary(val, seen, operation, `${path}.${key}`),
+        enumerable: true,
+        writable: true,
+        configurable: true
+      });
     }
     seen.delete(value);
     return clonedObj;
