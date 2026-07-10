@@ -8,6 +8,7 @@ import type { AgentResult } from "../../../src/types/agent.js";
 import * as selectionService from "../../../src/agents/resolve-provider-selection.js";
 import * as validationService from "../../../src/agents/validate-provider-selection.js";
 import * as cacheModule from "../../../src/artifacts/call-cache.js";
+import * as providerResolutionEvents from "../../../src/output/provider-selection-events.js";
 const { computeAgentFingerprint } = cacheModule;
 import { resolveAgentRetryPolicy, resolveGlobalRetryPolicy } from "../../../src/config/retry.js";
 
@@ -1017,6 +1018,12 @@ describe("DSL: agent()", () => {
         return originalValidate(...args);
       });
 
+      const originalEmit = providerResolutionEvents.emitProviderResolutionEvents;
+      const emitSpy = vi.spyOn(providerResolutionEvents, "emitProviderResolutionEvents").mockImplementation(async (...args) => {
+        order.push("provider-resolution-events");
+        return originalEmit(...args);
+      });
+
       const originalFingerprint = cacheModule.computeAgentFingerprint;
       const fingerprintSpy = vi.spyOn(cacheModule, "computeAgentFingerprint").mockImplementation((...args) => {
         order.push("fingerprint");
@@ -1057,24 +1064,40 @@ describe("DSL: agent()", () => {
       const runtime = makeRuntimeState({
         scheduler: scheduler as any,
         agentExecutor: executor as any,
-        runLimitTracker: runLimitTracker as any
+        runLimitTracker: runLimitTracker as any,
+        config: {
+          ...makeRuntimeState().config,
+          providerAliases: {
+            "deep-mock": {
+              name: "deep-mock",
+              inheritanceChain: ["deep-mock"],
+              origins: { provider: "deep-mock" },
+              digest: "digest-val",
+              provider: "mock"
+            }
+          } as any
+        }
       });
 
       const dsl = createDsl(runtime);
-      await dsl.agent({ id: "agent-1", prompt: "hello", provider: "mock" });
+      await dsl.agent({ id: "agent-1", prompt: "hello", provider: "deep-mock" });
 
       expect(order).toEqual([
         "selection",
         "validation",
+        "provider-resolution-events",
         "fingerprint",
         "cache-lookup",
         "run-limit-tracker",
         "scheduler",
         "executor"
       ]);
+      expect(emitSpy).toHaveBeenCalledTimes(1);
+      expect((runtime.eventSink as any).events[0]).toMatchObject({ type: "agent.provider-alias-resolved" });
 
       selectSpy.mockRestore();
       validateSpy.mockRestore();
+      emitSpy.mockRestore();
       fingerprintSpy.mockRestore();
       cacheSpy.mockRestore();
     });

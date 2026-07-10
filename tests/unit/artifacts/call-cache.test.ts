@@ -28,6 +28,32 @@ function makeCache(entries: any[]): RuntimeCallCache {
 }
 
 describe("call cache", () => {
+  const mockProviderSelection = {
+    schemaVersion: "open-dynamic-workflow.provider-selection.v1",
+    selection: {
+      requestedProvider: "codex",
+      requestedProviderSource: "agent",
+      resolvedProvider: "codex"
+    },
+    resolvedExecution: {
+      timeoutMs: 120000,
+      retry: {
+        enabled: false,
+        maxAttempts: 1,
+        delayMs: 1000,
+        backoff: "fixed",
+        maxDelayMs: 1000,
+        jitter: false,
+        disableDelay: false
+      }
+    },
+    sources: {
+      provider: "agent",
+      timeoutMs: "builtIn",
+      retry: "builtIn"
+    }
+  } as any;
+
   beforeEach(async () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
     await fs.mkdir(TEMP_DIR, { recursive: true });
@@ -385,7 +411,8 @@ describe("call cache", () => {
       },
       currentAgentId: "new-a",
       provider: "codex",
-      permissions: { mode: "default" }
+      permissions: { mode: "default" },
+      providerSelection: mockProviderSelection
     });
 
     expect(result.ok).toBe(true);
@@ -477,7 +504,8 @@ describe("call cache", () => {
       },
       currentAgentId: "new-a",
       provider: "codex",
-      permissions: { mode: "default" }
+      permissions: { mode: "default" },
+      providerSelection: mockProviderSelection
     });
 
     expect(result.ok).toBe(true);
@@ -767,7 +795,8 @@ describe("call cache", () => {
       },
       currentAgentId: "evil",
       provider: "codex",
-      permissions: { mode: "default" }
+      permissions: { mode: "default" },
+      providerSelection: mockProviderSelection
     })).rejects.toMatchObject({ code: "CLI_USAGE_ERROR" });
 
     await expect(materializeCachedToolResult({
@@ -787,5 +816,233 @@ describe("call cache", () => {
       failureMode: "throw",
       workflowInvocationId: "w1"
     })).rejects.toMatchObject({ code: "CLI_USAGE_ERROR" });
+  });
+
+  it("proves v1 cache indexes and old agent entries without Phase 3 fields load without error", async () => {
+    const runRoot = path.join(TEMP_DIR, "run-legacy-load");
+    await fs.mkdir(path.join(runRoot, "agents/a"), { recursive: true });
+    await fs.writeFile(path.join(runRoot, "manifest.json"), JSON.stringify({ runId: "run-legacy-load" }), "utf8");
+    await fs.writeFile(path.join(runRoot, "cache-index.json"), JSON.stringify({
+      schemaVersion: "open-dynamic-workflow.cache-index.v1",
+      entries: [
+        { sequence: 1, callId: "a", fingerprint: "fp", status: "succeeded", resultPath: "agents/a/normalized-result.json", agentId: "a" }
+      ]
+    }), "utf8");
+
+    const cache = await loadRuntimeCallCache({
+      resume: "run-legacy-load",
+      outDir: TEMP_DIR
+    });
+
+    const entry = cache.previousEntries.get(1) as AgentCallCacheEntry;
+    expect(entry).toBeDefined();
+    expect(entry.fingerprintVersion).toBeUndefined();
+    expect(entry.diagnosticMaterial).toBeUndefined();
+  });
+
+  it("proves identifiable v2 mismatches return safe specific reasons and legacy mismatches return the generic reason", () => {
+    const oldDiag: AgentFingerprintDiagnosticMaterial = {
+      requestedProvider: "alias-1",
+      providerAlias: "alias-1",
+      providerAliasDigest: "digest-1",
+      provider: "concrete-1",
+      model: "model-1",
+      thinkingEffort: "medium",
+      timeoutMs: 5000,
+      retry: {
+        enabled: true,
+        maxAttempts: 3,
+        delayMs: 1000,
+        backoff: "exponential",
+        maxDelayMs: 30000,
+        jitter: true,
+        disableDelay: false
+      }
+    };
+
+    const cache = makeCache([
+      {
+        kind: "agent",
+        sequence: 1,
+        callId: "a",
+        fingerprint: "old-fp",
+        status: "succeeded",
+        resultPath: "agents/a/normalized-result.json",
+        agentId: "a",
+        fingerprintVersion: "v2",
+        diagnosticMaterial: oldDiag
+      }
+    ]);
+
+    // Test alias digest change / model change
+    let reportedReason = "";
+    findPrefixCacheHit({
+      cache,
+      kind: "agent",
+      sequence: 1,
+      callId: "a",
+      fingerprint: "new-fp",
+      currentDiagnosticMaterial: {
+        ...oldDiag,
+        providerAliasDigest: "digest-2",
+        model: "model-2"
+      },
+      onMismatch: (r) => { reportedReason = r; }
+    });
+    expect(reportedReason).toBe('provider alias "alias-1" resolved model changed from "model-1" to "model-2"');
+
+    // Reset prefix cache usability for the next lookup test
+    cache.prefixCacheUsable = true;
+    reportedReason = "";
+
+    // Test alias digest change / thinking effort change
+    findPrefixCacheHit({
+      cache,
+      kind: "agent",
+      sequence: 1,
+      callId: "a",
+      fingerprint: "new-fp",
+      currentDiagnosticMaterial: {
+        ...oldDiag,
+        providerAliasDigest: "digest-2",
+        thinkingEffort: "high"
+      },
+      onMismatch: (r) => { reportedReason = r; }
+    });
+    expect(reportedReason).toBe('provider alias "alias-1" resolved thinking effort changed from "medium" to "high"');
+
+    // Reset prefix cache usability
+    cache.prefixCacheUsable = true;
+    reportedReason = "";
+
+    // Test legacy mismatch fallback (when old diagnosticMaterial is absent)
+    const cacheLegacy = makeCache([
+      {
+        kind: "agent",
+        sequence: 1,
+        callId: "a",
+        fingerprint: "old-fp",
+        status: "succeeded",
+        resultPath: "agents/a/normalized-result.json",
+        agentId: "a"
+      }
+    ]);
+    findPrefixCacheHit({
+      cache: cacheLegacy,
+      kind: "agent",
+      sequence: 1,
+      callId: "a",
+      fingerprint: "new-fp",
+      currentDiagnosticMaterial: oldDiag,
+      onMismatch: (r) => { reportedReason = r; }
+    });
+    expect(reportedReason).toBe("fingerprint mismatch");
+  });
+
+  it("proves prefix usability becomes false at the first mismatch and remains false for later calls", () => {
+    const cache = makeCache([
+      { kind: "agent", sequence: 1, callId: "a", fingerprint: "fp-a", status: "succeeded", resultPath: "agents/a/normalized-result.json", agentId: "a" },
+      { kind: "agent", sequence: 2, callId: "b", fingerprint: "fp-b", status: "succeeded", resultPath: "agents/b/normalized-result.json", agentId: "b" }
+    ]);
+
+    // Mismatch at sequence 1
+    const hit1 = findPrefixCacheHit({
+      cache,
+      kind: "agent",
+      sequence: 1,
+      callId: "a",
+      fingerprint: "fp-different"
+    });
+    expect(hit1).toBeUndefined();
+    expect(cache.prefixCacheUsable).toBe(false);
+
+    // Sequence 2 has identical fingerprint but prefixCacheUsable is now false, so it must return undefined
+    const hit2 = findPrefixCacheHit({
+      cache,
+      kind: "agent",
+      sequence: 2,
+      callId: "b",
+      fingerprint: "fp-b"
+    });
+    expect(hit2).toBeUndefined();
+  });
+
+  it("proves cache-hit materialization overwrites stale selection fields with current-run values and creates metadata.json when necessary", async () => {
+    const prevRun = path.join(TEMP_DIR, "prev-mat-run");
+    await fs.mkdir(path.join(prevRun, "agents/old-a"), { recursive: true });
+    await fs.writeFile(path.join(prevRun, "agents/old-a/normalized-result.json"), JSON.stringify("ok"), "utf8");
+
+    const fakePrevResult = {
+      ok: true,
+      status: "succeeded",
+      id: "old-a",
+      provider: "old-provider",
+      model: "old-model",
+      text: "ok",
+      artifacts: {
+        dir: "agents/old-a",
+        promptPath: "agents/old-a/prompt.txt",
+        stdoutPath: "agents/old-a/stdout.log",
+        stderrPath: "agents/old-a/stderr.log"
+      },
+      permissions: { mode: "default" },
+      metadata: {
+        someKey: "someValue",
+        providerSelection: {
+          schemaVersion: "open-dynamic-workflow.provider-selection.v1",
+          selection: { requestedProvider: "old-alias", resolvedProvider: "old-provider" }
+        }
+      }
+    };
+    await fs.writeFile(path.join(prevRun, "agents/old-a/agent-result.json"), JSON.stringify(fakePrevResult), "utf8");
+
+    let writtenFiles: Record<string, any> = {};
+    const store = {
+      writeText: async (relativePath: string, content: string) => { writtenFiles[relativePath] = content; },
+      writeJson: async (relativePath: string, data: any) => { writtenFiles[relativePath] = data; }
+    } as any;
+
+    const currentProviderSelection = {
+      schemaVersion: "open-dynamic-workflow.provider-selection.v1",
+      selection: {
+        requestedProvider: "new-alias",
+        requestedProviderSource: "agent",
+        resolvedProvider: "new-concrete"
+      },
+      resolvedExecution: {
+        model: "new-model",
+        timeoutMs: 99999,
+        retry: { enabled: false }
+      }
+    } as any;
+
+    const result = await materializeCachedAgentResult({
+      store,
+      previousRunRoot: prevRun,
+      previousRunId: "prev-run",
+      entry: {
+        kind: "agent",
+        sequence: 1,
+        fingerprint: "fp",
+        status: "succeeded",
+        resultPath: "agents/old-a/normalized-result.json",
+        agentId: "old-a",
+        agentResultPath: "agents/old-a/agent-result.json"
+      },
+      currentAgentId: "new-a",
+      provider: "new-concrete",
+      model: "new-model",
+      permissions: { mode: "default" },
+      providerSelection: currentProviderSelection
+    });
+
+    expect(result.providerSelection).toEqual(currentProviderSelection);
+    expect(result.metadata?.providerSelection).toEqual(currentProviderSelection);
+    expect(result.metadata?.someKey).toBe("someValue"); // preserved other keys
+
+    expect(writtenFiles["agents/new-a/metadata.json"]).toEqual({
+      someKey: "someValue",
+      providerSelection: currentProviderSelection
+    });
   });
 });

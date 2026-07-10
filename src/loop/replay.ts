@@ -9,6 +9,20 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(sortValue(value));
 }
 
+const transientReplayKeys = new Set([
+  "artifacts",
+  "cache",
+  "durationMs",
+  "executionDurationMs",
+  "finishedAt",
+  "queueDurationMs",
+  "startedAt",
+  "stderr",
+  "stdout",
+  "cacheMaterializationDurationMs",
+  "providerSelection"
+]);
+
 function sortValue(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(sortValue);
@@ -16,6 +30,7 @@ function sortValue(value: unknown): unknown {
   if (value && typeof value === "object") {
     const sorted: Record<string, unknown> = {};
     for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      if (transientReplayKeys.has(key)) continue;
       const child = (value as Record<string, unknown>)[key];
       if (child !== undefined) {
         sorted[key] = sortValue(child);

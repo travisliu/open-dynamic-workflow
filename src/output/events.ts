@@ -4,6 +4,7 @@ import type { AgentPermissions, AgentResultStatus } from "../types/agent.js";
 import type { WorkflowRunLimitSummary } from "../types/workflow.js";
 import type { ThinkingEffort } from "../types/thinking-effort.js";
 import type { ProfileReportMetadata } from "../types/config.js";
+import type { ProviderReferenceSource, ProviderSettingSource, ProviderSettingName } from "../types/provider-selection.js";
 
 export type EventType =
   | "profile.resolved"
@@ -68,7 +69,9 @@ export type EventType =
   | "context.path.merge"
   | "context.path.append"
   | "context.path.delete"
-  | "context.artifact.written";
+  | "context.artifact.written"
+  | "agent.provider-alias-resolved"
+  | "agent.provider-setting-overridden";
 
 export interface EventEnvelope<TPayload = unknown> {
   schemaVersion: "open-dynamic-workflow.event.v1";
@@ -313,6 +316,31 @@ export interface AgentRetryExhaustedPayload {
   finalFailureReason: string;
   error?: SerializedError | undefined;
   retrySummaryPath: string;
+}
+
+export interface AgentProviderAliasResolvedPayload {
+  agentId: string;
+  label?: string | undefined;
+  requestedProvider: string;
+  requestedProviderSource: ProviderReferenceSource;
+  providerAlias: string;
+  providerAliasChain: readonly string[];
+  providerAliasDigest: string;
+  provider: string;
+}
+
+export interface AgentProviderSettingOverriddenPayload {
+  agentId: string;
+  label?: string | undefined;
+  providerAlias?: string | undefined;
+  provider: string;
+  setting: ProviderSettingName;
+  selectedValue: unknown;
+  selectedSource: ProviderSettingSource;
+  selectedSourcePath: string;
+  overriddenValue: unknown;
+  overriddenSource: ProviderSettingSource;
+  overriddenSourcePath: string;
 }
 
 export interface PipelineStartedPayload {

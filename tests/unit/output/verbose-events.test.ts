@@ -348,3 +348,146 @@ describe("verbose event formatter for retry events", () => {
     expect(retryExhausted).toContain("Error: Final error");
   });
 });
+
+describe("verbose provider selection events", () => {
+  it("formats provider-alias-resolved event with alias resolution text and chain ordering", () => {
+    const outputWithChain = renderVerboseEvent({
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 1,
+      timestamp: "12:00:00",
+      type: "agent.provider-alias-resolved",
+      payload: {
+        agentId: "agent-1",
+        requestedProvider: "alias-a",
+        requestedProviderSource: "agent",
+        providerAlias: "alias-a",
+        providerAliasChain: ["alias-a", "alias-b", "concrete-provider"],
+        providerAliasDigest: "hash",
+        provider: "concrete-provider",
+      },
+    } as any);
+
+    expect(outputWithChain).toContain("Provider alias resolved: alias-a -> concrete-provider");
+    expect(outputWithChain).toContain("Alias chain: alias-a -> alias-b -> concrete-provider");
+    expect(outputWithChain).toContain("  Event: #1 12:00:00");
+
+    const outputNoChain = renderVerboseEvent({
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 2,
+      timestamp: "12:00:01",
+      type: "agent.provider-alias-resolved",
+      payload: {
+        agentId: "agent-1",
+        requestedProvider: "alias-a",
+        requestedProviderSource: "agent",
+        providerAlias: "alias-a",
+        providerAliasChain: [],
+        providerAliasDigest: "hash",
+        provider: "concrete-provider",
+      },
+    } as any);
+
+    expect(outputNoChain).toContain("Provider alias resolved: alias-a -> concrete-provider");
+    expect(outputNoChain).not.toContain("Alias chain:");
+  });
+
+  it("formats provider-setting-overridden event with model, retry, explicit null, and safe unexpected values", () => {
+    // 1. Model override with explicit values
+    const modelOverrideOutput = renderVerboseEvent({
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 3,
+      timestamp: "12:00:02",
+      type: "agent.provider-setting-overridden",
+      payload: {
+        agentId: "agent-1",
+        provider: "concrete",
+        setting: "model",
+        selectedValue: "gpt-4",
+        selectedSource: "cli",
+        selectedSourcePath: "cli.model",
+        overriddenValue: "gpt-3.5",
+        overriddenSource: "providerAlias",
+        overriddenSourcePath: "providerAliases.alias.model",
+      },
+    } as any);
+
+    expect(modelOverrideOutput).toContain(
+      'Override applied: cli.model="gpt-4" overrides providerAliases.alias.model="gpt-3.5"'
+    );
+
+    // 2. Explicit null value
+    const nullOverrideOutput = renderVerboseEvent({
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 4,
+      timestamp: "12:00:03",
+      type: "agent.provider-setting-overridden",
+      payload: {
+        agentId: "agent-1",
+        provider: "concrete",
+        setting: "model",
+        selectedValue: null,
+        selectedSource: "cli",
+        selectedSourcePath: "cli.model",
+        overriddenValue: "gpt-3.5",
+        overriddenSource: "providerAlias",
+        overriddenSourcePath: "providerAliases.alias.model",
+      },
+    } as any);
+
+    expect(nullOverrideOutput).toContain(
+      'Override applied: cli.model=null overrides providerAliases.alias.model="gpt-3.5"'
+    );
+
+    // 3. Retry policy override (deterministic object serialization)
+    const retryOverrideOutput = renderVerboseEvent({
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 5,
+      timestamp: "12:00:04",
+      type: "agent.provider-setting-overridden",
+      payload: {
+        agentId: "agent-1",
+        provider: "concrete",
+        setting: "retry",
+        selectedValue: { enabled: true, maxAttempts: 2 },
+        selectedSource: "cli",
+        selectedSourcePath: "cli.retry",
+        overriddenValue: { enabled: false, maxAttempts: 5 },
+        overriddenSource: "providerAlias",
+        overriddenSourcePath: "providerAliases.alias.retry",
+      },
+    } as any);
+
+    expect(retryOverrideOutput).toContain(
+      'Override applied: cli.retry={"enabled":true,"maxAttempts":2} overrides providerAliases.alias.retry={"enabled":false,"maxAttempts":5}'
+    );
+
+    // 4. Safe handling of unexpected/invalid values
+    const invalidOverrideOutput = renderVerboseEvent({
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 6,
+      timestamp: "12:00:05",
+      type: "agent.provider-setting-overridden",
+      payload: {
+        agentId: "agent-1",
+        provider: "concrete",
+        setting: "timeoutMs",
+        selectedValue: "[invalid]",
+        selectedSource: "cli",
+        selectedSourcePath: "cli.timeoutMs",
+        overriddenValue: "[invalid]",
+        overriddenSource: "providerAlias",
+        overriddenSourcePath: "providerAliases.alias.timeoutMs",
+      },
+    } as any);
+
+    expect(invalidOverrideOutput).toContain(
+      'Override applied: cli.timeoutMs="[invalid]" overrides providerAliases.alias.timeoutMs="[invalid]"'
+    );
+  });
+});

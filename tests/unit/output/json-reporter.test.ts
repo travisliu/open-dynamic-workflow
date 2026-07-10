@@ -269,4 +269,66 @@ describe("JsonReporter", () => {
     expect(getStderr()).toContain("Artifacts:");
     expect(getStderr()).toContain("    stdout: agents/agent-1/stdout.log");
   });
+
+  it("handles new provider-alias and override events, writing verbose diagnostics to stderr, and writes exactly one final report to stdout on finish", () => {
+    const { streams, getStdout, getStderr } = createMockStreams();
+    const reporter = new JsonReporter(streams, { verbose: true });
+
+    const aliasResolvedEvent = {
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 10,
+      timestamp: "2026-07-10T12:00:00.000Z",
+      type: "agent.provider-alias-resolved",
+      payload: {
+        agentId: "agent-1",
+        label: "agent-label",
+        requestedProvider: "alias-a",
+        requestedProviderSource: "agent",
+        providerAlias: "alias-a",
+        providerAliasChain: ["alias-a", "concrete"],
+        providerAliasDigest: "hash",
+        provider: "concrete"
+      }
+    };
+
+    const overrideEvent = {
+      schemaVersion: "open-dynamic-workflow.event.v1",
+      runId: "run-1",
+      sequence: 11,
+      timestamp: "2026-07-10T12:00:01.000Z",
+      type: "agent.provider-setting-overridden",
+      payload: {
+        agentId: "agent-1",
+        label: "agent-label",
+        providerAlias: "alias-a",
+        provider: "concrete",
+        setting: "model",
+        selectedValue: "gpt-4",
+        selectedSource: "cli",
+        selectedSourcePath: "cli.model",
+        overriddenValue: "gpt-3.5",
+        overriddenSource: "providerAlias",
+        overriddenSourcePath: "providerAliases.alias-a.model"
+      }
+    };
+
+    reporter.start({ runId: "run-1", meta: { name: "my-flow", description: "" }, artifactsDir: "dir" });
+    reporter.handle(aliasResolvedEvent as any);
+    reporter.handle(overrideEvent as any);
+
+    // stdout should still be empty before finish
+    expect(getStdout()).toBe("");
+
+    // stderr should contain the formatted verbose strings
+    expect(getStderr()).toContain("Provider alias resolved: alias-a -> concrete");
+    expect(getStderr()).toContain("Alias chain: alias-a -> concrete");
+    expect(getStderr()).toContain('Override applied: cli.model="gpt-4" overrides providerAliases.alias-a.model="gpt-3.5"');
+
+    // Finish should write the final report to stdout
+    reporter.finish(dummyResult as any);
+
+    const parsed = JSON.parse(getStdout().trim());
+    expect(parsed).toEqual(dummyResult);
+  });
 });

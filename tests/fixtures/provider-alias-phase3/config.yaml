@@ -1,0 +1,29 @@
+defaultProvider: review-alias
+concurrency: 1
+timeoutMs: 30000
+
+providers:
+  codex:
+    command: node
+    args:
+      - tests/fixtures/providers/fake-provider-cli.mjs
+      - PROVIDER_SECRET_SENTINEL
+    modelArg:
+      flag: --model
+    promptMode: stdin
+
+providerAliases:
+  review-base:
+    provider: codex
+    model: alias-base-model
+    timeoutMs: 12000
+    retry: false
+  review-alias:
+    extends: review-base
+    model: alias-review-model
+
+security:
+  passEnv: []
+  redactEnv:
+    - '*_TOKEN'
+    - '*_SECRET'

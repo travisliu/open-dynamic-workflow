@@ -162,6 +162,7 @@ Examples:
   program
     .command("resume")
     .argument("<run-id-or-path>", "Previous run id or run directory path")
+    .option("-c, --config <path>", "Path to config file")
     .option("--cwd <path>", "Custom working directory")
     .option("-o, --out <path>", "Runs artifact directory")
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
@@ -288,5 +289,4 @@ export async function runCli(args: string[]): Promise<void> {
     process.exitCode = exitCodeForError(error);
   }
 }
-
 

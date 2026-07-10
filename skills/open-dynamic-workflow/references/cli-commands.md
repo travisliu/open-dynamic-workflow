@@ -86,7 +86,7 @@ Use `open-dynamic-workflow list workflows` to see runnable names and their resol
 | :--- | :--- |
 | `--profile <name>` | Select a profile to run (e.g., `fast`, `deep`) from configuration or external catalog. |
 | `--profiles <path>` | Path to an external YAML file containing profiles to load. |
-| `--provider <name>` | Override the default provider. |
+| `--provider <name>` | Override the default provider reference; `<name>` may be a concrete provider or a configured alias. |
 | `--model <name>` | Override the default model. |
 | `--concurrency <num>` | Limit maximum parallel agent calls (integer >= 1). |
 | `--timeout-ms <num>` | Timeout in milliseconds for workflow execution. |
@@ -115,6 +115,7 @@ open-dynamic-workflow run review --profiles custom-profiles.yaml --profile deep
 open-dynamic-workflow run review --resume <previous-run-id> --profile custom-profile
 open-dynamic-workflow run review --provider codex
 open-dynamic-workflow run review --provider mock
+open-dynamic-workflow run review --provider fast-review
 open-dynamic-workflow run review --concurrency 2
 open-dynamic-workflow run review --timeout-ms 600000
 open-dynamic-workflow run review --max-agent-calls 20
@@ -129,7 +130,7 @@ open-dynamic-workflow run review --no-retry
 open-dynamic-workflow run review --strict
 ```
 
-Retry flags adjust the global retry policy before workflow code runs. Per-agent `retry` settings still take precedence for that call, and `--no-retry` cannot be combined with the other retry flags.
+Retry flags adjust the global retry policy before workflow code runs. Per-agent `retry` settings still take precedence, followed by the selected alias retry policy. `--no-retry` cannot be combined with the other retry flags. Alias references are validated during configuration loading; unknown aliases and invalid alias inheritance fail with the normal workflow-validation exit code. Alias resolution metadata is included in JSON/JSONL output and resume artifacts.
 
 ---
 

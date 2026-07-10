@@ -59,6 +59,30 @@ Generated configuration is guaranteed to pass schema validation.
 | `workflow.maxDepth` | `integer` | `8` | Positive integer (>= 1). | Maximum recursion/invocation depth for nested workflows. |
 | `workflow.maxLoopRounds` | `integer` | `20` | Positive integer (>= 1). | Global ceiling for `loop()` `maxRounds`; static and runtime validation reject loop options above this value. |
 | `failFast` | `boolean` | `false` | Boolean. | If true, aborts execution immediately on the first task failure. |
+| `providerAliasMaxDepth` | `integer` | `8` | Positive integer. | Maximum number of aliases in one inheritance chain, including the selected alias. |
+
+### `providerAliases`
+
+`providerAliases` is an optional map of named execution presets. A provider alias is not a provider adapter and cannot change process execution or permissions.
+
+```yaml
+providerAliases:
+  review-base:
+    provider: mock
+    model: review-model
+    timeoutMs: 300000
+    retry:
+      maxAttempts: 2
+  review-deep:
+    extends: review-base
+    thinkingEffort: high
+```
+
+Allowed fields are `provider`, `extends`, `model`, `thinkingEffort`, `timeoutMs`, and `retry`. Fields such as `command`, `args`, `env`, `permissions`, `cwd`, prompts, schemas, and adapter-specific options are rejected. Each alias has at most one parent; the resolved provider cannot be replaced by a child alias. Alias names cannot collide with concrete provider names or built-in provider names.
+
+Aliases are fully validated and resolved while loading configuration. The runtime accepts the existing `agent({ provider: string })` shape unchanged: the string may name either an alias or a concrete provider. Explicit `model: null` clears an inherited model, and `retry: false` disables inherited retry.
+
+For provider execution settings, precedence from strongest to weakest is: explicit agent value, selected alias, CLI run-level default, concrete provider configuration, global configuration, and built-in default. The resolved selection records its requested provider, concrete provider, alias chain, effective values, and setting sources in artifacts and reports. Alias identity and digest are part of agent cache fingerprints, so effective alias changes invalidate affected cached calls while unrelated aliases do not.
 
 When retry is enabled, omitted fields inherit the recommended defaults used by the runtime: `maxAttempts: 3`, `delayMs: 1000`, `backoff: exponential`, `maxDelayMs: 30000`, `jitter: true`, and `disableDelay: false`.
 

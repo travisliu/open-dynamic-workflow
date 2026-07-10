@@ -964,6 +964,21 @@ Precedence from strongest to weakest:
 4. Global default model in config.
 5. Provider CLI default.
 
+### Provider aliases
+
+The existing `provider` field accepts either a concrete provider name or a configured provider alias:
+
+```ts
+await agent({
+  provider: "fast-review",
+  prompt: "Review the authentication changes."
+});
+```
+
+Aliases are defined in configuration and provide reusable defaults for `model`, `thinkingEffort`, `timeoutMs`, and `retry`. They may extend one parent alias. They do not define prompts, schemas, permissions, environment, commands, arguments, or adapter options. Explicit agent values override alias values, and explicit `model: null` or `retry: false` clears inherited settings.
+
+Alias resolution happens before capability validation, scheduling, adapter lookup, reporting, and resume/cache fingerprinting. Reports and artifacts retain `providerSelection` metadata while the public `provider` result field and adapter input remain the resolved concrete provider. Adapters do not interpret aliases.
+
 Example:
 
 ```ts

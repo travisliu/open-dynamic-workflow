@@ -57,6 +57,7 @@ export async function resumeCommand(input: ResumeCommandInput): Promise<void> {
   const resumeOptions: any = {
     ...storedOptions,
     resume: previousRunRoot,
+    config: rawOptions.config !== undefined ? rawOptions.config : storedOptions.config,
     cwd: runInput.cwd ?? storedOptions.cwd ?? cwd,
     out: rawOptions.out ? resolveUserPath(rawOptions.out, cwd) : storedOptions.out,
     noCache,
@@ -108,4 +109,3 @@ export async function resumeCommand(input: ResumeCommandInput): Promise<void> {
     rawOptions: resumeOptions
   });
 }
-

@@ -354,6 +354,14 @@ providers:
       - json
     defaultModel: gemini-3-flash-preview
 
+providerAliases:
+  fast-review:
+    provider: gemini
+    model: gemini-3-flash-preview
+    timeoutMs: 300000
+    retry:
+      maxAttempts: 2
+
 security:
   passEnv: []
   redactEnv:
@@ -364,15 +372,20 @@ security:
     - '*_SECRET'
 ```
 
-Configuration precedence:
+Configuration precedence for provider-backed execution (highest precedence first):
 
-1. CLI safety ceilings and hard overrides.
-2. Explicit `agent()` options.
-3. Workflow defaults, if introduced later.
-4. Config file.
-5. Built-in defaults.
+1. Explicit `agent()` values.
+2. The selected provider alias values.
+3. CLI run-level defaults (`--provider`, `--model`, `--timeout-ms`, retry flags).
+4. Concrete provider configuration.
+5. Global configuration.
+6. Built-in defaults.
 
-`--provider` sets the default provider. It does not override an explicit provider inside an `agent()` call.
+`providerAliases` contains reusable execution presets. An alias may define only `provider`, `extends`, `model`, `thinkingEffort`, `timeoutMs`, and `retry`; it cannot contain permissions, environment, command, arguments, or other provider process settings. Aliases have one parent at most, are resolved during configuration loading, and share the namespace with concrete providers.
+
+The existing `agent({ provider: "..." })` field accepts either a concrete provider or an alias. `--provider` sets the default provider reference for calls that omit `provider`; it does not override an explicit provider inside an `agent()` call. Explicit `null` for `model` and `false` for `retry` disable inherited values.
+
+Alias selection is recorded in `providerSelection` metadata and included in resume/cache fingerprints. Changing an effective alias or inherited parent setting invalidates the affected cache prefix. Provider adapters receive only the resolved concrete provider and remain alias-unaware.
 
 `maxAgentCalls` limits how many live provider agent calls a run may start. Resume cache hits do not count as new live calls. The CLI flag `--max-agent-calls` overrides the config value for that run.
 

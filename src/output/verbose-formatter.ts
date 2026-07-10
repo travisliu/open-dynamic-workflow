@@ -5,7 +5,10 @@ import type {
   LoopStartedPayload,
   LoopRoundTerminalPayload,
   LoopTerminalPayload,
+  AgentProviderAliasResolvedPayload,
+  AgentProviderSettingOverriddenPayload,
 } from "./events.js";
+import { projectProviderSettingForDiagnostics } from "./provider-selection-diagnostics.js";
 
 export function indentBlock(text: string, spaces: number = 2): string {
   const indentation = " ".repeat(spaces);
@@ -268,6 +271,62 @@ export function formatVerboseAgentRetryExhausted(payload: any, sequence?: number
   return lines.join("\n") + "\n";
 }
 
+export function formatVerboseProviderAliasResolved(
+  payload: AgentProviderAliasResolvedPayload,
+  sequence?: number,
+  timestamp?: string
+): string {
+  const lines: string[] = [];
+  lines.push(`Provider alias resolved: ${payload.providerAlias} -> ${payload.provider}`);
+  if (payload.providerAliasChain && payload.providerAliasChain.length > 0) {
+    lines.push(`Alias chain: ${payload.providerAliasChain.join(" -> ")}`);
+  }
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+export function formatVerboseProviderSettingOverridden(
+  payload: AgentProviderSettingOverriddenPayload,
+  sequence?: number,
+  timestamp?: string
+): string {
+  const lines: string[] = [];
+  // Re-project at the rendering boundary as well as at event construction. This
+  // keeps verbose output safe for events supplied by custom subscribers/tests and
+  // avoids reading getters or arbitrary provider configuration objects here.
+  const selectedStr = serializeDeterministic(
+    projectProviderSettingForDiagnostics(payload.setting, payload.selectedValue)
+  );
+  const overriddenStr = serializeDeterministic(
+    projectProviderSettingForDiagnostics(payload.setting, payload.overriddenValue)
+  );
+  lines.push(`Override applied: ${payload.selectedSourcePath}=${selectedStr} overrides ${payload.overriddenSourcePath}=${overriddenStr}`);
+  if (sequence !== undefined && timestamp !== undefined) {
+    lines.push(`  Event: #${sequence} ${timestamp}`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+function serializeDeterministic(value: unknown): string {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+  if (typeof value === "object") {
+    const keys = Object.keys(value as object).sort();
+    const sortedObj: Record<string, unknown> = {};
+    for (const key of keys) {
+      sortedObj[key] = (value as any)[key];
+    }
+    return JSON.stringify(sortedObj);
+  }
+  return String(value);
+}
+
 export function renderVerboseEvent(envelope: EventEnvelope): string | undefined {
   if (envelope.type === "agent.attempt.started") {
     return formatVerboseAgentAttemptStarted(envelope.payload, envelope.sequence, envelope.timestamp);
@@ -312,6 +371,12 @@ export function renderVerboseEvent(envelope: EventEnvelope): string | undefined 
     envelope.type === "loop.max_rounds"
   ) {
     return formatVerboseLoopTerminal(envelope.payload as LoopTerminalPayload, envelope.sequence, envelope.timestamp);
+  }
+  if (envelope.type === "agent.provider-alias-resolved") {
+    return formatVerboseProviderAliasResolved(envelope.payload as AgentProviderAliasResolvedPayload, envelope.sequence, envelope.timestamp);
+  }
+  if (envelope.type === "agent.provider-setting-overridden") {
+    return formatVerboseProviderSettingOverridden(envelope.payload as AgentProviderSettingOverriddenPayload, envelope.sequence, envelope.timestamp);
   }
   return undefined;
 }

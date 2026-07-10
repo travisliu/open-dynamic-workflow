@@ -558,7 +558,9 @@ export class DefaultAgentExecutor implements AgentExecutor {
       return failureResult;
     }
 
-    await this.artifactStore.writeJson(`${baseDir}/normalized-result.json`, normalized.json ?? normalized.text);
+    const normalizedValue = normalized.json !== undefined ? normalized.json : normalized.text;
+    const redactedNormalized = redactJsonValue(normalizedValue, secretValues);
+    await this.artifactStore.writeJson(`${baseDir}/normalized-result.json`, redactedNormalized);
 
     await this.emitVerboseResult({
       agentId: input.id,
@@ -570,7 +572,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       stderr: stderrInMemory,
       exitCode: exitCode ?? 0,
       durationMs,
-      normalized: redactJsonValue(normalized.json ?? normalized.text, secretValues),
+      normalized: redactedNormalized,
       artifacts: agentArtifacts,
       permissions: resolvedPerms,
       metadata: sanitizedMetadata,
@@ -585,7 +587,7 @@ export class DefaultAgentExecutor implements AgentExecutor {
       provider: input.provider,
       model: input.model,
       text: redactText(normalized.text ?? "", secretValues),
-      json: normalized.json,
+      json: normalized.json !== undefined ? redactedNormalized : undefined,
       stdout: stdoutInMemory,
       stderr: stderrInMemory,
       exitCode: exitCode ?? 0,

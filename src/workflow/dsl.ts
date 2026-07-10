@@ -28,6 +28,11 @@ import {
   recordToolCall,
   resolveCallId
 } from "../artifacts/call-cache.js";
+import {
+  toAgentFingerprintMaterial,
+  toAgentFingerprintDiagnosticMaterial,
+  computeLegacyAgentFingerprint
+} from "../artifacts/agent-fingerprint.js";
 import { executeSharedAgent } from "../shared-agents/execute.js";
 import { serializeError } from "../errors/serialize.js";
 import { cloneJsonValue } from "./json.js";
@@ -43,6 +48,7 @@ import {
 import { createLoopAgentId, normalizeLoopLabel } from "../loop/id.js";
 import { collectSecretValues } from "../security/env.js";
 import type { ToolCallInput, ToolExecutionResult, ToolSettledResult, ToolFailureMode } from "../types/tool.js";
+import { emitProviderResolutionEvents } from "../output/provider-selection-events.js";
 
 function toLegacySource(source: string | undefined): string | undefined {
   if (source === "providerConfig") return "provider-default";
@@ -371,6 +377,13 @@ export function createDsl(runtime: RuntimeState) {
       throw err;
     }
 
+    await emitProviderResolutionEvents({
+      eventSink: runtime.eventSink as any,
+      agentId: normalizedId,
+      label: input.label,
+      selection
+    });
+
     const concreteProvider = selection.provider;
     const executionModel = selection.model === null || typeof selection.model === "string" ? selection.model : undefined;
     const timeoutMs = selection.timeoutMs;
@@ -383,7 +396,16 @@ export function createDsl(runtime: RuntimeState) {
     const sequence = (runtime.callSequence ?? 0) + 1;
     runtime.callSequence = sequence;
     const callId = resolveCallId(input, normalizedId);
-    const fingerprint = computeAgentFingerprint({
+    const currentDiagnosticMaterial = toAgentFingerprintDiagnosticMaterial(selection);
+    const fingerprintMaterial = toAgentFingerprintMaterial({
+      call: input,
+      permissions: resolvedPermissions,
+      cwd: normalizedCwd,
+      selection,
+      providerConfig: runtime.config.providers?.[concreteProvider]
+    });
+    const fingerprint = computeAgentFingerprint(fingerprintMaterial);
+    const legacyFingerprint = computeLegacyAgentFingerprint({
       call: input,
       provider: concreteProvider,
       model: executionModel,
@@ -400,9 +422,21 @@ export function createDsl(runtime: RuntimeState) {
       kind: "agent",
       sequence,
       callId,
-      fingerprint
+      fingerprint,
+      legacyFingerprint,
+      currentDiagnosticMaterial,
+      onMismatch: (reason) => {
+        logWorkflow(`Cache mismatch for agent "${normalizedId}":\n${reason}\nLive execution will continue from this call.`);
+      }
     });
     if (cachedEntry && runtime.artifactStore && runtime.callCache?.previousRunRoot) {
+      const providerConfig = runtime.config.providers?.[concreteProvider];
+      const redactionValues = providerConfig
+        ? [
+            ...(providerConfig.args ?? []),
+            ...Object.values(providerConfig.env ?? {})
+          ].filter((value): value is string => typeof value === "string" && value.length >= 4)
+        : undefined;
       const cachedResult = await materializeCachedAgentResult({
         store: runtime.artifactStore,
         previousRunRoot: runtime.callCache.previousRunRoot,
@@ -413,7 +447,8 @@ export function createDsl(runtime: RuntimeState) {
         provider: concreteProvider,
         model: executionModel,
         permissions: resolvedPermissions,
-        providerSelection
+        providerSelection,
+        redactionValues
       });
       const artifactResult = (cachedResult as any).__artifactResult || cachedResult;
       runtime.agentResults.push(artifactResult);
@@ -434,7 +469,8 @@ export function createDsl(runtime: RuntimeState) {
         sequence,
         callId,
         fingerprint,
-        result: artifactResult
+        result: artifactResult,
+        diagnosticMaterial: currentDiagnosticMaterial
       });
       return cachedResult;
     }
@@ -502,7 +538,8 @@ export function createDsl(runtime: RuntimeState) {
           sequence,
           callId,
           fingerprint,
-          result
+          result,
+          diagnosticMaterial: currentDiagnosticMaterial
         });
 
         if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {
@@ -638,7 +675,8 @@ export function createDsl(runtime: RuntimeState) {
         sequence,
         callId,
         fingerprint,
-        result
+        result,
+        diagnosticMaterial: currentDiagnosticMaterial
       });
 
       if (!result.ok && result.error?.code === ErrorCode.PROVIDER_UNAVAILABLE) {

@@ -2,8 +2,6 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { AgentCallInput, AgentPermissions, AgentResult, AgentSuccessResult } from "../types/agent.js";
-import type { ThinkingEffort } from "../types/thinking-effort.js";
-import type { ResolvedRetryPolicy } from "../types/retry.js";
 
 import type { ToolExecutionResult, ToolFailureMode } from "../types/tool.js";
 import type { ResolvedProviderSelectionArtifact } from "../types/provider-selection.js";
@@ -12,6 +10,18 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { getActiveLoopContext } from "../loop/context.js";
 import { serializeToolValue } from "../tools/serialization.js";
+import { redactJsonValue } from "../security/env.js";
+import {
+  type AgentFingerprintDiagnosticMaterial,
+  computeAgentFingerprint as computeAgentFingerprintV2
+} from "./agent-fingerprint.js";
+
+// Keep this wrapper as the public seam for callers and test doubles. The
+// implementation lives in the fingerprint module, while legacy consumers
+// continue to replace this exported function from call-cache.
+export function computeAgentFingerprint(input: any): string {
+  return computeAgentFingerprintV2(input);
+}
 
 export type CallCacheStatus =
   | "succeeded"
@@ -33,6 +43,8 @@ export interface AgentCallCacheEntry extends BaseCallCacheEntry {
   kind: "agent";
   agentId: string;
   agentResultPath?: string | undefined;
+  fingerprintVersion?: "v2" | undefined;
+  diagnosticMaterial?: AgentFingerprintDiagnosticMaterial | undefined;
 }
 
 export interface ToolCallCacheEntry extends BaseCallCacheEntry {
@@ -102,43 +114,7 @@ export async function loadRuntimeCallCache(input: {
   return cache;
 }
 
-export function computeAgentFingerprint(input: {
-  call: AgentCallInput;
-  provider: string;
-  model?: string | undefined;
-  timeoutMs: number;
-  cwd: string;
-  providerConfig?: unknown;
-  thinkingEffort?: ThinkingEffort | undefined;
-  retry?: ResolvedRetryPolicy | undefined;
-}): string {
-  return crypto
-    .createHash("sha256")
-    .update(stableStringify({
-      prompt: input.call.prompt,
-      schema: input.call.schema,
-      structuredOutput: input.call.structuredOutput,
-      provider: input.provider,
-      model: input.model,
-      timeoutMs: input.timeoutMs,
-      cwd: input.cwd,
-      metadata: input.call.metadata,
-      providerConfig: input.providerConfig,
-      thinkingEffort: input.thinkingEffort,
-      retry: {
-        enabled: input.retry?.enabled ?? false,
-        policy: {
-          maxAttempts: input.retry?.policy?.maxAttempts ?? 1,
-          delayMs: input.retry?.policy?.delayMs ?? 1000,
-          backoff: input.retry?.policy?.backoff ?? "exponential",
-          maxDelayMs: input.retry?.policy?.maxDelayMs ?? 30000,
-          jitter: input.retry?.policy?.jitter ?? true,
-          disableDelay: input.retry?.policy?.disableDelay ?? false
-        }
-      }
-    }))
-    .digest("hex");
-}
+// computeAgentFingerprint is now imported from agent-fingerprint.js
 
 
 export function computeToolFingerprint(input: {
@@ -176,6 +152,9 @@ export function findPrefixCacheHit(input: {
   sequence: number;
   callId?: string | undefined;
   fingerprint: string;
+  legacyFingerprint?: string | undefined;
+  currentDiagnosticMaterial?: AgentFingerprintDiagnosticMaterial | undefined;
+  onMismatch?: (reason: string) => void;
 }): AgentCallCacheEntry | undefined;
 export function findPrefixCacheHit(input: {
   cache?: RuntimeCallCache | undefined;
@@ -197,6 +176,9 @@ export function findPrefixCacheHit(input: {
   sequence: number;
   callId?: string | undefined;
   fingerprint: string;
+  legacyFingerprint?: string | undefined;
+  currentDiagnosticMaterial?: AgentFingerprintDiagnosticMaterial | undefined;
+  onMismatch?: (reason: string) => void;
 }): CallCacheEntry | undefined {
   const cache = input.cache;
   if (!cache?.readEnabled || !cache.prefixCacheUsable) {
@@ -208,14 +190,75 @@ export function findPrefixCacheHit(input: {
     !entry ||
     entry.kind !== input.kind ||
     entry.status !== "succeeded" ||
-    entry.fingerprint !== input.fingerprint ||
     !callIdsCompatible(entry.callId, input.callId)
   ) {
     cache.prefixCacheUsable = false;
     return undefined;
   }
 
+  const expectedFingerprint = (entry.kind === "agent" && (entry as AgentCallCacheEntry).fingerprintVersion !== "v2")
+    ? (input.legacyFingerprint ?? input.fingerprint)
+    : input.fingerprint;
+
+  // A legacy entry may still contain the same authoritative fingerprint when
+  // produced by a caller using the current material. Prefer that direct match
+  // before falling back to the legacy shape for older cache indexes.
+  if (entry.fingerprint !== input.fingerprint && entry.fingerprint !== expectedFingerprint) {
+    cache.prefixCacheUsable = false;
+
+    if (input.kind === "agent") {
+      const oldDiag = (entry as AgentCallCacheEntry).diagnosticMaterial;
+      const currentDiag = input.currentDiagnosticMaterial;
+      let reason = "fingerprint mismatch";
+
+      if (oldDiag && currentDiag) {
+        const alias = currentDiag.providerAlias || oldDiag.providerAlias;
+        const prefix = alias ? `provider alias "${alias}" resolved ` : "provider ";
+
+        if (oldDiag.requestedProvider !== currentDiag.requestedProvider) {
+          reason = `requested provider changed from "${oldDiag.requestedProvider}" to "${currentDiag.requestedProvider}"`;
+        } else if (oldDiag.providerAlias !== currentDiag.providerAlias) {
+          reason = `provider alias changed from "${oldDiag.providerAlias}" to "${currentDiag.providerAlias}"`;
+        } else if (oldDiag.providerAliasDigest !== currentDiag.providerAliasDigest) {
+          if (oldDiag.model !== currentDiag.model) {
+            reason = `${prefix}model changed from ${formatValue(oldDiag.model)} to ${formatValue(currentDiag.model)}`;
+          } else if (oldDiag.thinkingEffort !== currentDiag.thinkingEffort) {
+            reason = `${prefix}thinking effort changed from ${formatValue(oldDiag.thinkingEffort)} to ${formatValue(currentDiag.thinkingEffort)}`;
+          } else if (oldDiag.timeoutMs !== currentDiag.timeoutMs) {
+            reason = `${prefix}timeout changed from ${oldDiag.timeoutMs}ms to ${currentDiag.timeoutMs}ms`;
+          } else if (stableStringify(oldDiag.retry) !== stableStringify(currentDiag.retry)) {
+            reason = `${prefix}retry policy changed`;
+          } else {
+            reason = `${prefix}digest changed from "${oldDiag.providerAliasDigest}" to "${currentDiag.providerAliasDigest}"`;
+          }
+        } else if (oldDiag.provider !== currentDiag.provider) {
+          reason = `concrete provider changed from "${oldDiag.provider}" to "${currentDiag.provider}"`;
+        } else if (oldDiag.model !== currentDiag.model) {
+          reason = `${prefix}model changed from ${formatValue(oldDiag.model)} to ${formatValue(currentDiag.model)}`;
+        } else if (oldDiag.thinkingEffort !== currentDiag.thinkingEffort) {
+          reason = `${prefix}thinking effort changed from ${formatValue(oldDiag.thinkingEffort)} to ${formatValue(currentDiag.thinkingEffort)}`;
+        } else if (oldDiag.timeoutMs !== currentDiag.timeoutMs) {
+          reason = `${prefix}timeout changed from ${oldDiag.timeoutMs}ms to ${currentDiag.timeoutMs}ms`;
+        } else if (stableStringify(oldDiag.retry) !== stableStringify(currentDiag.retry)) {
+          reason = `${prefix}retry policy changed`;
+        }
+      }
+
+      if (input.onMismatch) {
+        input.onMismatch(reason);
+      }
+    }
+
+    return undefined;
+  }
+
   return entry;
+}
+
+function formatValue(v: any): string {
+  if (v === null) return "null";
+  if (v === undefined) return "undefined";
+  return `"${v}"`;
 }
 
 function buildWorkflowVisibleCachedAgentResult(
@@ -228,19 +271,29 @@ function buildWorkflowVisibleCachedAgentResult(
     model?: string | undefined;
     permissions: AgentPermissions;
     agentDir: string;
-    providerSelection?: ResolvedProviderSelectionArtifact | undefined;
+    providerSelection: ResolvedProviderSelectionArtifact;
+    redactionValues?: readonly string[] | undefined;
   }
 ): AgentSuccessResult {
-  if (cachedResult?.ok) {
+  const safeCachedResult = cachedResult && input.redactionValues?.length
+    ? redactJsonValue(cachedResult, [...input.redactionValues]) as AgentResult
+    : cachedResult;
+  const metadata = {
+    ...(safeCachedResult?.metadata || {}),
+    providerSelection: input.providerSelection
+  };
+
+  if (safeCachedResult?.ok) {
     const res = {
-      ...cachedResult,
+      ...safeCachedResult,
       id: input.currentAgentId,
-      label: input.label ?? cachedResult.label,
-      provider: input.provider ?? cachedResult.provider,
-      model: input.model ?? cachedResult.model,
-      providerSelection: input.providerSelection ?? cachedResult.providerSelection
+      label: input.label ?? safeCachedResult.label,
+      provider: input.provider ?? safeCachedResult.provider,
+      model: input.model ?? safeCachedResult.model,
+      providerSelection: input.providerSelection,
+      metadata
     };
-    if (cachedResult.cache === undefined) {
+    if (safeCachedResult.cache === undefined) {
       delete (res as any).cache;
     }
     return removeUndefinedProperties(res) as AgentSuccessResult;
@@ -268,7 +321,8 @@ function buildWorkflowVisibleCachedAgentResult(
       normalizedResultPath: `${input.agentDir}/normalized-result.json`
     },
     permissions: input.permissions,
-    providerSelection: input.providerSelection
+    providerSelection: input.providerSelection,
+    metadata
   };
   return removeUndefinedProperties(res);
 }
@@ -286,16 +340,25 @@ function buildCurrentRunCachedAgentArtifactResult(
     agentArtifacts: any;
     entry: AgentCallCacheEntry;
     previousRunId?: string | undefined;
-    providerSelection?: ResolvedProviderSelectionArtifact | undefined;
+    providerSelection: ResolvedProviderSelectionArtifact;
+    redactionValues?: readonly string[] | undefined;
   }
 ): AgentSuccessResult {
-  if (cachedResult?.ok) {
+  const safeCachedResult = cachedResult && input.redactionValues?.length
+    ? redactJsonValue(cachedResult, [...input.redactionValues]) as AgentResult
+    : cachedResult;
+  const metadata = {
+    ...(safeCachedResult?.metadata || {}),
+    providerSelection: input.providerSelection
+  };
+
+  if (safeCachedResult?.ok) {
     const res: AgentSuccessResult = {
-      ...cachedResult,
+      ...safeCachedResult,
       id: input.currentAgentId,
-      label: input.label ?? cachedResult.label,
-      provider: (input.provider as any) ?? cachedResult.provider,
-      model: input.model ?? cachedResult.model,
+      label: input.label ?? safeCachedResult.label,
+      provider: (input.provider as any) ?? safeCachedResult.provider,
+      model: input.model ?? safeCachedResult.model,
       stdout: "",
       stderr: "",
       durationMs: 0,
@@ -307,7 +370,8 @@ function buildCurrentRunCachedAgentArtifactResult(
         previousAgentId: input.entry.agentId
       },
       permissions: input.permissions,
-      providerSelection: input.providerSelection ?? cachedResult.providerSelection
+      providerSelection: input.providerSelection,
+      metadata
     };
     return removeUndefinedProperties(res);
   }
@@ -333,7 +397,8 @@ function buildCurrentRunCachedAgentArtifactResult(
       previousAgentId: input.entry.agentId
     },
     permissions: input.permissions,
-    providerSelection: input.providerSelection
+    providerSelection: input.providerSelection,
+    metadata
   };
   return removeUndefinedProperties(res);
 }
@@ -348,7 +413,8 @@ export async function materializeCachedAgentResult(input: {
   provider: string;
   model?: string | undefined;
   permissions: AgentPermissions;
-  providerSelection?: ResolvedProviderSelectionArtifact | undefined;
+  providerSelection: ResolvedProviderSelectionArtifact;
+  redactionValues?: readonly string[] | undefined;
 }): Promise<AgentSuccessResult> {
   let cachedResult: AgentResult | undefined;
   if (input.entry.agentResultPath) {
@@ -356,7 +422,10 @@ export async function materializeCachedAgentResult(input: {
   }
 
   const normalizedPath = resolvePreviousRunPath(input.previousRunRoot, input.entry.resultPath);
-  const normalized = JSON.parse(await fs.readFile(normalizedPath, "utf8"));
+  const normalizedValue = JSON.parse(await fs.readFile(normalizedPath, "utf8"));
+  const normalized = input.redactionValues?.length
+    ? redactJsonValue(normalizedValue, [...input.redactionValues])
+    : normalizedValue;
 
   const agentDir = `agents/${input.currentAgentId}`;
   await input.store.writeText(`${agentDir}/prompt.txt`, "[cache hit]");
@@ -385,18 +454,19 @@ export async function materializeCachedAgentResult(input: {
     normalizedResultPath: `${agentDir}/normalized-result.json`
   };
 
+  // Always write current selection into metadata.json
+  const cachedMetadata = (cachedResult && cachedResult.ok && cachedResult.metadata) || {};
+  const metadataToWrite = {
+    ...cachedMetadata,
+    providerSelection: input.providerSelection
+  };
+  agentArtifacts.metadataPath = `${agentDir}/metadata.json`;
+  await input.store.writeJson(`${agentDir}/metadata.json`, metadataToWrite);
+
   if (cachedResult?.ok) {
     if (cachedResult.permissions) {
       agentArtifacts.permissionsPath = `${agentDir}/permissions.json`;
       await input.store.writeJson(`${agentDir}/permissions.json`, cachedResult.permissions);
-    }
-    if (cachedResult.metadata) {
-      agentArtifacts.metadataPath = `${agentDir}/metadata.json`;
-      const metadataToWrite = {
-        ...cachedResult.metadata,
-        ...(input.providerSelection !== undefined ? { providerSelection: input.providerSelection } : {})
-      };
-      await input.store.writeJson(`${agentDir}/metadata.json`, metadataToWrite);
     }
   }
 
@@ -417,7 +487,8 @@ export async function materializeCachedAgentResult(input: {
     model: input.model,
     permissions: input.permissions,
     agentDir,
-    providerSelection: input.providerSelection
+    providerSelection: input.providerSelection,
+    redactionValues: input.redactionValues
   });
 
   const artifactResult = buildCurrentRunCachedAgentArtifactResult(cachedResult, normalized, {
@@ -430,7 +501,8 @@ export async function materializeCachedAgentResult(input: {
     agentArtifacts,
     entry: input.entry,
     previousRunId: input.previousRunId,
-    providerSelection: input.providerSelection
+    providerSelection: input.providerSelection,
+    redactionValues: input.redactionValues
   });
 
   if (workflowResult.retry) {
@@ -557,6 +629,7 @@ export async function recordAgentCall(input: {
   callId?: string | undefined;
   fingerprint: string;
   result: AgentResult;
+  diagnosticMaterial?: AgentFingerprintDiagnosticMaterial | undefined;
 }): Promise<void> {
   if (!input.store || typeof input.store.getRunArtifacts !== "function") return;
 
@@ -579,7 +652,9 @@ export async function recordAgentCall(input: {
     fingerprint: input.fingerprint,
     status: input.result.status as CallCacheStatus,
     resultPath: resultPath as string,
-    agentId: input.result.id
+    agentId: input.result.id,
+    fingerprintVersion: "v2",
+    ...(input.diagnosticMaterial !== undefined ? { diagnosticMaterial: input.diagnosticMaterial } : {})
   };
 
   if (input.result.ok && typeof input.store.writeJson === "function") {
@@ -779,7 +854,9 @@ function normalizeCallCacheEntry(value: unknown): CallCacheEntry | undefined {
         status: record.status as CallCacheStatus,
         resultPath: record.resultPath,
         agentId: record.agentId,
-        agentResultPath: typeof record.agentResultPath === "string" ? record.agentResultPath : undefined
+        agentResultPath: typeof record.agentResultPath === "string" ? record.agentResultPath : undefined,
+        fingerprintVersion: record.fingerprintVersion === "v2" ? "v2" : undefined,
+        diagnosticMaterial: record.diagnosticMaterial as any
       };
     }
   } else if (kind === "tool") {

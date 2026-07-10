@@ -62,14 +62,26 @@ function selectSettingAndOverrides<T>(
     return undefined;
   }
   const selected = candidates[0]!;
-  
+
+  if (candidates.length === 1) {
+    return {
+      value: selected.value,
+      source: selected as any
+    };
+  }
+
+  // Per §11.7: each distinct displaced layer may produce an override record.
+  // We iterate all candidates after the winner and record an override for each
+  // one that is defined and not equivalent to the winner.  The winner itself
+  // (candidates[0]) is the "selected" side; each displaced lower candidate is
+  // the "overridden" side.
   for (let i = 1; i < candidates.length; i++) {
-    const cand = candidates[i]!;
-    if (cand.value !== undefined && !isEquivalent(selected.value, cand.value)) {
+    const overridden = candidates[i]!;
+    if (overridden.value !== undefined && !isEquivalent(selected.value, overridden.value)) {
       overridesList.push({
         setting: settingName,
         selected: selected as any,
-        overridden: cand as any
+        overridden: overridden as any
       });
     }
   }

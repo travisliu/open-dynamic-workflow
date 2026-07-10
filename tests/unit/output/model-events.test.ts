@@ -153,4 +153,55 @@ describe("Model Events, Reports, and Artifacts", () => {
       thinkingEffort: "medium"
     });
   });
+
+  it("constructs and serializes valid envelopes for provider alias events as v1", () => {
+    const aliasResolvedEnvelope = {
+      schemaVersion: "open-dynamic-workflow.event.v1" as const,
+      runId: "run-123",
+      sequence: 45,
+      timestamp: "2026-07-10T12:00:00.000Z",
+      type: "agent.provider-alias-resolved" as const,
+      payload: {
+        agentId: "my-agent",
+        label: "alias-label",
+        requestedProvider: "alias-provider",
+        requestedProviderSource: "agent" as const,
+        providerAlias: "alias-provider",
+        providerAliasChain: ["alias-provider", "final-provider"],
+        providerAliasDigest: "sha256-digest",
+        provider: "final-provider",
+      },
+    };
+
+    const serializedAlias = JSON.stringify(aliasResolvedEnvelope);
+    const parsedAlias = JSON.parse(serializedAlias);
+    expect(parsedAlias.schemaVersion).toBe("open-dynamic-workflow.event.v1");
+    expect(parsedAlias.type).toBe("agent.provider-alias-resolved");
+
+    const settingOverriddenEnvelope = {
+      schemaVersion: "open-dynamic-workflow.event.v1" as const,
+      runId: "run-123",
+      sequence: 46,
+      timestamp: "2026-07-10T12:00:00.000Z",
+      type: "agent.provider-setting-overridden" as const,
+      payload: {
+        agentId: "my-agent",
+        label: "alias-label",
+        providerAlias: "alias-provider",
+        provider: "final-provider",
+        setting: "model" as const,
+        selectedValue: "gpt-4",
+        selectedSource: "cli" as const,
+        selectedSourcePath: "cli.model",
+        overriddenValue: "gpt-3.5",
+        overriddenSource: "providerAlias" as const,
+        overriddenSourcePath: "providerAliases.alias-provider.model",
+      },
+    };
+
+    const serializedOverridden = JSON.stringify(settingOverriddenEnvelope);
+    const parsedOverridden = JSON.parse(serializedOverridden);
+    expect(parsedOverridden.schemaVersion).toBe("open-dynamic-workflow.event.v1");
+    expect(parsedOverridden.type).toBe("agent.provider-setting-overridden");
+  });
 });
