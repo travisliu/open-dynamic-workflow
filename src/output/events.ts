@@ -141,7 +141,7 @@ export interface AgentQueuedPayload {
   agentId: string;
   label?: string;
   provider: string;
-  model?: string;
+  model?: string | null | undefined;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown>;
 }
@@ -150,7 +150,7 @@ export interface AgentStartedPayload {
   agentId: string;
   label?: string;
   provider: string;
-  model?: string;
+  model?: string | null | undefined;
   cwd: string;
   permissions: AgentPermissions;
   metadata?: Record<string, unknown>;
@@ -166,7 +166,7 @@ export interface AgentCompletedPayload {
   agentId: string;
   label?: string;
   provider: string;
-  model?: string;
+  model?: string | null | undefined;
   status: "succeeded";
   durationMs: number;
   exitCode: number;
@@ -179,7 +179,7 @@ export interface AgentCacheHitPayload {
   agentId: string;
   label?: string;
   provider: string;
-  model?: string;
+  model?: string | null | undefined;
   sequence: number;
   callId?: string;
   previousRunId?: string;
@@ -191,7 +191,7 @@ export interface AgentFailedPayload {
   agentId: string;
   label?: string;
   provider: string;
-  model?: string;
+  model?: string | null | undefined;
   status: "failed";
   durationMs: number;
   exitCode: number | null;
@@ -205,7 +205,7 @@ export interface AgentTimedOutPayload {
   agentId: string;
   label?: string;
   provider: string;
-  model?: string;
+  model?: string | null | undefined;
   status: "timed_out";
   durationMs: number;
   error: SerializedError;
@@ -218,7 +218,7 @@ export interface AgentCancelledPayload {
   agentId: string;
   label?: string;
   provider: string;
-  model?: string;
+  model?: string | null | undefined;
   status: "cancelled";
   durationMs: number;
   error?: SerializedError;
@@ -231,7 +231,7 @@ export interface AgentAttemptStartedPayload {
   agentId: string;
   label?: string | undefined;
   provider: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   cwd: string;
   metadata?: Record<string, unknown> | undefined;
   attempt: number;
@@ -243,7 +243,7 @@ export interface AgentAttemptCompletedPayload {
   agentId: string;
   label?: string | undefined;
   provider: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   cwd: string;
   metadata?: Record<string, unknown> | undefined;
   attempt: number;
@@ -259,7 +259,7 @@ export interface AgentAttemptFailedPayload {
   agentId: string;
   label?: string | undefined;
   provider: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   cwd: string;
   metadata?: Record<string, unknown> | undefined;
   attempt: number;
@@ -277,7 +277,7 @@ export interface AgentRetryScheduledPayload {
   agentId: string;
   label?: string | undefined;
   provider: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   cwd: string;
   metadata?: Record<string, unknown> | undefined;
   failedAttempt: number;
@@ -293,7 +293,7 @@ export interface AgentRetrySkippedDelayPayload {
   agentId: string;
   label?: string | undefined;
   provider: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   cwd: string;
   metadata?: Record<string, unknown> | undefined;
   failedAttempt: number;
@@ -474,7 +474,7 @@ export interface AgentVerboseCommandPayload {
   agentId: string;
   label?: string | undefined;
   provider: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   cwd: string;
   thinkingEffort?: ThinkingEffort | undefined;
   command?: RedactedProviderCommand | undefined;
@@ -489,7 +489,7 @@ export interface AgentVerboseResultPayload {
   agentId: string;
   label?: string | undefined;
   provider: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   status: "succeeded" | "failed" | "timed_out" | "cancelled" | "skipped";
   stdout: string;
   stderr: string;

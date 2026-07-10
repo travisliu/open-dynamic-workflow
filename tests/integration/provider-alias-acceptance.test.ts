@@ -803,7 +803,7 @@ providerAliases:
       expect(config.providerAliasMaxDepth).toBe(8);
     });
 
-    it("AC-9.3: defaultProvider remains concrete-provider-only and cannot be an alias", async () => {
+    it("AC-9.3: defaultProvider can successfully reference an alias", async () => {
       const configPath = path.join(TEMP_DIR, "config.yaml");
       await fs.writeFile(
         configPath,
@@ -818,18 +818,15 @@ providerAliases:
 `
       );
 
-      // Act & Assert
-      await expect(
-        loadConfig({
-          cwd: TEMP_DIR,
-          configPath,
-          cli: {},
-        })
-      ).rejects.toThrow(
-        expect.objectContaining({
-          code: ErrorCode.CONFIG_VALIDATION_ERROR,
-        })
-      );
+      // Act
+      const config = await loadConfig({
+        cwd: TEMP_DIR,
+        configPath,
+        cli: {},
+      });
+
+      // Assert
+      expect(config.defaultProvider).toBe("my-alias");
     });
   });
 

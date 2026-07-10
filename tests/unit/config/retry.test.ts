@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   resolveGlobalRetryPolicy,
   resolveAgentRetryPolicy,
+  resolveLayeredRetryPolicy,
   BUILT_IN_DEFAULT_POLICY,
   RECOMMENDED_ENABLED_DEFAULTS
 } from "../../../src/config/retry.js";
@@ -328,6 +329,81 @@ describe("Retry Resolver", () => {
       expect(resolved.enabled).toBe(true);
       expect(resolved.source).toBe("agent");
       expect(resolved.policy.maxAttempts).toBe(4);
+    });
+  });
+
+  describe("resolveLayeredRetryPolicy", () => {
+    it("returns built-in defaults when no other layers are active", () => {
+      const res = resolveLayeredRetryPolicy({});
+      expect(res.value.enabled).toBe(false);
+      expect(res.source).toBe("builtIn");
+      expect(res.sourcePath).toBe("builtIn.retry");
+      expect(res.fieldSources.maxAttempts.source).toBe("builtIn");
+    });
+
+    it("respects agent > alias > CLI > globalConfig > builtIn precedence", () => {
+      const res = resolveLayeredRetryPolicy({
+        agent: { maxAttempts: 5 },
+        alias: { maxAttempts: 4 },
+        cli: { maxAttempts: 3 },
+        global: { maxAttempts: 2 }
+      });
+
+      expect(res.value.policy.maxAttempts).toBe(5);
+      expect(res.source).toBe("agent");
+      expect(res.sourcePath).toBe("agent.retry");
+      expect(res.fieldSources.maxAttempts.source).toBe("agent");
+    });
+
+    it("respects inheritance field sources for aliases via provenance", () => {
+      const res = resolveLayeredRetryPolicy({
+        alias: { maxAttempts: 4, delayMs: 500 },
+        aliasProvenance: {
+          policyPath: "providerAliases.child.retry",
+          fieldPaths: {
+            maxAttempts: "providerAliases.parent.retry.maxAttempts"
+          }
+        }
+      });
+
+      expect(res.value.policy.maxAttempts).toBe(4);
+      expect(res.value.policy.delayMs).toBe(500);
+      expect(res.fieldSources.maxAttempts.sourcePath).toBe("providerAliases.parent.retry.maxAttempts");
+      expect(res.fieldSources.delayMs.sourcePath).toBe("providerAliases.child.retry.delayMs");
+    });
+
+    it("handles re-enabling above a disabled layer", () => {
+      const res = resolveLayeredRetryPolicy({
+        agent: { maxAttempts: 3 },
+        alias: false,
+        cli: { noRetry: true },
+        global: { maxAttempts: 5 }
+      });
+
+      expect(res.value.enabled).toBe(true);
+      expect(res.value.policy.maxAttempts).toBe(3);
+      expect(res.source).toBe("agent");
+    });
+
+    it("seeds recommended defaults on transition from disabled to enabled", () => {
+      const res = resolveLayeredRetryPolicy({
+        global: { delayMs: 2000 } // Transition from disabled builtIn to enabled global
+      });
+
+      expect(res.value.enabled).toBe(true);
+      expect(res.value.policy.maxAttempts).toBe(3); // RECOMMENDED_ENABLED_DEFAULTS.maxAttempts
+      expect(res.value.policy.delayMs).toBe(2000);
+      expect(res.fieldSources.maxAttempts.source).toBe("globalConfig");
+    });
+
+    it("deep freezes returned objects", () => {
+      const res = resolveLayeredRetryPolicy({});
+      expect(() => {
+        (res.value as any).enabled = true;
+      }).toThrow();
+      expect(() => {
+        (res.value.policy as any).maxAttempts = 10;
+      }).toThrow();
     });
   });
 });

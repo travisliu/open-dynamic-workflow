@@ -108,10 +108,28 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
     }
   });
 
+  const { resolveProviderReference } = await import("../../agents/resolve-provider-selection.js");
+  const ref = resolveProviderReference({
+    requestedProvider: config.defaultProvider,
+    aliases: config.providerAliases || {},
+    providers: config.providers || {}
+  });
+
+  if (ref.kind === "alias" && rawOptions.verbose) {
+    console.log(`Default provider alias: ${ref.requestedProvider}`);
+    console.log(`Concrete provider: ${ref.provider}`);
+    console.log(`Alias chain: ${ref.alias.inheritanceChain.join(" -> ")}`);
+  }
+
+  const derivedConfig = Object.freeze({
+    ...config,
+    defaultProvider: ref.provider
+  });
+
   const { precollectAllResourcesForLoad } = await import("../../discovery/precollect.js");
   const precollected = await precollectAllResourcesForLoad({
-    cwd: config.cwd,
-    discovery: config._normalizedDiscovery,
+    cwd: derivedConfig.cwd,
+    discovery: derivedConfig._normalizedDiscovery,
     strict: false
   });
 
@@ -222,7 +240,7 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
 
 
   const checker = input.deps?.providerHealthChecker ?? defaultProviderHealthChecker;
-  const result = await checker.checkAll(config);
+  const result = await checker.checkAll(derivedConfig);
 
   for (const provider of result.providers) {
     const symbol = provider.ok ? "✓" : "✕";

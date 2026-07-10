@@ -166,6 +166,46 @@ describe("GeminiCliAdapter", () => {
     expect(cmd.stdin).toBe("generate a test");
   });
 
+  it("handles three model states: undefined model config default fallback, concrete model, and explicit null", async () => {
+    const adapter = new GeminiCliAdapter({
+      command: "gemini",
+      defaultModel: "my-default-model",
+      modelFlag: "--model-id"
+    });
+
+    // 1. undefined model: should fall back to config default model
+    const inputDefault: AgentRunInput = {
+      id: "run-1",
+      provider: "gemini",
+      prompt: "generate a test",
+      cwd: "/root",
+      timeoutMs: 1000,
+      env: { PATH: "/bin" },
+      permissions: { mode: "default" }
+    };
+    const cmdDefault = await adapter.buildCommand(inputDefault);
+    expect(cmdDefault.args).toContain("my-default-model");
+
+    // 2. concrete model: should use the passed model
+    const inputConcrete: AgentRunInput = {
+      ...inputDefault,
+      model: "custom-model"
+    };
+    const cmdConcrete = await adapter.buildCommand(inputConcrete);
+    expect(cmdConcrete.args).toContain("custom-model");
+    expect(cmdConcrete.args).not.toContain("my-default-model");
+
+    // 3. explicit null: should omit the model parameter entirely
+    const inputNull: AgentRunInput = {
+      ...inputDefault,
+      model: null
+    };
+    const cmdNull = await adapter.buildCommand(inputNull);
+    expect(cmdNull.args).not.toContain("my-default-model");
+    expect(cmdNull.args).not.toContain("custom-model");
+    expect(cmdNull.args).not.toContain("--model-id");
+  });
+
   it("parses JSON stdout with text field", async () => {
     const adapter = new GeminiCliAdapter();
     const parseInput: ProviderParseInput = {

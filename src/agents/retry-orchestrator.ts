@@ -3,6 +3,7 @@ import type { AgentResult, AgentSuccessResult, AgentFailureResult, AgentPermissi
 import type { JsonSchema, ProviderName } from "../types/common.js";
 import type { StructuredOutputConfig } from "../types/agent.js";
 import type { ThinkingEffort } from "../types/thinking-effort.js";
+import type { ResolvedProviderSelectionArtifact } from "../types/provider-selection.js";
 import type {
   RetryMetadata,
   RetryPolicy,
@@ -40,7 +41,7 @@ export interface RetryOrchestratorInput {
   logicalAgentId: string;
   label?: string | undefined;
   provider: ProviderName;
-  model?: string | undefined;
+  model?: string | null | undefined;
   basePrompt: string;
   schema?: JsonSchema | undefined;
   structuredOutput?: StructuredOutputConfig | undefined;
@@ -56,6 +57,7 @@ export interface RetryOrchestratorInput {
   eventBus: EventBus;
   signal: AbortSignal;
   failFast: boolean;
+  providerSelection?: ResolvedProviderSelectionArtifact | undefined;
 }
 
 export class RetryOrchestrator {
@@ -203,13 +205,21 @@ export class RetryOrchestrator {
           if (input.structuredOutput !== undefined) execInput.structuredOutput = input.structuredOutput;
           if (input.thinkingEffort !== undefined) execInput.thinkingEffort = input.thinkingEffort;
           if (input.metadata !== undefined) execInput.metadata = input.metadata;
+          if (input.providerSelection !== undefined) execInput.providerSelection = input.providerSelection;
 
           return await this.executor.execute(execInput);
         }
       };
       if (input.label !== undefined) attemptTask.label = input.label;
       if (input.model !== undefined) attemptTask.model = input.model;
-      if (input.metadata !== undefined) attemptTask.metadata = input.metadata;
+      if (input.metadata !== undefined) {
+        attemptTask.metadata = {
+          ...input.metadata,
+          providerSelection: input.providerSelection
+        };
+      } else if (input.providerSelection !== undefined) {
+        attemptTask.metadata = { providerSelection: input.providerSelection };
+      }
 
       const scheduleOptions: any = {
         provider: input.provider,
@@ -510,6 +520,9 @@ export class RetryOrchestrator {
 
     finalResult.retry = retryMetadata;
     finalResult = removeUndefinedProperties(finalResult);
+    if (input.providerSelection !== undefined) {
+      finalResult.providerSelection = input.providerSelection;
+    }
 
     // Write retry-summary.json
     const summaryArtifact: RetrySummaryArtifact = {

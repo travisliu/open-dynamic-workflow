@@ -12,3 +12,4 @@ export * from "./tool.js";
 export * from "./thinking-effort.js";
 export * from "./retry.js";
 export * from "./context.js";
+export * from "./provider-selection.js";

@@ -435,6 +435,8 @@ describe("Phase 3 Acceptance Tests - Preserve legacy direct API paths while redu
     mockLoadConfig = async () => ({
       cwd: tempDir,
       outDir: "runs",
+      defaultProvider: "mock",
+      providers: { mock: { command: "mock" } },
       reporting: { mode: "silent" as const, verbose: false },
       workflow: { maxLoopRounds: 10 },
       sharedAgents: { maxDefinitions: 100, allowDynamicIds: false },

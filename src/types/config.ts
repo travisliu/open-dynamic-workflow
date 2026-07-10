@@ -164,6 +164,35 @@ export interface OpenDynamicWorkflowConfig {
   providerAliases?: ProviderAliasesConfig | undefined;
 }
 
+export interface RetryCliOverrides {
+  maxAttempts?: number | undefined;
+  delayMs?: number | undefined;
+  maxDelayMs?: number | undefined;
+  backoff?: "fixed" | "exponential" | undefined;
+  disableDelay?: boolean | undefined;
+  noRetry?: boolean | undefined;
+}
+
+export interface ExecutionDefaultLayers {
+  cli: Readonly<{
+    provider?: string;
+    model?: string;
+    timeoutMs?: number;
+    thinkingEffort?: ThinkingEffort;
+    retry?: RetryCliOverrides;
+  }>;
+  config: Readonly<{
+    defaultProvider?: string;
+    defaultModel?: string | null;
+    timeoutMs?: number;
+    retry?: false | RetryConfigInput;
+  }>;
+  builtIn: Readonly<{
+    defaultProvider: string;
+    timeoutMs: number;
+  }>;
+}
+
 export interface ResolvedConfig extends Omit<OpenDynamicWorkflowConfig, "providerAliases"> {
   cwd: string;
   outDir: string;
@@ -172,6 +201,7 @@ export interface ResolvedConfig extends Omit<OpenDynamicWorkflowConfig, "provide
   retry?: ResolvedRetryPolicy | undefined;
   providerAliasMaxDepth: number;
   providerAliases: ResolvedProviderAliasRegistry;
+  _executionDefaultLayers: ExecutionDefaultLayers;
 }
 
 export interface CliRunOptions {

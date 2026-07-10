@@ -27,7 +27,7 @@ export const OPENCODE_THINKING_EFFORTS = new Set<ThinkingEffort>([
   "xhigh"
 ]);
 
-const SUPPORTED_PROVIDERS = new Set(["codex", "pi", "opencode"]);
+const SUPPORTED_PROVIDERS = new Set(["mock", "codex", "pi", "opencode"]);
 
 export function assertThinkingEffortSupported(provider: string, value?: ThinkingEffort): void {
   if (value === undefined) {
@@ -39,6 +39,10 @@ export function assertThinkingEffortSupported(provider: string, value?: Thinking
       ErrorCode.THINKING_EFFORT_NOT_SUPPORTED,
       `Provider '${provider}' does not support thinkingEffort. Supported providers: codex, pi, opencode.`
     );
+  }
+
+  if (provider === "mock") {
+    return;
   }
 
   if (provider === "codex") {

@@ -78,6 +78,6 @@ export interface RetryMetadata {
 export interface ResolvedRetryPolicy {
   enabled: boolean;
   policy: RetryPolicy;
-  source: "default" | "config" | "cli" | "agent" | "disabled";
+  source: "default" | "config" | "cli" | "agent" | "disabled" | "providerAlias";
   disabledBy?: "omitted" | "cli" | "agent" | undefined;
 }

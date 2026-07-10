@@ -6,6 +6,7 @@ import type { ThinkingEffort } from "../types/thinking-effort.js";
 import type { ResolvedRetryPolicy } from "../types/retry.js";
 
 import type { ToolExecutionResult, ToolFailureMode } from "../types/tool.js";
+import type { ResolvedProviderSelectionArtifact } from "../types/provider-selection.js";
 import type { ArtifactStore } from "../types/artifacts.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
@@ -227,6 +228,7 @@ function buildWorkflowVisibleCachedAgentResult(
     model?: string | undefined;
     permissions: AgentPermissions;
     agentDir: string;
+    providerSelection?: ResolvedProviderSelectionArtifact | undefined;
   }
 ): AgentSuccessResult {
   if (cachedResult?.ok) {
@@ -236,6 +238,7 @@ function buildWorkflowVisibleCachedAgentResult(
       label: input.label ?? cachedResult.label,
       provider: input.provider ?? cachedResult.provider,
       model: input.model ?? cachedResult.model,
+      providerSelection: input.providerSelection ?? cachedResult.providerSelection
     };
     if (cachedResult.cache === undefined) {
       delete (res as any).cache;
@@ -264,7 +267,8 @@ function buildWorkflowVisibleCachedAgentResult(
       rawResultPath: `${input.agentDir}/raw-result.json`,
       normalizedResultPath: `${input.agentDir}/normalized-result.json`
     },
-    permissions: input.permissions
+    permissions: input.permissions,
+    providerSelection: input.providerSelection
   };
   return removeUndefinedProperties(res);
 }
@@ -282,6 +286,7 @@ function buildCurrentRunCachedAgentArtifactResult(
     agentArtifacts: any;
     entry: AgentCallCacheEntry;
     previousRunId?: string | undefined;
+    providerSelection?: ResolvedProviderSelectionArtifact | undefined;
   }
 ): AgentSuccessResult {
   if (cachedResult?.ok) {
@@ -301,7 +306,8 @@ function buildCurrentRunCachedAgentArtifactResult(
         previousRunId: input.previousRunId,
         previousAgentId: input.entry.agentId
       },
-      permissions: input.permissions
+      permissions: input.permissions,
+      providerSelection: input.providerSelection ?? cachedResult.providerSelection
     };
     return removeUndefinedProperties(res);
   }
@@ -326,7 +332,8 @@ function buildCurrentRunCachedAgentArtifactResult(
       previousRunId: input.previousRunId,
       previousAgentId: input.entry.agentId
     },
-    permissions: input.permissions
+    permissions: input.permissions,
+    providerSelection: input.providerSelection
   };
   return removeUndefinedProperties(res);
 }
@@ -341,6 +348,7 @@ export async function materializeCachedAgentResult(input: {
   provider: string;
   model?: string | undefined;
   permissions: AgentPermissions;
+  providerSelection?: ResolvedProviderSelectionArtifact | undefined;
 }): Promise<AgentSuccessResult> {
   let cachedResult: AgentResult | undefined;
   if (input.entry.agentResultPath) {
@@ -384,7 +392,11 @@ export async function materializeCachedAgentResult(input: {
     }
     if (cachedResult.metadata) {
       agentArtifacts.metadataPath = `${agentDir}/metadata.json`;
-      await input.store.writeJson(`${agentDir}/metadata.json`, cachedResult.metadata);
+      const metadataToWrite = {
+        ...cachedResult.metadata,
+        ...(input.providerSelection !== undefined ? { providerSelection: input.providerSelection } : {})
+      };
+      await input.store.writeJson(`${agentDir}/metadata.json`, metadataToWrite);
     }
   }
 
@@ -404,7 +416,8 @@ export async function materializeCachedAgentResult(input: {
     provider: input.provider,
     model: input.model,
     permissions: input.permissions,
-    agentDir
+    agentDir,
+    providerSelection: input.providerSelection
   });
 
   const artifactResult = buildCurrentRunCachedAgentArtifactResult(cachedResult, normalized, {
@@ -416,7 +429,8 @@ export async function materializeCachedAgentResult(input: {
     agentDir,
     agentArtifacts,
     entry: input.entry,
-    previousRunId: input.previousRunId
+    previousRunId: input.previousRunId,
+    providerSelection: input.providerSelection
   });
 
   if (workflowResult.retry) {

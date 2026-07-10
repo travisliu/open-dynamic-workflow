@@ -51,6 +51,7 @@ export function exitCodeForError(error: unknown): ExitCode {
       case ErrorCode.PROVIDER_ALIAS_PROVIDER_REQUIRED:
       case ErrorCode.PROVIDER_ALIAS_PROVIDER_REPLACEMENT:
       case ErrorCode.PROVIDER_ALIAS_PROVIDER_NOT_FOUND:
+      case ErrorCode.PROVIDER_REFERENCE_NOT_FOUND:
         return ExitCode.WorkflowInvalid;
 
       case ErrorCode.PROVIDER_UNAVAILABLE:

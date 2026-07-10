@@ -151,10 +151,29 @@ describe("Validate Command", () => {
       sharedAgentRegistry: { registry: "sharedAgents" },
       toolRegistry: { registry: "tools" },
       allowDynamicSharedAgentIds: false,
-      maxLoopRounds: 10
+      maxLoopRounds: 10,
+      knownProviderReferences: expect.any(Set)
     });
 
     expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("✓ Validated workflow \"valid-simple\" at"));
+    logSpy.mockRestore();
+  });
+
+  it("rejects an unknown provider reference with PROVIDER_REFERENCE_NOT_FOUND", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    vi.mocked(discoverWorkflowRegistry).mockRejectedValue(
+      new OpenDynamicWorkflowError(ErrorCode.PROVIDER_REFERENCE_NOT_FOUND, "Unknown provider reference 'invalid-prov'")
+    );
+
+    await expect(
+      validateCommand({
+        workflowFile: "invalid-provider.js",
+        rawOptions: {}
+      })
+    ).rejects.toThrow(expect.objectContaining({
+      code: "PROVIDER_REFERENCE_NOT_FOUND"
+    }));
+
     logSpy.mockRestore();
   });
 

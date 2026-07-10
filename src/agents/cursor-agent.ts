@@ -115,9 +115,17 @@ export class CursorAgentAdapter implements AgentAdapter {
       args.push(this.config.trustFlag);
     }
 
+    let model: string | undefined;
+    if (input.model === null) {
+      model = undefined;
+    } else if (input.model !== undefined) {
+      model = input.model;
+    } else {
+      model = this.config.defaultModel ?? undefined;
+    }
     appendModelArg(
       args,
-      input.model ?? this.config.defaultModel ?? undefined,
+      model,
       this.config.modelArg,
       this.config.modelFlag ?? "--model"
     );

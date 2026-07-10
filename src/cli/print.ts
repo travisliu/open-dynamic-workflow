@@ -4,13 +4,17 @@ export interface DryRunSummary {
   description: string;
   phases: string[];
   provider: string;
+  requestedProvider?: string | undefined;
+  resolvedProvider?: string | undefined;
+  providerAlias?: string | undefined;
+  providerAliasChain?: readonly string[] | undefined;
   defaultModel?: string | null | undefined;
   providers?: Record<string, { defaultModel?: string | null | undefined; modelArg?: any }> | undefined;
   concurrency: number;
   timeoutMs: number;
   reportMode: string;
   outDir: string;
-  verbose?: boolean;
+  verbose?: boolean | undefined;
 }
 
 export function printValidationSuccess(workflowName: string, workflowFile?: string): void {
@@ -33,7 +37,14 @@ export function printDryRunSummary(summary: DryRunSummary): void {
   console.log(`Workflow file: ${summary.workflowFile}`);
   console.log(`Description: ${summary.description}`);
   console.log(`Phases: ${summary.phases.join(", ")}`);
-  console.log(`Default provider: ${summary.provider}`);
+  if (summary.providerAlias) {
+    console.log(`Default provider: ${summary.requestedProvider} (alias -> ${summary.resolvedProvider})`);
+    if (summary.providerAliasChain && summary.providerAliasChain.length > 0) {
+      console.log(`Alias chain: ${summary.providerAliasChain.join(" -> ")}`);
+    }
+  } else {
+    console.log(`Default provider: ${summary.provider}`);
+  }
   if (summary.defaultModel !== undefined) {
     console.log(`Global default model: ${summary.defaultModel}`);
   }

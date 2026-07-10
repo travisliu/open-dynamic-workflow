@@ -3,6 +3,7 @@ import type { JsonSchema, ProviderName } from "./common.js";
 import type { SerializedError } from "./errors.js";
 import type { ThinkingEffort } from "./thinking-effort.js";
 import type { RetryMetadata, RetryPolicyInput } from "./retry.js";
+import type { ResolvedProviderSelectionArtifact } from "./provider-selection.js";
 
 
 export type StructuredOutputTransport = "validate-only" | "prompt" | "native" | "auto";
@@ -76,7 +77,7 @@ export interface AgentSuccessResult {
   id: string;
   label?: string | undefined;
   provider: ProviderName;
-  model?: string | undefined;
+  model?: string | null | undefined;
   text?: string | undefined;
   json?: unknown;
   stdout: string;
@@ -88,6 +89,7 @@ export interface AgentSuccessResult {
   permissions: AgentPermissions;
   metadata?: Record<string, unknown> | undefined;
   retry?: RetryMetadata | undefined;
+  providerSelection?: ResolvedProviderSelectionArtifact | undefined;
 }
 
 export interface AgentFailureResult {
@@ -96,7 +98,7 @@ export interface AgentFailureResult {
   id: string;
   label?: string | undefined;
   provider: ProviderName;
-  model?: string | undefined;
+  model?: string | null | undefined;
   stdout: string;
   stderr: string;
   exitCode: number | null;
@@ -107,6 +109,7 @@ export interface AgentFailureResult {
   permissions: AgentPermissions;
   metadata?: Record<string, unknown> | undefined;
   retry?: RetryMetadata | undefined;
+  providerSelection?: ResolvedProviderSelectionArtifact | undefined;
 }
 
 export interface AgentResultCacheInfo {
@@ -121,7 +124,7 @@ export interface AgentRunInput {
   label?: string | undefined;
   provider: ProviderName;
   prompt: string;
-  model?: string | undefined;
+  model?: string | null | undefined;
   schema?: JsonSchema | undefined;
   structuredOutput?: StructuredOutputConfig | undefined;
   timeoutMs: number;

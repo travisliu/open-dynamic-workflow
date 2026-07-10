@@ -98,9 +98,17 @@ export class OpenCodeCliAdapter implements AgentAdapter {
       args.push(config.dirFlag ?? "--dir", input.cwd);
     }
 
+    let model: string | undefined;
+    if (input.model === null) {
+      model = undefined;
+    } else if (input.model !== undefined) {
+      model = input.model;
+    } else {
+      model = config.defaultModel ?? undefined;
+    }
     appendModelArg(
       args,
-      input.model ?? config.defaultModel ?? undefined,
+      model,
       config.modelArg,
       config.modelFlag ?? "--model"
     );

@@ -6,7 +6,8 @@ export function toResolvedConfigArtifact(resolvedConfig: unknown): unknown {
   }
 
   const config = resolvedConfig as any;
-  const projected: any = { ...config };
+  const { _executionDefaultLayers, ...rest } = config;
+  const projected: any = { ...rest };
 
   if (config.providerAliases) {
     projected.providerAliases = toResolvedProviderAliasArtifactRegistry(config.providerAliases);

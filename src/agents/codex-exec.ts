@@ -85,7 +85,14 @@ export class CodexExecAdapter implements AgentAdapter {
       );
     }
 
-    const model = input.model ?? this.config.defaultModel ?? undefined;
+    let model: string | undefined;
+    if (input.model === null) {
+      model = undefined;
+    } else if (input.model !== undefined) {
+      model = input.model;
+    } else {
+      model = this.config.defaultModel ?? undefined;
+    }
     appendModelArg(args, model, this.config.modelArg, "--model");
 
     if (input.thinkingEffort !== undefined) {

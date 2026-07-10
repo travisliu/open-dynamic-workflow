@@ -110,6 +110,7 @@ export interface ValidateWorkflowOptions {
   knownToolIds?: ReadonlySet<string> | undefined;
   toolRegistry?: ToolRegistry | undefined;
   maxLoopRounds?: number | undefined;
+  knownProviderReferences?: ReadonlySet<string> | undefined;
 }
 
 function getObjectLiteralProperty(node: ts.ObjectLiteralExpression, name: string): ts.Expression | undefined {
@@ -161,10 +162,10 @@ export function validateWorkflow(
     }
   }
 
-  function report(node: ts.Node, message: string, severity?: "error" | "warning") {
+  function report(node: ts.Node, message: string, severity?: "error" | "warning", code: string = "WORKFLOW_VALIDATION_ERROR") {
     const { line, character } = sourceFile.getLineAndCharacterOfPosition(node.getStart());
     issues.push({
-      code: "WORKFLOW_VALIDATION_ERROR",
+      code,
       message,
       line: line + 1,
       column: character + 1,
@@ -826,6 +827,27 @@ export function validateWorkflow(
           promptProp = prop;
         }
 
+        if (propName === "provider" && ts.isPropertyAssignment(prop)) {
+          const init = prop.initializer;
+          let providerValue: string | undefined;
+          if (ts.isStringLiteral(init)) {
+            providerValue = init.text;
+          } else if (ts.isNoSubstitutionTemplateLiteral(init)) {
+            providerValue = init.text;
+          }
+
+          if (providerValue !== undefined && options.knownProviderReferences) {
+            if (!options.knownProviderReferences.has(providerValue)) {
+              report(
+                init,
+                `Unknown provider reference '${providerValue}'. Expected a configured provider or provider alias.`,
+                "error",
+                "PROVIDER_REFERENCE_NOT_FOUND"
+              );
+            }
+          }
+        }
+
         if (propName === "permissions" && ts.isPropertyAssignment(prop)) {
           const init = prop.initializer;
           if (ts.isObjectLiteralExpression(init)) {
@@ -1387,6 +1409,14 @@ export function assertWorkflowValid(
   }
 
   if (errors.length > 0) {
+    const providerReferenceNotFoundError = errors.find(err => err.code === "PROVIDER_REFERENCE_NOT_FOUND");
+    if (providerReferenceNotFoundError) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.PROVIDER_REFERENCE_NOT_FOUND,
+        `Workflow validation failed:\n${providerReferenceNotFoundError.message}`
+      );
+    }
+
     const summary = errors.map((issue) => `${issue.message}`).join("\n");
     throw new OpenDynamicWorkflowError(
       ErrorCode.WORKFLOW_VALIDATION_ERROR,
@@ -1480,6 +1510,7 @@ export function validateRegistryDependencies(
     toolRegistry?: ToolRegistry | undefined;
     rootWorkflowPath?: string | undefined;
     maxLoopRounds?: number | undefined;
+    knownProviderReferences?: ReadonlySet<string> | undefined;
   }
 ): void {
   const definitions = registry.list();
@@ -1493,7 +1524,7 @@ export function validateRegistryDependencies(
 
   const visiting = new Set<string>();
   const visited = new Set<string>();
-  const validationCache = new Map<string, string[]>(); // Map of workflow name -> validation errors (if any)
+  const validationCache = new Map<string, WorkflowValidationIssue[]>(); // Map of workflow name -> validation errors (if any)
 
   const knownWorkflowNames = registry.names();
   const workflowInputSchemas = registry.inputSchemas();
@@ -1508,7 +1539,7 @@ export function validateRegistryDependencies(
   function check(
     currentName: string,
     stack: { name: string; sourcePath: string; line?: number; character?: number }[]
-  ): string[] {
+  ): WorkflowValidationIssue[] {
     if (visiting.has(currentName)) {
       const cycleStartIndex = stack.findIndex(item => item.name === currentName);
       const cycleStack = stack.slice(cycleStartIndex);
@@ -1532,7 +1563,12 @@ export function validateRegistryDependencies(
 
     const def = registry.get(currentName);
     if (!def) {
-      return [`Workflow '${currentName}' was not found in the registry.`];
+      return [{
+        code: "WORKFLOW_VALIDATION_ERROR",
+        message: `Workflow '${currentName}' was not found in the registry.`,
+        line: 1,
+        column: 1
+      }];
     }
 
     visiting.add(currentName);
@@ -1545,10 +1581,11 @@ export function validateRegistryDependencies(
       workflowInputSchemas,
       allowDynamicSharedAgentIds: options.allowDynamicSharedAgentIds,
       toolRegistry: options.toolRegistry,
-      maxLoopRounds: options.maxLoopRounds
+      maxLoopRounds: options.maxLoopRounds,
+      knownProviderReferences: options.knownProviderReferences
     });
 
-    const localErrors = issues.filter(issue => issue.severity !== "warning").map(issue => issue.message);
+    const localErrors = issues.filter(issue => issue.severity !== "warning");
 
     // Log warnings for checked workflows. To avoid duplicate warnings for root workflow (which was
     // validated standalone in discovery phase), we skip root if rootName is set.
@@ -1563,7 +1600,7 @@ export function validateRegistryDependencies(
 
     // 3. Recurse to check dependencies
     const deps = dependencyMap.get(currentName) || [];
-    const childErrors: string[] = [];
+    const childErrors: WorkflowValidationIssue[] = [];
 
     for (const dep of deps) {
       const errors = check(dep.name, [
@@ -1577,9 +1614,13 @@ export function validateRegistryDependencies(
       ]);
 
       for (const err of errors) {
-        childErrors.push(
-          `${dep.name} (${def.sourcePath}:${dep.line}:${dep.character}) -> ${err}`
-        );
+        childErrors.push({
+          code: err.code,
+          message: `${dep.name} (${def.sourcePath}:${dep.line}:${dep.character}) -> ${err.message}`,
+          line: dep.line,
+          column: dep.character,
+          severity: err.severity
+        });
       }
     }
 
@@ -1593,18 +1634,38 @@ export function validateRegistryDependencies(
 
   // Run validation only starting from root workflow if rootDef is found, otherwise fallback to all definitions.
   const allRegistryErrors: string[] = [];
+  let providerReferenceNotFoundError: WorkflowValidationIssue | undefined;
+
   if (rootDef) {
     const errors = check(rootDef.name, []);
     if (errors.length > 0) {
-      allRegistryErrors.push(`Workflow '${rootDef.name}' validation failed:\n` + errors.map(e => `  - ${e}`).join("\n"));
+      const found = errors.find(err => err.code === "PROVIDER_REFERENCE_NOT_FOUND");
+      if (found) {
+        providerReferenceNotFoundError = found;
+      } else {
+        allRegistryErrors.push(`Workflow '${rootDef.name}' validation failed:\n` + errors.map(e => `  - ${e.message}`).join("\n"));
+      }
     }
   } else {
     for (const def of definitions) {
       const errors = check(def.name, []);
       if (errors.length > 0) {
-        allRegistryErrors.push(`Workflow '${def.name}' validation failed:\n` + errors.map(e => `  - ${e}`).join("\n"));
+        const found = errors.find(err => err.code === "PROVIDER_REFERENCE_NOT_FOUND");
+        if (found) {
+          providerReferenceNotFoundError = found;
+          break;
+        } else {
+          allRegistryErrors.push(`Workflow '${def.name}' validation failed:\n` + errors.map(e => `  - ${e.message}`).join("\n"));
+        }
       }
     }
+  }
+
+  if (providerReferenceNotFoundError) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.PROVIDER_REFERENCE_NOT_FOUND,
+      `Workflow validation failed:\n${providerReferenceNotFoundError.message}`
+    );
   }
 
   if (allRegistryErrors.length > 0) {

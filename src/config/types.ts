@@ -267,6 +267,35 @@ export interface ResolvedWorkflowConfig {
   maxLoopRounds: number;
 }
 
+export interface RetryCliOverrides {
+  maxAttempts?: number | undefined;
+  delayMs?: number | undefined;
+  maxDelayMs?: number | undefined;
+  backoff?: "fixed" | "exponential" | undefined;
+  disableDelay?: boolean | undefined;
+  noRetry?: boolean | undefined;
+}
+
+export interface ExecutionDefaultLayers {
+  cli: Readonly<{
+    provider?: string;
+    model?: string;
+    timeoutMs?: number;
+    thinkingEffort?: ThinkingEffort;
+    retry?: RetryCliOverrides;
+  }>;
+  config: Readonly<{
+    defaultProvider?: string;
+    defaultModel?: string | null;
+    timeoutMs?: number;
+    retry?: false | RetryConfigInput;
+  }>;
+  builtIn: Readonly<{
+    defaultProvider: string;
+    timeoutMs: number;
+  }>;
+}
+
 export interface ResolvedOpenDynamicWorkflowConfig extends Omit<OpenDynamicWorkflowConfig, "sharedAgents" | "tools" | "workflow" | "providerAliases"> {
   configPath?: string;
   cwd: string;
@@ -281,6 +310,7 @@ export interface ResolvedOpenDynamicWorkflowConfig extends Omit<OpenDynamicWorkf
   retry?: ResolvedRetryPolicy | undefined;
   providerAliasMaxDepth: number;
   providerAliases: ResolvedProviderAliasRegistry;
+  _executionDefaultLayers: ExecutionDefaultLayers;
 }
 
 // --- Normalized Discovery Types ---

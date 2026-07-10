@@ -183,6 +183,9 @@ export class DefaultAgentExecutor implements AgentExecutor {
       if (input.thinkingEffort !== undefined) {
         metadataJson.thinkingEffort = input.thinkingEffort;
       }
+      if (input.providerSelection !== undefined) {
+        metadataJson.providerSelection = input.providerSelection;
+      }
       await this.artifactStore.writeJson(`${baseDir}/metadata.json`, metadataJson);
 
       // Write permissions.json
@@ -264,7 +267,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errorPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        providerSelection: input.providerSelection
       };
 
       await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
@@ -332,7 +336,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        providerSelection: input.providerSelection
       };
       await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
@@ -371,7 +376,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        providerSelection: input.providerSelection
       };
       await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
@@ -414,7 +420,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        providerSelection: input.providerSelection
       };
       await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
@@ -468,7 +475,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        providerSelection: input.providerSelection
       };
       await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, failureResult);
       return failureResult;
@@ -488,6 +496,9 @@ export class DefaultAgentExecutor implements AgentExecutor {
         permissions: resolvedPerms,
         metadata: sanitizedMetadata
       };
+    }
+    if (input.providerSelection !== undefined) {
+      savedRawResult.providerSelection = input.providerSelection;
     }
     await this.artifactStore.writeJson(`${baseDir}/raw-result.json`, savedRawResult);
 
@@ -541,7 +552,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
         artifacts: agentArtifacts,
         error: errPayload,
         permissions: resolvedPerms,
-        metadata: sanitizedMetadata
+        metadata: sanitizedMetadata,
+        providerSelection: input.providerSelection
       };
       return failureResult;
     }
@@ -580,7 +592,8 @@ export class DefaultAgentExecutor implements AgentExecutor {
       durationMs,
       artifacts: agentArtifacts,
       permissions: resolvedPerms,
-      metadata: sanitizedMetadata
+      metadata: sanitizedMetadata,
+      providerSelection: input.providerSelection
     };
 
     return successResult;

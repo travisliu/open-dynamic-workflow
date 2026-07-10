@@ -1,6 +1,6 @@
 import type { OpenDynamicWorkflowConfig } from "./types.js";
 import { resolveGlobalRetryPolicy } from "./retry.js";
-
+import type { ThinkingEffort } from "../types/thinking-effort.js";
 
 export interface ConfigCliOverrides {
   provider?: string | undefined;
@@ -17,6 +17,7 @@ export interface ConfigCliOverrides {
   retryDisableDelay?: boolean | undefined;
   noRetry?: boolean | undefined;
   failFast?: boolean | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
 }
 
 export function mergeConfig(

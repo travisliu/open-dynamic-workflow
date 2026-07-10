@@ -73,14 +73,14 @@ describe("Provider adapter execution", () => {
 
     // Assert
     const exitCode = exitCodeForError(result.error);
-    expect(exitCode).toBe(4);
-    expect(result.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(exitCode).toBe(3);
+    expect(result.error.code).toBe("PROVIDER_REFERENCE_NOT_FOUND");
 
     const runs = await fs.readdir(TEMP_DIR);
     const runDir = path.join(TEMP_DIR, runs[0]!);
     const manifest = JSON.parse(await fs.readFile(path.join(runDir, "manifest.json"), "utf8"));
     expect(manifest.status).toBe("failed");
-    expect(manifest.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(manifest.error.code).toBe("PROVIDER_REFERENCE_NOT_FOUND");
 
     const agentsDir = path.join(runDir, "agents");
     const agentsDirExists = await fs.access(agentsDir).then(() => true).catch(() => false);
@@ -403,7 +403,8 @@ describe("Provider adapter execution", () => {
       await fs.rm(TEMP_DIR, { recursive: true, force: true });
       await fs.mkdir(TEMP_DIR, { recursive: true });
       const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.20"]);
-      expect(result.error).toBeNull();
+      expect(result.error).not.toBeNull();
+      expect(result.error.code).toBe("THINKING_EFFORT_NOT_SUPPORTED");
 
       const runs = await fs.readdir(TEMP_DIR);
       const runDir = path.join(TEMP_DIR, runs[0]!);
@@ -418,7 +419,8 @@ describe("Provider adapter execution", () => {
       await fs.rm(TEMP_DIR, { recursive: true, force: true });
       await fs.mkdir(TEMP_DIR, { recursive: true });
       const result = await runCli(["run", workflowPath, "--config", configPath, "--out", TEMP_DIR, "--report", "json", "--arg", "subcase=03.21"]);
-      expect(result.error).toBeNull();
+      expect(result.error).not.toBeNull();
+      expect(result.error.code).toBe("THINKING_EFFORT_VALUE_UNSUPPORTED");
 
       const runs = await fs.readdir(TEMP_DIR);
       const runDir = path.join(TEMP_DIR, runs[0]!);

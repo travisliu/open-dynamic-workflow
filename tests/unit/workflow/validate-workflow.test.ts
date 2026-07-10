@@ -747,4 +747,52 @@ describe("Validate Workflow Restrictions", () => {
       expect(issues).toHaveLength(0);
     });
   });
+
+  describe("validateAgentCall provider reference checks", () => {
+    const knownProviderReferences = new Set(["mock-provider", "gemini"]);
+    const localOptions = { allowImports: false as const, knownProviderReferences };
+
+    it("passes when provider is a known string literal or template literal with no substitution", () => {
+      const parsed = createParsed(`
+        await agent({ provider: "mock-provider", prompt: "test" });
+        await agent({ provider: \`gemini\`, prompt: "test" });
+      `);
+      const issues = validateWorkflow(parsed, localOptions);
+      expect(issues).toHaveLength(0);
+    });
+
+    it("fails with PROVIDER_REFERENCE_NOT_FOUND when provider is unknown", () => {
+      const parsed = createParsed(`
+        await agent({ provider: "unknown-provider", prompt: "test" });
+      `);
+      const issues = validateWorkflow(parsed, localOptions);
+      const provErr = issues.find(i => i.code === "PROVIDER_REFERENCE_NOT_FOUND");
+      expect(provErr).toBeDefined();
+      expect(provErr?.message).toContain("Unknown provider reference 'unknown-provider'");
+      expect(provErr?.line).toBeDefined();
+      expect(provErr?.column).toBeDefined();
+    });
+
+    it("ignores dynamic expressions, computed properties, shorthand properties, spread values, and template strings with substitutions", () => {
+      const parsed = createParsed(`
+        const dyn = "mock-provider";
+        await agent({ provider: dyn, prompt: "test" });
+        await agent({ provider: \`\${dyn}\`, prompt: "test" });
+        await agent({ ["provider"]: "mock-provider", prompt: "test" });
+        
+        const config = { provider: "mock-provider" };
+        await agent({ ...config, prompt: "test" });
+      `);
+      const issues = validateWorkflow(parsed, localOptions);
+      expect(issues).toHaveLength(0);
+    });
+
+    it("ignores missing knownProviderReferences option (legacy/old calls behavior)", () => {
+      const parsed = createParsed(`
+        await agent({ provider: "any-unconfigured-value", prompt: "test" });
+      `);
+      const issues = validateWorkflow(parsed, { allowImports: false as const });
+      expect(issues).toHaveLength(0);
+    });
+  });
 });

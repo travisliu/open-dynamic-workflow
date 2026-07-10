@@ -80,4 +80,53 @@ describe("Validate Registry Dependencies", () => {
       expect(err.message).toContain("Workflow 'missing' was not found in the registry");
     }
   });
+
+  it("passes when provider in child workflow is configured in knownProviderReferences", () => {
+    const registry = createWorkflowRegistry([
+      createDef("a", `await workflow({ name: "b" });`),
+      createDef("b", `await agent({ provider: "mock-prov", prompt: "test" });`)
+    ]);
+
+    expect(() =>
+      validateRegistryDependencies(registry, {
+        knownProviderReferences: new Set(["mock-prov"])
+      })
+    ).not.toThrow();
+  });
+
+  it("throws PROVIDER_REFERENCE_NOT_FOUND when root workflow has unknown provider", () => {
+    const registry = createWorkflowRegistry([
+      createDef("a", `await agent({ provider: "unknown-prov", prompt: "test" });`)
+    ]);
+
+    expect(() =>
+      validateRegistryDependencies(registry, {
+        knownProviderReferences: new Set(["mock-prov"])
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: "PROVIDER_REFERENCE_NOT_FOUND",
+        message: expect.stringContaining("Unknown provider reference 'unknown-prov'")
+      })
+    );
+  });
+
+  it("throws PROVIDER_REFERENCE_NOT_FOUND transitively when child workflow has unknown provider", () => {
+    const registry = createWorkflowRegistry([
+      createDef("a", `await workflow({ name: "b" });`),
+      createDef("b", `await agent({ provider: "unknown-prov", prompt: "test" });`)
+    ]);
+
+    expect(() =>
+      validateRegistryDependencies(registry, {
+        knownProviderReferences: new Set(["mock-prov"]),
+        rootWorkflowPath: "a.js"
+      })
+    ).toThrow(
+      expect.objectContaining({
+        code: "PROVIDER_REFERENCE_NOT_FOUND",
+        message: expect.stringContaining("Unknown provider reference 'unknown-prov'")
+      })
+    );
+  });
 });

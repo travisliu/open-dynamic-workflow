@@ -5,7 +5,10 @@ import type { RuntimeState } from "../../../src/workflow/types.js";
 import type { ParsedWorkflow } from "../../../src/types/workflow.js";
 import type { ResolvedConfig } from "../../../src/types/config.js";
 import type { AgentResult } from "../../../src/types/agent.js";
-import { computeAgentFingerprint } from "../../../src/artifacts/call-cache.js";
+import * as selectionService from "../../../src/agents/resolve-provider-selection.js";
+import * as validationService from "../../../src/agents/validate-provider-selection.js";
+import * as cacheModule from "../../../src/artifacts/call-cache.js";
+const { computeAgentFingerprint } = cacheModule;
 import { resolveAgentRetryPolicy, resolveGlobalRetryPolicy } from "../../../src/config/retry.js";
 
 // ---- Helpers ----
@@ -995,6 +998,214 @@ describe("DSL: agent()", () => {
       const execInput = executor.execute.mock.calls[0]![0];
       expect(execInput.thinkingEffort).toBeUndefined();
       expect(execInput.metadata?.thinkingEffortResolutionSource).toBe("provider-cli-default");
+    });
+  });
+
+  describe("TC-SEQ-01 and TC-SEQ-02: Runtime Sequencing and capability checks", () => {
+    it("TC-SEQ-01: proves one resolution and required ordering on a cache miss", async () => {
+      const order: string[] = [];
+
+      const originalResolve = selectionService.resolveProviderSelection;
+      const selectSpy = vi.spyOn(selectionService, "resolveProviderSelection").mockImplementation((...args) => {
+        order.push("selection");
+        return originalResolve(...args);
+      });
+
+      const originalValidate = validationService.validateResolvedProviderSelection;
+      const validateSpy = vi.spyOn(validationService, "validateResolvedProviderSelection").mockImplementation((...args) => {
+        order.push("validation");
+        return originalValidate(...args);
+      });
+
+      const originalFingerprint = cacheModule.computeAgentFingerprint;
+      const fingerprintSpy = vi.spyOn(cacheModule, "computeAgentFingerprint").mockImplementation((...args) => {
+        order.push("fingerprint");
+        return originalFingerprint(...args);
+      });
+
+      const originalCacheHit = cacheModule.findPrefixCacheHit;
+      const cacheSpy = vi.spyOn(cacheModule, "findPrefixCacheHit").mockImplementation((...args) => {
+        order.push("cache-lookup");
+        return originalCacheHit(...args);
+      });
+
+      const runLimitTracker = {
+        beforeAgentSchedule: vi.fn().mockImplementation(() => {
+          order.push("run-limit-tracker");
+        }),
+        beforeAgentExecute: vi.fn(),
+        afterAgentExecute: vi.fn()
+      };
+
+      const scheduler = {
+        schedule: vi.fn().mockImplementation(async (task) => {
+          order.push("scheduler");
+          return await task.run(new AbortController().signal);
+        }),
+        drain: vi.fn(),
+        abort: vi.fn(),
+        getSnapshot: vi.fn()
+      };
+
+      const executor = {
+        execute: vi.fn().mockImplementation(async () => {
+          order.push("executor");
+          return makeSuccessResult("agent-1");
+        })
+      };
+
+      const runtime = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any,
+        runLimitTracker: runLimitTracker as any
+      });
+
+      const dsl = createDsl(runtime);
+      await dsl.agent({ id: "agent-1", prompt: "hello", provider: "mock" });
+
+      expect(order).toEqual([
+        "selection",
+        "validation",
+        "fingerprint",
+        "cache-lookup",
+        "run-limit-tracker",
+        "scheduler",
+        "executor"
+      ]);
+
+      selectSpy.mockRestore();
+      validateSpy.mockRestore();
+      fingerprintSpy.mockRestore();
+      cacheSpy.mockRestore();
+    });
+
+    it("TC-SEQ-02: unsupported resolved thinking effort throws before every downstream spy (both alias-derived and agent-overridden)", async () => {
+      const selectSpy = vi.spyOn(selectionService, "resolveProviderSelection");
+      const validateSpy = vi.spyOn(validationService, "validateResolvedProviderSelection");
+      const fingerprintSpy = vi.spyOn(cacheModule, "computeAgentFingerprint");
+      const cacheSpy = vi.spyOn(cacheModule, "findPrefixCacheHit");
+
+      const runLimitTracker = {
+        beforeAgentSchedule: vi.fn(),
+        beforeAgentExecute: vi.fn(),
+        afterAgentExecute: vi.fn()
+      };
+
+      const scheduler = {
+        schedule: vi.fn(),
+        drain: vi.fn(),
+        abort: vi.fn(),
+        getSnapshot: vi.fn()
+      };
+
+      const executor = {
+        execute: vi.fn()
+      };
+
+      // Case A: Agent-overridden value
+      const runtimeA = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any,
+        runLimitTracker: runLimitTracker as any,
+        config: {
+          defaultProvider: "gemini",
+          concurrency: 1,
+          timeoutMs: 30000,
+          providers: {
+            gemini: {
+              command: "node"
+            }
+          },
+          security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+          reporting: { mode: "pretty", verbose: false },
+          cwd: "/workspace",
+          outDir: "/workspace/.open-dynamic-workflow/runs",
+          cliArgs: {}
+        }
+      });
+
+      const dslA = createDsl(runtimeA);
+
+      await expect(
+        dslA.agent({ id: "agent-1", prompt: "hello", provider: "gemini", thinkingEffort: "high" })
+      ).rejects.toThrow();
+
+      // Check downstream spies are NOT called
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+      expect(validateSpy).toHaveBeenCalledTimes(1);
+      expect(fingerprintSpy).not.toHaveBeenCalled();
+      expect(cacheSpy).not.toHaveBeenCalled();
+      expect(runLimitTracker.beforeAgentSchedule).not.toHaveBeenCalled();
+      expect(scheduler.schedule).not.toHaveBeenCalled();
+      expect(executor.execute).not.toHaveBeenCalled();
+
+      // Assert selection metadata is preserved on synthetic failure result
+      expect(runtimeA.agentResults).toHaveLength(1);
+      expect(runtimeA.agentResults[0].providerSelection).toBeDefined();
+      expect(runtimeA.agentResults[0].providerSelection?.selection.requestedProvider).toBe("gemini");
+      expect(runtimeA.agentResults[0].providerSelection?.resolvedExecution.thinkingEffort).toBe("high");
+
+      // Reset mock history
+      vi.clearAllMocks();
+
+      // Case B: Alias-derived value
+      const runtimeB = makeRuntimeState({
+        scheduler: scheduler as any,
+        agentExecutor: executor as any,
+        runLimitTracker: runLimitTracker as any,
+        config: {
+          defaultProvider: "alias-gemini",
+          concurrency: 1,
+          timeoutMs: 30000,
+          providers: {
+            gemini: {
+              command: "node"
+            }
+          },
+          providerAliases: {
+            "alias-gemini": {
+              name: "alias-gemini",
+              provider: "gemini",
+              inheritanceChain: ["alias-gemini"],
+              origins: { provider: "alias-gemini", thinkingEffort: "alias-gemini" },
+              digest: "digest-val",
+              thinkingEffort: "high"
+            }
+          } as any,
+          security: { allowWorkflowImports: false, passEnv: [], redactEnv: [] },
+          reporting: { mode: "pretty", verbose: false },
+          cwd: "/workspace",
+          outDir: "/workspace/.open-dynamic-workflow/runs",
+          cliArgs: {}
+        }
+      });
+
+      const dslB = createDsl(runtimeB);
+
+      await expect(
+        dslB.agent({ id: "agent-2", prompt: "hello", provider: "alias-gemini" })
+      ).rejects.toThrow();
+
+      // Check downstream spies are NOT called
+      expect(selectSpy).toHaveBeenCalledTimes(1);
+      expect(validateSpy).toHaveBeenCalledTimes(1);
+      expect(fingerprintSpy).not.toHaveBeenCalled();
+      expect(cacheSpy).not.toHaveBeenCalled();
+      expect(runLimitTracker.beforeAgentSchedule).not.toHaveBeenCalled();
+      expect(scheduler.schedule).not.toHaveBeenCalled();
+      expect(executor.execute).not.toHaveBeenCalled();
+
+      // Assert selection metadata is preserved on synthetic failure result
+      expect(runtimeB.agentResults).toHaveLength(1);
+      expect(runtimeB.agentResults[0].providerSelection).toBeDefined();
+      expect(runtimeB.agentResults[0].providerSelection?.selection.requestedProvider).toBe("alias-gemini");
+      expect(runtimeB.agentResults[0].providerSelection?.selection.providerAlias).toBe("alias-gemini");
+      expect(runtimeB.agentResults[0].providerSelection?.resolvedExecution.thinkingEffort).toBe("high");
+
+      selectSpy.mockRestore();
+      validateSpy.mockRestore();
+      fingerprintSpy.mockRestore();
+      cacheSpy.mockRestore();
     });
   });
 });

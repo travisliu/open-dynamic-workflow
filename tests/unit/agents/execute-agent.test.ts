@@ -1063,4 +1063,342 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const stdoutLog = await fs.readFile(path.join(attemptDir, "stdout.log"), "utf8");
     expect(stdoutLog).toBe("mock stdout");
   });
+
+  it("captures AgentRunInput passed to adapter and asserts safe boundaries", async () => {
+    let capturedInput: any = null;
+    const originalCreateRegistry = registryModule.createDefaultProviderRegistry;
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps: any) => {
+      const reg = originalCreateRegistry(deps);
+      const originalMock = reg.get("mock");
+      const fakeAdapter = {
+        name: "mock",
+        checkHealth: originalMock.checkHealth ? originalMock.checkHealth.bind(originalMock) : undefined,
+        lookupResponse: (input: any) => {
+          capturedInput = input;
+          return originalMock.lookupResponse(input);
+        },
+        buildCommand: async (input: any) => {
+          capturedInput = input;
+          return await originalMock.buildCommand(input);
+        },
+        parseResult: originalMock.parseResult.bind(originalMock)
+      };
+      (reg as any).adapters.delete("mock");
+      reg.register(fakeAdapter as any);
+      return reg;
+    });
+
+    try {
+      const config: any = {
+        defaultProvider: "mock",
+        providers: {
+          mock: {
+            command: "mock",
+            responses: {
+              "test-agent-boundary": {
+                stdout: "response",
+                exitCode: 0
+              }
+            }
+          }
+        }
+      };
+
+      const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+      const runId = "test-run-boundary";
+      const runOutDir = path.join(TEST_OUT_DIR, runId);
+      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+      const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+      const selectionArtifact = {
+        schemaVersion: "open-dynamic-workflow.provider-selection.v1",
+        selection: {
+          requestedProvider: "alias-mock",
+          requestedProviderSource: "agent",
+          providerAlias: "alias-mock",
+          providerAliasChain: ["alias-mock"],
+          providerAliasDigest: "digest-123",
+          resolvedProvider: "mock"
+        },
+        resolvedExecution: {
+          model: "resolved-model",
+          timeoutMs: 5000,
+          retry: {
+            enabled: false,
+            maxAttempts: 1,
+            delayMs: 100,
+            backoff: "fixed",
+            maxDelayMs: 1000,
+            jitter: false,
+            disableDelay: false
+          }
+        },
+        sources: {
+          provider: "providerAlias",
+          timeoutMs: "providerAlias",
+          retry: "providerAlias"
+        }
+      };
+
+      await executor.execute({
+        id: "test-agent-boundary",
+        label: "Test Agent Boundary",
+        provider: "mock",
+        prompt: "test prompt",
+        model: "resolved-model",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        metadata: {},
+        providerSelection: selectionArtifact as any
+      });
+
+      expect(capturedInput).not.toBeNull();
+      expect(capturedInput.provider).toBe("mock");
+      expect(JSON.stringify(capturedInput)).not.toContain("alias-mock");
+      expect(JSON.stringify(capturedInput)).not.toContain("digest-123");
+      expect(Object.prototype.hasOwnProperty.call(capturedInput, "providerSelection")).toBe(false);
+      expect(capturedInput.providerSelection).toBeUndefined();
+
+      // Assert that no symbols are present on captured input
+      expect(Object.getOwnPropertySymbols(capturedInput)).toEqual([]);
+
+      // Assert that only documented concrete execution fields are present
+      const allowedKeys = [
+        "id",
+        "label",
+        "provider",
+        "prompt",
+        "model",
+        "schema",
+        "structuredOutput",
+        "timeoutMs",
+        "cwd",
+        "env",
+        "permissions",
+        "metadata",
+        "thinkingEffort"
+      ];
+      for (const key of Object.keys(capturedInput)) {
+        expect(allowedKeys).toContain(key);
+      }
+
+      // Regression test: Direct-provider model config default mapping
+      const { GeminiCliAdapter } = await import("../../../src/agents/gemini-cli.js");
+      const geminiAdapter = new GeminiCliAdapter({ defaultModel: "fallback-gemini-model" });
+      const cmdWithFallback = await geminiAdapter.buildCommand({
+        id: "gemini-test",
+        provider: "gemini",
+        prompt: "hello",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        env: {}
+      });
+      expect(cmdWithFallback.args).toContain("fallback-gemini-model");
+
+      const cmdWithoutFallback = await geminiAdapter.buildCommand({
+        id: "gemini-test",
+        provider: "gemini",
+        prompt: "hello",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        env: {},
+        model: null
+      });
+      expect(cmdWithoutFallback.args).not.toContain("fallback-gemini-model");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("resolves model to null through selection artifact and omits model arg in built command", async () => {
+    const { GeminiCliAdapter } = await import("../../../src/agents/gemini-cli.js");
+    const geminiAdapter = new GeminiCliAdapter({ defaultModel: "fallback-gemini-model" });
+
+    const originalCreateRegistry = registryModule.createDefaultProviderRegistry;
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps: any) => {
+      const reg = originalCreateRegistry(deps);
+      (reg as any).adapters.delete("gemini");
+      reg.register(geminiAdapter);
+      return reg;
+    });
+
+    try {
+      const config: any = {
+        defaultProvider: "gemini",
+        providers: {
+          gemini: {
+            command: "gemini",
+            defaultModel: "fallback-gemini-model"
+          }
+        }
+      };
+
+      const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+      const runId = "test-run-alias-null";
+      const runOutDir = path.join(TEST_OUT_DIR, runId);
+      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+      const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+      const selectionArtifact = {
+        schemaVersion: "open-dynamic-workflow.provider-selection.v1",
+        selection: {
+          requestedProvider: "alias-gemini",
+          requestedProviderSource: "agent",
+          providerAlias: "alias-gemini",
+          providerAliasChain: ["alias-gemini"],
+          providerAliasDigest: "digest-456",
+          resolvedProvider: "gemini"
+        },
+        resolvedExecution: {
+          model: null,
+          timeoutMs: 5000,
+          retry: { enabled: false }
+        },
+        sources: {
+          provider: "providerAlias",
+          timeoutMs: "providerAlias",
+          retry: "providerAlias"
+        }
+      };
+
+      const buildCommandSpy = vi.spyOn(geminiAdapter, "buildCommand");
+
+      await executor.execute({
+        id: "test-agent-alias-null",
+        label: "Test Agent Alias Null",
+        provider: "gemini",
+        prompt: "test prompt",
+        model: null,
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        metadata: {},
+        providerSelection: selectionArtifact as any
+      });
+
+      expect(buildCommandSpy).toHaveBeenCalled();
+      const runInputPassed = buildCommandSpy.mock.calls[0][0];
+      expect(runInputPassed.model).toBeNull();
+      
+      const cmd = await buildCommandSpy.mock.results[0].value;
+      expect(cmd.args).not.toContain("fallback-gemini-model");
+      expect(cmd.args).not.toContain("-m");
+      expect(cmd.args).not.toContain("--model");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("concurrency test: interleaved execution of two calls with different selection artifacts", async () => {
+    const config: any = {
+      defaultProvider: "mock",
+      providers: {
+        mock: {
+          command: "mock",
+          responses: {
+            "agent-c1": { stdout: "res1", exitCode: 0 },
+            "agent-c2": { stdout: "res2", exitCode: 0 }
+          }
+        }
+      }
+    };
+
+    const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
+    const runId = "test-run-concurrency";
+    const runOutDir = path.join(TEST_OUT_DIR, runId);
+    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
+    const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
+
+    const selectionC1: any = {
+      schemaVersion: "open-dynamic-workflow.provider-selection.v1",
+      selection: { requestedProvider: "c1", resolvedProvider: "mock" },
+      resolvedExecution: { timeoutMs: 5000, retry: { enabled: false } as any },
+      sources: { provider: "agent", timeoutMs: "agent", retry: "agent" }
+    };
+    const selectionC2: any = {
+      schemaVersion: "open-dynamic-workflow.provider-selection.v1",
+      selection: { requestedProvider: "c2", resolvedProvider: "mock" },
+      resolvedExecution: { timeoutMs: 5000, retry: { enabled: false } as any },
+      sources: { provider: "agent", timeoutMs: "agent", retry: "agent" }
+    };
+
+    const originalCreateRegistry = registryModule.createDefaultProviderRegistry;
+    
+    let resolveC1: any;
+    const promiseC1 = new Promise((resolve) => { resolveC1 = resolve; });
+    let resolveC2: any;
+    const promiseC2 = new Promise((resolve) => { resolveC2 = resolve; });
+
+    const spy = vi.spyOn(registryModule, "createDefaultProviderRegistry").mockImplementation((deps: any) => {
+      const reg = originalCreateRegistry(deps);
+      const originalMock = reg.get("mock");
+      const fakeAdapter = {
+        name: "mock",
+        checkHealth: originalMock.checkHealth ? originalMock.checkHealth.bind(originalMock) : undefined,
+        lookupResponse: originalMock.lookupResponse.bind(originalMock),
+        buildCommand: originalMock.buildCommand.bind(originalMock),
+        parseResult: async (input: any) => {
+          if (input.input.id === "agent-c1") {
+            await promiseC1;
+          } else if (input.input.id === "agent-c2") {
+            await promiseC2;
+          }
+          return await originalMock.parseResult(input);
+        }
+      };
+      (reg as any).adapters.delete("mock");
+      reg.register(fakeAdapter as any);
+      return reg;
+    });
+
+    try {
+      const execPromise1 = executor.execute({
+        id: "agent-c1",
+        provider: "mock",
+        prompt: "prompt1",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        providerSelection: selectionC1
+      });
+
+      const execPromise2 = executor.execute({
+        id: "agent-c2",
+        provider: "mock",
+        prompt: "prompt2",
+        timeoutMs: 5000,
+        cwd: process.cwd(),
+        permissions: { mode: "default" },
+        signal: new AbortController().signal,
+        providerSelection: selectionC2
+      });
+
+      resolveC2();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      resolveC1();
+
+      const result1 = await execPromise1;
+      const result2 = await execPromise2;
+
+      expect(result1.providerSelection).toEqual(selectionC1);
+      expect(result2.providerSelection).toEqual(selectionC2);
+
+      const raw1 = JSON.parse(await fs.readFile(path.join(runOutDir, "agents/agent-c1/raw-result.json"), "utf8"));
+      const raw2 = JSON.parse(await fs.readFile(path.join(runOutDir, "agents/agent-c2/raw-result.json"), "utf8"));
+
+      expect(raw1.providerSelection).toEqual(selectionC1);
+      expect(raw2.providerSelection).toEqual(selectionC2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
 });

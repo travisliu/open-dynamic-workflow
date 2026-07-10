@@ -89,6 +89,11 @@ export async function validateWorkflowService(
     maxDefinitions: config.tools?.maxDefinitions ?? 100
   });
 
+  const knownProviderReferences = Object.freeze(new Set([
+    ...Object.keys(config.providers || {}),
+    ...Object.keys(config.providerAliases || {})
+  ]));
+
   // Discover and validate workflow registry (this performs full validation)
   const workflowRegistry = await discoverWorkflowRegistry({
     rootWorkflowPath: resolved.workflowFile,
@@ -98,7 +103,8 @@ export async function validateWorkflowService(
     sharedAgentRegistry,
     toolRegistry,
     allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds,
-    maxLoopRounds: config.workflow.maxLoopRounds
+    maxLoopRounds: config.workflow.maxLoopRounds,
+    knownProviderReferences
   });
 
   // Find root workflow in registry by path

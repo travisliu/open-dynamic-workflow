@@ -395,7 +395,8 @@ export default async () => {
     ]);
 
     // 3. Assert: Verify that the error code is THINKING_EFFORT_NOT_SUPPORTED and no child process spawned
-    expect(result.error).toBeNull(); // Executor catches error and fails agent call
+    expect(result.error).not.toBeNull();
+    expect(result.error.code).toBe(ErrorCode.THINKING_EFFORT_NOT_SUPPORTED);
     const runs = await fs.readdir(TEMP_DIR);
     const runId = runs.find(r => r !== "config.yaml" && r !== "workflow.js" && r !== "counter.txt" && r !== "wrapper-cli.mjs" && r !== "fake-provider-cli.mjs")!;
     const runDir = path.join(TEMP_DIR, runId);
@@ -468,7 +469,8 @@ export default async () => {
     ]);
 
     // 3. Assert: Verify the error code is THINKING_EFFORT_VALUE_UNSUPPORTED and no spawn
-    expect(result.error).toBeNull();
+    expect(result.error).not.toBeNull();
+    expect(result.error.code).toBe(ErrorCode.THINKING_EFFORT_VALUE_UNSUPPORTED);
     const runs = await fs.readdir(TEMP_DIR);
     const runId = runs.find(r => r !== "config.yaml" && r !== "workflow.js" && r !== "counter.txt" && r !== "wrapper-cli.mjs" && r !== "fake-provider-cli.mjs")!;
     const runDir = path.join(TEMP_DIR, runId);
@@ -477,6 +479,27 @@ export default async () => {
     const agentResult = report.agents[0];
     expect(agentResult.ok).toBe(false);
     expect(agentResult.error.code).toBe(ErrorCode.THINKING_EFFORT_VALUE_UNSUPPORTED);
+    expect(agentResult.providerSelection).toBeDefined();
+    expect(agentResult.providerSelection.schemaVersion).toBe("open-dynamic-workflow.provider-selection.v1");
+    expect(agentResult.providerSelection.selection.requestedProvider).toBe("codex");
+
+    const rawResultPath = path.join(runDir, "agents", "codex-agent", "raw-result.json");
+    const rawResult = JSON.parse(await fs.readFile(rawResultPath, "utf8"));
+    expect(rawResult.providerSelection).toBeDefined();
+    expect(rawResult.providerSelection.schemaVersion).toBe("open-dynamic-workflow.provider-selection.v1");
+    expect(rawResult.providerSelection.selection.requestedProvider).toBe("codex");
+    expect(rawResult.providerSelection.selection.resolvedProvider).toBe("codex");
+    expect(rawResult.providerSelection.resolvedExecution.thinkingEffort).toBe("xhigh");
+
+    // Verify safe projection boundaries (no source paths, configs, prompt, permissions, or env)
+    expect(rawResult.providerSelection.sources.provider).toBe("agent");
+    expect(rawResult.providerSelection.sources.thinkingEffort).toBe("agent");
+    expect(rawResult.providerSelection.selection.providerConfig).toBeUndefined();
+    expect(rawResult.providerSelection.selection.prompt).toBeUndefined();
+    expect(rawResult.providerSelection.selection.permissions).toBeUndefined();
+    expect(rawResult.providerSelection.selection.env).toBeUndefined();
+    expect(JSON.stringify(rawResult.providerSelection)).not.toContain("sourcePath");
+    expect(JSON.stringify(rawResult.providerSelection)).not.toContain("config.yaml");
 
     const counter = await fs.readFile(counterPath, "utf8");
     expect(counter).toBe("0");

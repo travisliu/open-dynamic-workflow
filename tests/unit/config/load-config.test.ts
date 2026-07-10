@@ -644,7 +644,7 @@ providerAliases:
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("loadConfig provider alias: defaultProvider cannot be an alias name in this phase", async () => {
+  it("loadConfig provider alias: defaultProvider can be an alias name and loads successfully", async () => {
     const tempDir = join(tmpdir(), "open-dynamic-workflow-test-alias-default-" + Date.now());
     mkdirSync(tempDir, { recursive: true });
     const configDir = join(tempDir, ".open-dynamic-workflow");
@@ -658,10 +658,52 @@ providerAliases:
 `;
     writeFileSync(join(configDir, "config.yaml"), configContent);
 
-    // Should reject because defaultProvider must be defined in providers (existing concrete provider rule)
-    await expect(
-      loadConfig({ cwd: tempDir, cli: {} })
-    ).rejects.toThrow(/defaultProvider.*must be defined in providers/);
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(config.defaultProvider).toBe("aliasA");
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig provider alias: defaultProvider can be an alias name via CLI override and loads successfully", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-alias-cli-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+
+    const configContent = `
+providerAliases:
+  aliasA:
+    provider: mock
+`;
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    const config = await loadConfig({ cwd: tempDir, cli: { provider: "aliasA" } });
+    expect(config.defaultProvider).toBe("aliasA");
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig: unknown defaultProvider throws PROVIDER_REFERENCE_NOT_FOUND with requestedProvider details", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-alias-unknown-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+
+    const configContent = `
+defaultProvider: unknownAlias
+`;
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    let error: any;
+    try {
+      await loadConfig({ cwd: tempDir, cli: {} });
+    } catch (e: any) {
+      error = e;
+    }
+    expect(error).toBeDefined();
+    expect(error.code).toBe(ErrorCode.PROVIDER_REFERENCE_NOT_FOUND);
+    expect(error.requestedProvider).toBe("unknownAlias");
+    expect(error.details?.requestedProvider).toBe("unknownAlias");
 
     rmSync(tempDir, { recursive: true, force: true });
   });
@@ -701,6 +743,70 @@ providerAliases:
     writeFileSync(join(configDir, "config.yaml"), "");
     const configEmpty = await loadConfig({ cwd: tempDir, cli: {} });
     expect(configEmpty.defaultProvider).toBe("mock");
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig: preserves presence and exact absence of options in _executionDefaultLayers", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-layers-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+
+    // 1. Omitted case (no file config, no CLI options)
+    const configOmitted = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(configOmitted._executionDefaultLayers).toBeDefined();
+    expect(configOmitted._executionDefaultLayers.cli).toEqual({});
+    expect(configOmitted._executionDefaultLayers.config).toEqual({});
+    expect(configOmitted._executionDefaultLayers.builtIn).toEqual({
+      defaultProvider: "mock",
+      timeoutMs: 900000,
+    });
+
+    // 2. Explicit null/false and presence of various layers
+    const configContent = `
+defaultProvider: aliasA
+defaultModel: null
+timeoutMs: 5000
+retry: false
+providerAliases:
+  aliasA:
+    provider: mock
+`;
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    const configPresent = await loadConfig({
+      cwd: tempDir,
+      cli: {
+        provider: "aliasA",
+        model: "cli-model",
+        thinkingEffort: "high",
+        retryMaxAttempts: 3,
+        noRetry: false,
+      }
+    });
+
+    expect(configPresent._executionDefaultLayers.cli).toEqual({
+      provider: "aliasA",
+      model: "cli-model",
+      thinkingEffort: "high",
+      retry: {
+        maxAttempts: 3,
+        noRetry: false,
+      }
+    });
+
+    expect(configPresent._executionDefaultLayers.config).toEqual({
+      defaultProvider: "aliasA",
+      defaultModel: null,
+      timeoutMs: 5000,
+      retry: false,
+    });
+
+    expect(configPresent._executionDefaultLayers.builtIn).toEqual({
+      defaultProvider: "mock",
+      timeoutMs: 900000,
+    });
 
     rmSync(tempDir, { recursive: true, force: true });
   });

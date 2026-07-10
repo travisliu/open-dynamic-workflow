@@ -3,6 +3,8 @@ import type { ScheduledTask, ScheduleOptions } from "../types/scheduler.js";
 import type { AgentExecutionInput } from "../agents/execution-types.js";
 import type { RuntimeState } from "./types.js";
 import { resolveAgentModel } from "../agents/resolve-model.js";
+import { resolveProviderSelection, toProviderSelectionArtifact } from "../agents/resolve-provider-selection.js";
+import { validateResolvedProviderSelection } from "../agents/validate-provider-selection.js";
 import { resolveAgentRetryPolicy, resolveGlobalRetryPolicy } from "../config/retry.js";
 import { isThinkingEffort } from "../types/thinking-effort.js";
 import { resolveThinkingEffort } from "../agents/resolve-thinking-effort.js";
@@ -41,6 +43,28 @@ import {
 import { createLoopAgentId, normalizeLoopLabel } from "../loop/id.js";
 import { collectSecretValues } from "../security/env.js";
 import type { ToolCallInput, ToolExecutionResult, ToolSettledResult, ToolFailureMode } from "../types/tool.js";
+
+function toLegacySource(source: string | undefined): string | undefined {
+  if (source === "providerConfig") return "provider-default";
+  if (source === "builtIn" || source === undefined) return "provider-cli-default";
+  return source;
+}
+
+function removeUndefinedProperties<T>(obj: T): T {
+  if (obj === null || typeof obj !== "object") {
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(removeUndefinedProperties) as any;
+  }
+  const result: any = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val !== undefined) {
+      result[key] = removeUndefinedProperties(val);
+    }
+  }
+  return result;
+}
 import type { PreparedToolCall } from "../tools/executor-types.js";
 import type { 
   PipelineStage, 
@@ -254,40 +278,119 @@ export function createDsl(runtime: RuntimeState) {
       recordChildAgentId(normalizedId);
     }
 
-    const normalizedProvider = input.provider || runtime.config.defaultProvider || "mock";
-    const normalizedTimeoutMs = input.timeoutMs || runtime.config.timeoutMs || 30000;
+    let selection: any;
+    try {
+      selection = resolveProviderSelection({
+        call: input,
+        providers: (runtime.config.providers || {}) as any,
+        aliases: (runtime.config.providerAliases || {}) as any,
+        layers: runtime.config._executionDefaultLayers || {
+          cli: {
+            provider: (runtime.cli as any)?.provider,
+            model: (runtime.cli as any)?.model,
+            timeoutMs: (runtime.cli as any)?.timeoutMs,
+            thinkingEffort: (runtime.cli as any)?.thinkingEffort,
+            retry: (runtime.cli as any)?.retryMaxAttempts !== undefined || (runtime.cli as any)?.retryDelayMs !== undefined || (runtime.cli as any)?.noRetry !== undefined
+              ? {
+                  maxAttempts: (runtime.cli as any)?.retryMaxAttempts,
+                  delayMs: (runtime.cli as any)?.retryDelayMs,
+                  maxDelayMs: (runtime.cli as any)?.retryMaxDelayMs,
+                  backoff: (runtime.cli as any)?.retryBackoff,
+                  disableDelay: (runtime.cli as any)?.retryDisableDelay,
+                  noRetry: (runtime.cli as any)?.noRetry
+                }
+              : undefined
+          },
+          config: {
+            defaultProvider: runtime.config.defaultProvider,
+            defaultModel: runtime.config.defaultModel,
+            timeoutMs: runtime.config.timeoutMs,
+            retry: runtime.config.retry
+          },
+          builtIn: {
+            defaultProvider: "mock",
+            timeoutMs: 900000
+          }
+        }
+      });
+
+      validateResolvedProviderSelection(selection, (runtime.config.providers?.[selection.provider]) as any);
+    } catch (err: any) {
+      const concreteProvider = selection ? selection.provider : (input.provider || "mock");
+      const executionModel = selection ? (selection.model === null || typeof selection.model === "string" ? selection.model : undefined) : input.model;
+      const providerSelection = selection ? toProviderSelectionArtifact(selection) : undefined;
+      const errorPayload = serializeError(err);
+
+      const failureResult: AgentResult = {
+        ok: false,
+        status: "failed",
+        id: normalizedId,
+        label: input.label,
+        provider: concreteProvider,
+        model: executionModel,
+        stdout: "",
+        stderr: err.message || String(err),
+        exitCode: null,
+        durationMs: 0,
+        artifacts: {
+          dir: "",
+          promptPath: "",
+          stdoutPath: "",
+          stderrPath: ""
+        },
+        error: errorPayload,
+        permissions: resolvedPermissions,
+        metadata: {
+          ...input.metadata,
+          ...originMetadata,
+          modelResolutionSource: selection ? toLegacySource(selection.sources.model?.source) : undefined,
+          thinkingEffortResolutionSource: selection ? toLegacySource(selection.sources.thinkingEffort?.source) : undefined,
+          ...(selection?.thinkingEffort !== undefined ? { thinkingEffort: selection.thinkingEffort } : {}),
+          ...(providerSelection ? { providerSelection } : {})
+        },
+        ...(providerSelection ? { providerSelection } : {})
+      };
+
+      if (runtime.artifactStore) {
+        const runArtifacts = runtime.artifactStore.getRunArtifacts();
+        const baseDir = runArtifacts.agentDir(normalizedId);
+        failureResult.artifacts = {
+          dir: baseDir,
+          promptPath: `${baseDir}/prompt.txt`,
+          stdoutPath: `${baseDir}/stdout.log`,
+          stderrPath: `${baseDir}/stderr.log`
+        };
+
+        const cleanResult = removeUndefinedProperties(failureResult);
+        await runtime.artifactStore.writeJson(`${baseDir}/raw-result.json`, cleanResult);
+      }
+
+      const finalResult = removeUndefinedProperties(failureResult);
+      runtime.agentResults.push(finalResult);
+
+      throw err;
+    }
+
+    const concreteProvider = selection.provider;
+    const executionModel = selection.model === null || typeof selection.model === "string" ? selection.model : undefined;
+    const timeoutMs = selection.timeoutMs;
+    const thinkingEffort = selection.thinkingEffort;
+    const resolvedRetry = selection.retry;
+    const providerSelection = toProviderSelectionArtifact(selection);
+
     const normalizedCwd = input.cwd || runtime.cwd;
-
-    const resolved = resolveAgentModel({
-      agentModel: input.model,
-      cliModel: runtime.cli?.model,
-      providerDefaultModel: runtime.config.providers?.[normalizedProvider]?.defaultModel,
-      globalDefaultModel: runtime.config.defaultModel
-    });
-
-    const resolvedThinking = resolveThinkingEffort({
-      agentThinkingEffort: input.thinkingEffort,
-      cliThinkingEffort: runtime.cli?.thinkingEffort,
-      providerDefaultThinkingEffort: runtime.config.providers?.[normalizedProvider]?.defaultThinkingEffort
-    });
-
-    const resolvedGlobalRetry = runtime.config.retry ?? resolveGlobalRetryPolicy({});
-    const resolvedRetry = resolveAgentRetryPolicy({
-      globalPolicy: resolvedGlobalRetry,
-      agentRetry: input.retry
-    });
 
     const sequence = (runtime.callSequence ?? 0) + 1;
     runtime.callSequence = sequence;
     const callId = resolveCallId(input, normalizedId);
     const fingerprint = computeAgentFingerprint({
       call: input,
-      provider: normalizedProvider,
-      model: resolved.model,
-      timeoutMs: normalizedTimeoutMs,
+      provider: concreteProvider,
+      model: executionModel,
+      timeoutMs,
       cwd: normalizedCwd,
-      providerConfig: runtime.config.providers?.[normalizedProvider],
-      thinkingEffort: resolvedThinking.thinkingEffort,
+      providerConfig: runtime.config.providers?.[concreteProvider],
+      thinkingEffort,
       retry: resolvedRetry
     });
 
@@ -307,17 +410,18 @@ export function createDsl(runtime: RuntimeState) {
         entry: cachedEntry,
         currentAgentId: normalizedId,
         label: input.label,
-        provider: normalizedProvider,
-        model: resolved.model,
-        permissions: resolvedPermissions
+        provider: concreteProvider,
+        model: executionModel,
+        permissions: resolvedPermissions,
+        providerSelection
       });
       const artifactResult = (cachedResult as any).__artifactResult || cachedResult;
       runtime.agentResults.push(artifactResult);
       runtime.eventSink?.emit("agent.cache_hit", {
         agentId: normalizedId,
         label: input.label,
-        provider: normalizedProvider,
-        model: resolved.model,
+        provider: concreteProvider,
+        model: executionModel,
         sequence,
         callId,
         previousRunId: runtime.callCache.previousRunId,
@@ -358,29 +462,30 @@ export function createDsl(runtime: RuntimeState) {
       const retryInput: RetryOrchestratorInput = {
         logicalAgentId: normalizedId,
         label: input.label,
-        provider: normalizedProvider,
-        model: resolved.model,
+        provider: concreteProvider,
+        model: executionModel,
         basePrompt: input.prompt,
         schema: input.schema,
         structuredOutput: input.structuredOutput,
-        timeoutMs: normalizedTimeoutMs,
+        timeoutMs,
         cwd: normalizedCwd,
         permissions: resolvedPermissions,
         metadata: {
           ...input.metadata,
           ...originMetadata,
-          modelResolutionSource: resolved.source,
-          thinkingEffortResolutionSource: resolvedThinking.source,
-          ...(resolvedThinking.thinkingEffort !== undefined ? { thinkingEffort: resolvedThinking.thinkingEffort } : {})
+          modelResolutionSource: toLegacySource(selection.sources.model?.source),
+          thinkingEffortResolutionSource: toLegacySource(selection.sources.thinkingEffort?.source),
+          ...(thinkingEffort !== undefined ? { thinkingEffort } : {})
         },
-        thinkingEffort: resolvedThinking.thinkingEffort,
+        thinkingEffort,
         retry: resolvedRetry,
         scheduler: runtime.scheduler,
         runLimits: runtime.runLimitTracker!,
         artifactStore: runtime.artifactStore!,
         eventBus: runtime.eventSink as any,
         signal: linkedController.signal,
-        failFast: runtime.failFast ?? false
+        failFast: runtime.failFast ?? false,
+        providerSelection
       };
 
       if (activeInvocation?.concurrencyBudget) {
@@ -416,15 +521,16 @@ export function createDsl(runtime: RuntimeState) {
 
     const task: ScheduledTask<AgentResult> = {
       id: normalizedId,
-      provider: normalizedProvider,
-      model: resolved.model,
+      provider: concreteProvider,
+      model: executionModel,
       permissions: resolvedPermissions,
       metadata: {
         ...input.metadata,
         ...originMetadata,
-        modelResolutionSource: resolved.source,
-        thinkingEffortResolutionSource: resolvedThinking.source,
-        ...(resolvedThinking.thinkingEffort !== undefined ? { thinkingEffort: resolvedThinking.thinkingEffort } : {})
+        modelResolutionSource: toLegacySource(selection.sources.model?.source),
+        thinkingEffortResolutionSource: toLegacySource(selection.sources.thinkingEffort?.source),
+        ...(thinkingEffort !== undefined ? { thinkingEffort } : {}),
+        providerSelection
       },
 
       run: async (schedulerSignal: AbortSignal) => {
@@ -471,25 +577,26 @@ export function createDsl(runtime: RuntimeState) {
 
         const execInput: AgentExecutionInput = {
           id: normalizedId,
-          provider: normalizedProvider,
+          provider: concreteProvider,
           prompt: input.prompt,
-          timeoutMs: normalizedTimeoutMs,
+          timeoutMs,
           cwd: normalizedCwd,
           permissions: resolvedPermissions,
           signal: finalSignal,
           metadata: {
             ...input.metadata,
             ...originMetadata,
-            modelResolutionSource: resolved.source,
-            thinkingEffortResolutionSource: resolvedThinking.source,
-            ...(resolvedThinking.thinkingEffort !== undefined ? { thinkingEffort: resolvedThinking.thinkingEffort } : {})
-          }
+            modelResolutionSource: toLegacySource(selection.sources.model?.source),
+            thinkingEffortResolutionSource: toLegacySource(selection.sources.thinkingEffort?.source),
+            ...(thinkingEffort !== undefined ? { thinkingEffort } : {})
+          },
+          providerSelection
         };
         if (input.label !== undefined) execInput.label = input.label;
-        if (resolved.model !== undefined) execInput.model = resolved.model;
+        if (executionModel !== undefined) execInput.model = executionModel;
         if (input.schema !== undefined) execInput.schema = input.schema;
         if (input.structuredOutput !== undefined) execInput.structuredOutput = input.structuredOutput;
-        if (resolvedThinking.thinkingEffort !== undefined) execInput.thinkingEffort = resolvedThinking.thinkingEffort;
+        if (thinkingEffort !== undefined) execInput.thinkingEffort = thinkingEffort;
 
 
         try {
@@ -511,9 +618,9 @@ export function createDsl(runtime: RuntimeState) {
     }
 
     const scheduleOptions: ScheduleOptions = {
-      provider: normalizedProvider,
-      model: resolved.model,
-      timeoutMs: normalizedTimeoutMs,
+      provider: concreteProvider,
+      model: executionModel,
+      timeoutMs,
       failFast: runtime.failFast,
       cwd: normalizedCwd
     };

@@ -5,7 +5,8 @@ import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
 import { mergeConfig, type ConfigCliOverrides } from "./merge.js";
 import { validateConfig, validateRetryConfigInput } from "./schema.js";
-import type { ResolvedOpenDynamicWorkflowConfig, ConfigDiagnosticContext, DiscoveryCliOverrides } from "./types.js";
+import type { ResolvedOpenDynamicWorkflowConfig, ConfigDiagnosticContext, DiscoveryCliOverrides, ExecutionDefaultLayers, RetryCliOverrides } from "./types.js";
+import type { ThinkingEffort } from "../types/thinking-effort.js";
 import { resolveUserPath, resolveProjectPath } from "../cli/paths.js";
 import { normalizeDiscoveryConfig } from "./path-discovery.js";
 import { getFatalConfigDiagnostics } from "./path-diagnostics.js";
@@ -105,6 +106,60 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
     maxDepth: (merged as any).providerAliasMaxDepth ?? 8,
   });
 
+  const finalProvider = merged.defaultProvider;
+  if (typeof finalProvider !== "string" || (!(finalProvider in merged.providers) && !(finalProvider in aliasResult.aliases))) {
+    const err = new OpenDynamicWorkflowError(
+      ErrorCode.PROVIDER_REFERENCE_NOT_FOUND,
+      `Config value 'defaultProvider' ('${finalProvider}') must be defined in providers or providerAliases.`
+    );
+    (err as any).requestedProvider = finalProvider;
+    (err as any).cause = { requestedProvider: finalProvider };
+    (err as any).details = { requestedProvider: finalProvider };
+    throw err;
+  }
+
+  // Build _executionDefaultLayers
+  const cliRetry: RetryCliOverrides = {};
+  let hasRetryCli = false;
+  if (input.cli.retryMaxAttempts !== undefined) { cliRetry.maxAttempts = input.cli.retryMaxAttempts; hasRetryCli = true; }
+  if (input.cli.retryDelayMs !== undefined) { cliRetry.delayMs = input.cli.retryDelayMs; hasRetryCli = true; }
+  if (input.cli.retryMaxDelayMs !== undefined) { cliRetry.maxDelayMs = input.cli.retryMaxDelayMs; hasRetryCli = true; }
+  if (input.cli.retryBackoff !== undefined) { cliRetry.backoff = input.cli.retryBackoff; hasRetryCli = true; }
+  if (input.cli.retryDisableDelay !== undefined) { cliRetry.disableDelay = input.cli.retryDisableDelay; hasRetryCli = true; }
+  if (input.cli.noRetry !== undefined) { cliRetry.noRetry = input.cli.noRetry; hasRetryCli = true; }
+
+  const cliLayer: any = {};
+  if (input.cli.provider !== undefined) cliLayer.provider = input.cli.provider;
+  if (input.cli.model !== undefined) cliLayer.model = input.cli.model;
+  if (input.cli.timeoutMs !== undefined) cliLayer.timeoutMs = input.cli.timeoutMs;
+  if (input.cli.thinkingEffort !== undefined) cliLayer.thinkingEffort = input.cli.thinkingEffort;
+  if (hasRetryCli) cliLayer.retry = Object.freeze(cliRetry);
+  Object.freeze(cliLayer);
+
+  const configLayer: any = {};
+  if (fileConfig && typeof fileConfig === "object") {
+    if (fileConfig.defaultProvider !== undefined) configLayer.defaultProvider = fileConfig.defaultProvider;
+    if (fileConfig.defaultModel !== undefined) configLayer.defaultModel = fileConfig.defaultModel;
+    if (fileConfig.timeoutMs !== undefined) configLayer.timeoutMs = fileConfig.timeoutMs;
+    if (fileConfig.retry !== undefined) {
+      configLayer.retry = typeof fileConfig.retry === "object" && fileConfig.retry !== null
+        ? Object.freeze({ ...fileConfig.retry })
+        : fileConfig.retry;
+    }
+  }
+  Object.freeze(configLayer);
+
+  const builtInLayer = Object.freeze({
+    defaultProvider: DEFAULT_CONFIG.defaultProvider,
+    timeoutMs: DEFAULT_CONFIG.timeoutMs,
+  });
+
+  const _executionDefaultLayers = Object.freeze({
+    cli: cliLayer,
+    config: configLayer,
+    builtIn: builtInLayer
+  });
+
   const context = input.diagnosticContext ?? "list";
 
   const { discovery, diagnostics } = normalizeDiscoveryConfig({
@@ -133,6 +188,7 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
     ...merged,
     providerAliases: aliasResult.aliases,
     providerAliasMaxDepth: (merged as any).providerAliasMaxDepth ?? 8,
+    _executionDefaultLayers,
     sharedAgents: {
       ...merged.sharedAgents,
       include: discovery.sharedAgents.include,

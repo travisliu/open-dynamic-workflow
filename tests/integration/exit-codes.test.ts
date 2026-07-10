@@ -88,12 +88,11 @@ describe("Exit Codes", () => {
     expect(result.exitCode).toBe(3);
   });
 
-  it("Provider unavailable returns exit code 4", async () => {
+  it("Workflow file not found returns exit code 4", async () => {
     const result = await runCli([
       "run",
-      "tests/fixtures/workflows/provider-adapters.workflow.js",
-      "--out", TEMP_DIR,
-      "--arg", "subcase=03.04"
+      "tests/fixtures/workflows/non-existent-workflow.workflow.js",
+      "--out", TEMP_DIR
     ]);
     expect(result.exitCode).toBe(4);
   });

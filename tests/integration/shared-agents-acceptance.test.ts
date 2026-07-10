@@ -378,7 +378,7 @@ defaultProvider: mock
       "sharedAgentId", "sharedAgentSource", "pipelineId", "pipelineLabel", 
       "itemIndex", "stageIndex", "stageName", "modelResolutionSource",
       "model", "resolutionSource", "structuredOutputTransport", "permissions",
-      "thinkingEffort", "thinkingEffortResolutionSource"
+      "thinkingEffort", "thinkingEffortResolutionSource", "providerSelection"
     ];
     for (const key of Object.keys(reportMetadata)) {
       expect(safeFields).toContain(key);

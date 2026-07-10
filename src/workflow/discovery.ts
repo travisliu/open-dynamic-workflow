@@ -22,6 +22,7 @@ export interface DiscoverWorkflowRegistryInput {
   allowDynamicSharedAgentIds?: boolean;
   toolRegistry?: ToolRegistry;
   maxLoopRounds?: number;
+  knownProviderReferences?: ReadonlySet<string>;
 }
 
 export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryInput): Promise<WorkflowRegistry> {
@@ -121,7 +122,8 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
         sharedAgentRegistry,
         allowDynamicSharedAgentIds: input.allowDynamicSharedAgentIds,
         toolRegistry: input.toolRegistry,
-        maxLoopRounds
+        maxLoopRounds,
+        knownProviderReferences: input.knownProviderReferences
       });
     }
 
@@ -172,7 +174,8 @@ export async function discoverWorkflowRegistry(input: DiscoverWorkflowRegistryIn
     allowDynamicSharedAgentIds: input.allowDynamicSharedAgentIds,
     toolRegistry: input.toolRegistry,
     rootWorkflowPath: absoluteRootPath,
-    maxLoopRounds
+    maxLoopRounds,
+    knownProviderReferences: input.knownProviderReferences
   });
 
   return registry;

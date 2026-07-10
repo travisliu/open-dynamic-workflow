@@ -113,4 +113,95 @@ describe("Doctor Model Support Output", () => {
     // Act & Assert
     await expect(doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any } })).rejects.toThrow();
   });
+
+  it("resolves default alias to concrete provider before health checks", async () => {
+    // Arrange
+    const mockChecker = {
+      checkAll: vi.fn().mockResolvedValue({
+        ok: true,
+        providers: [
+          { provider: "mock", ok: true, message: "available", defaultModel: null, supportsModelSelection: true }
+        ]
+      })
+    };
+    
+    const originalConfig = {
+      defaultProvider: "my-alias",
+      providerAliases: {
+        "my-alias": {
+          name: "my-alias",
+          provider: "mock",
+          inheritanceChain: ["my-alias"],
+          origins: { provider: "my-alias" },
+          digest: "some-digest"
+        }
+      },
+      providers: {
+        mock: { command: "mock" }
+      },
+      cwd: "/root",
+      outDir: "/root/out",
+      _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
+    };
+    
+    vi.mocked(loadConfig).mockResolvedValue(originalConfig as any);
+
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    // Act
+    await doctorCommand({
+      rawOptions: { config: "config.yaml", verbose: true },
+      deps: { providerHealthChecker: mockChecker as any }
+    });
+
+    // Assert
+    expect(mockChecker.checkAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        defaultProvider: "mock"
+      })
+    );
+
+    // Original config remains untouched
+    expect(originalConfig.defaultProvider).toBe("my-alias");
+
+    const allOutput = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+    expect(allOutput).toContain("Default provider alias: my-alias");
+    expect(allOutput).toContain("Concrete provider: mock");
+    expect(allOutput).toContain("Alias chain: my-alias");
+
+    consoleSpy.mockRestore();
+  });
+
+  it("fails with PROVIDER_REFERENCE_NOT_FOUND when default provider is unknown", async () => {
+    // Arrange
+    const mockChecker = {
+      checkAll: vi.fn()
+    };
+    
+    vi.mocked(loadConfig).mockResolvedValue({
+      defaultProvider: "unknown-provider",
+      providerAliases: {},
+      providers: {
+        mock: { command: "mock" }
+      },
+      cwd: "/root",
+      outDir: "/root/out",
+      _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
+    } as any);
+
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    // Act & Assert
+    await expect(
+      doctorCommand({
+        rawOptions: { config: "config.yaml" },
+        deps: { providerHealthChecker: mockChecker as any }
+      })
+    ).rejects.toThrow(expect.objectContaining({
+      code: "PROVIDER_REFERENCE_NOT_FOUND"
+    }));
+
+    expect(mockChecker.checkAll).not.toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
 });

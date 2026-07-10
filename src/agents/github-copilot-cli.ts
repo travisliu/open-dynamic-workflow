@@ -96,9 +96,17 @@ export class GitHubCopilotCliAdapter implements AgentAdapter {
           ? (typeof this.config.modelArg === 'object' ? { ...this.config.modelArg, flag: this.config.modelFlag } : { flag: this.config.modelFlag })
           : this.config.modelArg);
 
+    let model: string | undefined;
+    if (input.model === null) {
+      model = undefined;
+    } else if (input.model !== undefined) {
+      model = input.model;
+    } else {
+      model = this.config.defaultModel ?? undefined;
+    }
     appendModelArg(
       args,
-      input.model ?? this.config.defaultModel ?? undefined,
+      model,
       modelArg,
       "--model"
     );

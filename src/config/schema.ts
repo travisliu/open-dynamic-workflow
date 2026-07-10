@@ -411,10 +411,10 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
 
 
   // defaultProvider validation
-  if (typeof config.defaultProvider !== "string" || !(config.defaultProvider in config.providers)) {
+  if (typeof config.defaultProvider !== "string") {
     throw new OpenDynamicWorkflowError(
       ErrorCode.CONFIG_VALIDATION_ERROR,
-      `Config value 'defaultProvider' ('${config.defaultProvider}') must be defined in providers.`
+      "Config value 'defaultProvider' must be a string."
     );
   }
 

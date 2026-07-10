@@ -22,7 +22,7 @@ if (args.subcase === "03.01") {
 } else if (args.subcase === "03.04") {
   result = await agent({
     id: "unknown-agent",
-    provider: "unknown-provider",
+    provider: "unknown-" + "provider",
     prompt: "Test unknown provider"
   });
 } else if (args.subcase === "03.05") {

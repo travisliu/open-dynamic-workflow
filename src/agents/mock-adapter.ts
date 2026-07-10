@@ -48,9 +48,9 @@ export class MockAdapter implements AgentAdapter {
     };
   }
 
-  async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult & { model?: string }> {
+  async parseResult(input: ProviderParseInput): Promise<ProviderParsedResult & { model?: string | null }> {
     const response = this.lookupResponse(input.input);
-    const result: ProviderParsedResult & { model?: string } = {};
+    const result: ProviderParsedResult & { model?: string | null } = {};
     if (response.json !== undefined) {
       result.json = response.json;
       result.text = response.text ?? (typeof response.json === "string" ? response.json : JSON.stringify(response.json));

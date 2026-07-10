@@ -91,6 +91,7 @@ export async function runWorkflowService(
   if (rawOptions.failFast !== undefined) {
     explicitCliOverrides.failFast = typeof rawOptions.failFast === "boolean" ? rawOptions.failFast : !!rawOptions.failFast;
   }
+  if (thinkingEffort !== undefined) explicitCliOverrides.thinkingEffort = thinkingEffort;
 
   if (retryCliOptions.retryMaxAttempts !== undefined) explicitCliOverrides.retryMaxAttempts = retryCliOptions.retryMaxAttempts;
   if (retryCliOptions.retryDelayMs !== undefined) explicitCliOverrides.retryDelayMs = retryCliOptions.retryDelayMs;
@@ -215,6 +216,11 @@ export async function runWorkflowService(
     maxDefinitions: config.tools?.maxDefinitions ?? 100
   });
 
+  const knownProviderReferences = Object.freeze(new Set([
+    ...Object.keys(config.providers || {}),
+    ...Object.keys(config.providerAliases || {})
+  ]));
+
   // Discover and validate workflow registry
   const workflowRegistry = await discoverWorkflowRegistry({
     rootWorkflowPath: resolved.workflowFile,
@@ -224,7 +230,8 @@ export async function runWorkflowService(
     sharedAgentRegistry,
     toolRegistry,
     allowDynamicSharedAgentIds: config.sharedAgents?.allowDynamicIds,
-    maxLoopRounds: config.workflow.maxLoopRounds
+    maxLoopRounds: config.workflow.maxLoopRounds,
+    knownProviderReferences
   });
 
   // Retrieve root workflow
@@ -240,12 +247,24 @@ export async function runWorkflowService(
 
   // Dry run check
   if (rawOptions.dryRun) {
+    const { resolveProviderSelection } = await import("../../agents/resolve-provider-selection.js");
+    const selectionResult = resolveProviderSelection({
+      call: {},
+      providers: config.providers,
+      aliases: config.providerAliases,
+      layers: config._executionDefaultLayers
+    });
+
     printDryRunSummary({
       workflowFile: resolved.workflowFileRelative,
       workflowName: resolved.workflowName,
       description: parsed.meta.description,
       phases: parsed.meta.phases || [],
-      provider: config.defaultProvider,
+      provider: selectionResult.requestedProvider,
+      requestedProvider: selectionResult.requestedProvider,
+      resolvedProvider: selectionResult.provider,
+      providerAlias: selectionResult.providerAlias,
+      providerAliasChain: selectionResult.providerAliasChain,
       defaultModel: config.defaultModel,
       providers: config.providers,
       concurrency: config.concurrency,

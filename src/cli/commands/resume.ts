@@ -1,7 +1,7 @@
 
 import { ErrorCode } from "../../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../../errors/types.js";
-import { parsePositiveInteger, parseReportMode } from "../args.js";
+import { parsePositiveInteger, parseReportMode, parseNonNegativeInteger, parseRetryBackoff, parseThinkingEffort } from "../args.js";
 import { resolveUserPath } from "../paths.js";
 import { runCommand } from "./run.js";
 import { loadWorkflow } from "../../workflow/load.js";
@@ -54,7 +54,7 @@ export async function resumeCommand(input: ResumeCommandInput): Promise<void> {
     noCache = false;
   }
 
-  const resumeOptions = {
+  const resumeOptions: any = {
     ...storedOptions,
     resume: previousRunRoot,
     cwd: runInput.cwd ?? storedOptions.cwd ?? cwd,
@@ -69,6 +69,39 @@ export async function resumeCommand(input: ResumeCommandInput): Promise<void> {
     // Pass verified recorded profile to runCommand through a private field
     recordedProfile: runInput.profile
   };
+
+  if (rawOptions.provider !== undefined) {
+    resumeOptions.provider = rawOptions.provider;
+  }
+  if (rawOptions.model !== undefined) {
+    resumeOptions.model = rawOptions.model;
+  }
+  if (rawOptions.timeoutMs !== undefined) {
+    resumeOptions.timeoutMs = parsePositiveInteger(rawOptions.timeoutMs, "--timeout-ms");
+  }
+  if (rawOptions.thinkingEffort !== undefined) {
+    resumeOptions.thinkingEffort = parseThinkingEffort(rawOptions.thinkingEffort);
+  }
+  if (rawOptions.retryMaxAttempts !== undefined) {
+    resumeOptions.retryMaxAttempts = parsePositiveInteger(rawOptions.retryMaxAttempts, "--retry-max-attempts");
+  }
+  if (rawOptions.retryDelayMs !== undefined) {
+    resumeOptions.retryDelayMs = parseNonNegativeInteger(rawOptions.retryDelayMs, "--retry-delay-ms");
+  }
+  if (rawOptions.retryMaxDelayMs !== undefined) {
+    resumeOptions.retryMaxDelayMs = parseNonNegativeInteger(rawOptions.retryMaxDelayMs, "--retry-max-delay-ms");
+  }
+  if (rawOptions.retryBackoff !== undefined) {
+    resumeOptions.retryBackoff = parseRetryBackoff(rawOptions.retryBackoff);
+  }
+  if (rawOptions.retryDisableDelay !== undefined) {
+    resumeOptions.retryDisableDelay = !!rawOptions.retryDisableDelay;
+  }
+  if (rawOptions.retry === false || rawOptions.noRetry === true) {
+    resumeOptions.noRetry = true;
+  } else if (rawOptions.retry !== undefined || rawOptions.noRetry !== undefined) {
+    resumeOptions.noRetry = false;
+  }
 
   await runCommand({
     workflowFile: runInput.workflowFile,
