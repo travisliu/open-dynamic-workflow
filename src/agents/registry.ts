@@ -12,6 +12,7 @@ import { PiCodingAgentAdapter, type PiCodingAgentProviderConfig } from "./pi-cod
 import { CursorAgentAdapter, type CursorAgentProviderConfig } from "./cursor-agent.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
+import { BUILT_IN_PROVIDER_NAMES } from "./provider-names.js";
 
 export class ProviderRegistry {
   private readonly adapters = new Map<string, AgentAdapter>();
@@ -50,8 +51,8 @@ export function createDefaultProviderRegistry(deps: RegistryDeps): ProviderRegis
   // MockProviderConfig can come from explicit mockConfig, or from the provider config's responses/mock fields
   const providerMockConfig = deps.config.providers["mock"] as any;
   const mockConfig: MockProviderConfig | undefined = deps.mockConfig ?? 
-    providerMockConfig?.mock ??
-    (providerMockConfig?.responses ? { responses: providerMockConfig.responses } : undefined);
+  providerMockConfig?.mock ??
+  (providerMockConfig?.responses ? { responses: providerMockConfig.responses } : undefined);
   registry.register(new MockAdapter(mockConfig));
   registry.register(new CodexExecAdapter(deps.config.providers["codex"]));
   registry.register(new GeminiCliAdapter(deps.config.providers["gemini"]));
@@ -63,5 +64,18 @@ export function createDefaultProviderRegistry(deps: RegistryDeps): ProviderRegis
   registry.register(new PiCodingAgentAdapter(deps.config.providers["pi"] as PiCodingAgentProviderConfig));
   registry.register(new CursorAgentAdapter(deps.config.providers["cursor"] as CursorAgentProviderConfig | undefined));
   
+  const registeredNames = new Set(registry.list().map(a => a.name));
+  const builtInSet = new Set<string>(BUILT_IN_PROVIDER_NAMES);
+  for (const name of registeredNames) {
+    if (!builtInSet.has(name)) {
+      throw new Error(`Registry contains extra adapter: ${name}`);
+    }
+  }
+  for (const name of BUILT_IN_PROVIDER_NAMES) {
+    if (!registeredNames.has(name)) {
+      throw new Error(`Registry is missing adapter: ${name}`);
+    }
+  }
+
   return registry;
 }

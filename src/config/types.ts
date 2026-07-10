@@ -2,7 +2,7 @@ export type ProviderName = "codex" | "gemini" | "mock" | "copilot" | "opencode" 
 export type ReporterMode = "pretty" | "json" | "jsonl";
 
 import type { ThinkingEffort } from "../types/thinking-effort.js";
-import type { RetryConfigInput, ResolvedRetryPolicy } from "../types/retry.js";
+import type { RetryConfigInput, ResolvedRetryPolicy, RetryPolicyInput, RetryPolicy } from "../types/retry.js";
 import type { JsonObject } from "../types/common.js";
 
 export interface ProviderModelArgConfig {
@@ -130,6 +130,54 @@ export interface ResolvedProfileSelection {
   diagnostics: ProfileDiagnostic[];
 }
 
+export interface ProviderAliasConfig {
+  provider?: string | undefined;
+  extends?: string | undefined;
+  model?: string | null | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
+  timeoutMs?: number | undefined;
+  retry?: RetryPolicyInput | undefined;
+}
+
+export type ProviderAliasesConfig = Record<string, ProviderAliasConfig>;
+
+export type ProviderAliasSettingName =
+  | "provider"
+  | "model"
+  | "thinkingEffort"
+  | "timeoutMs"
+  | "retry";
+
+export interface ProviderAliasRetryProvenance {
+  sourceAlias: string;
+  fieldSources: Partial<Record<keyof RetryPolicy, string>>;
+}
+
+export interface ResolvedProviderAlias {
+  name: string;
+  inheritanceChain: readonly string[];
+  provider: string;
+
+  model?: string | null | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
+  timeoutMs?: number | undefined;
+  retry?: RetryPolicyInput | undefined;
+
+  origins: Readonly<{
+    provider: string;
+    model?: string | undefined;
+    thinkingEffort?: string | undefined;
+    timeoutMs?: string | undefined;
+    retry?: ProviderAliasRetryProvenance | undefined;
+  }>;
+
+  digest: string;
+}
+
+export type ResolvedProviderAliasRegistry = Readonly<
+  Record<string, ResolvedProviderAlias>
+>;
+
 // --- Raw Public Configuration Types ---
 
 export interface ResourcePathConfig {
@@ -180,6 +228,8 @@ export interface OpenDynamicWorkflowConfig {
   failFast?: boolean;
   retry?: false | RetryConfigInput | ResolvedRetryPolicy | undefined;
   profiles?: WorkflowProfileCatalog | undefined;
+  providerAliasMaxDepth?: number | undefined;
+  providerAliases?: ProviderAliasesConfig | undefined;
 }
 
 // --- Resolved Runtime Configuration Types ---
@@ -217,7 +267,7 @@ export interface ResolvedWorkflowConfig {
   maxLoopRounds: number;
 }
 
-export interface ResolvedOpenDynamicWorkflowConfig extends Omit<OpenDynamicWorkflowConfig, "sharedAgents" | "tools" | "workflow"> {
+export interface ResolvedOpenDynamicWorkflowConfig extends Omit<OpenDynamicWorkflowConfig, "sharedAgents" | "tools" | "workflow" | "providerAliases"> {
   configPath?: string;
   cwd: string;
   outDir: string;
@@ -229,6 +279,8 @@ export interface ResolvedOpenDynamicWorkflowConfig extends Omit<OpenDynamicWorkf
   _normalizedDiscovery: NormalizedDiscoveryConfig;
   _configDiagnostics: ConfigDiagnostic[];
   retry?: ResolvedRetryPolicy | undefined;
+  providerAliasMaxDepth: number;
+  providerAliases: ResolvedProviderAliasRegistry;
 }
 
 // --- Normalized Discovery Types ---

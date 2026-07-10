@@ -1,4 +1,110 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Mock the provider-alias error codes in ErrorCode
+vi.mock("../../../src/errors/codes.js", async (importActual) => {
+  const actual = await importActual<typeof import("../../../src/errors/codes.js")>();
+  return {
+    ...actual,
+    ErrorCode: {
+      ...actual.ErrorCode,
+      PROVIDER_ALIAS_INVALID_DEFINITION: "PROVIDER_ALIAS_INVALID_DEFINITION",
+      PROVIDER_ALIAS_DUPLICATE_DEFINITION: "PROVIDER_ALIAS_DUPLICATE_DEFINITION",
+      PROVIDER_ALIAS_NAMESPACE_CONFLICT: "PROVIDER_ALIAS_NAMESPACE_CONFLICT",
+      PROVIDER_ALIAS_PARENT_NOT_FOUND: "PROVIDER_ALIAS_PARENT_NOT_FOUND",
+      PROVIDER_ALIAS_CYCLE_DETECTED: "PROVIDER_ALIAS_CYCLE_DETECTED",
+      PROVIDER_ALIAS_MAX_DEPTH_EXCEEDED: "PROVIDER_ALIAS_MAX_DEPTH_EXCEEDED",
+      PROVIDER_ALIAS_PROVIDER_REQUIRED: "PROVIDER_ALIAS_PROVIDER_REQUIRED",
+      PROVIDER_ALIAS_PROVIDER_REPLACEMENT: "PROVIDER_ALIAS_PROVIDER_REPLACEMENT",
+      PROVIDER_ALIAS_PROVIDER_NOT_FOUND: "PROVIDER_ALIAS_PROVIDER_NOT_FOUND",
+    }
+  };
+});
+
+// Mock resolver and built-in names
+vi.mock("../../../src/config/provider-aliases.js", () => {
+  return {
+    resolveProviderAliases: vi.fn((input: any) => {
+      const raw = input.rawAliases;
+      if (!raw || Object.keys(raw).length === 0) {
+        return { aliases: {} };
+      }
+
+      if (raw.aliasWithMissingParent) {
+        const err = new Error("Parent not found");
+        (err as any).code = "PROVIDER_ALIAS_PARENT_NOT_FOUND";
+        throw err;
+      }
+      if (raw.aliasWithUnknownProvider) {
+        const err = new Error("Provider not found");
+        (err as any).code = "PROVIDER_ALIAS_PROVIDER_NOT_FOUND";
+        throw err;
+      }
+      if (raw.aliasWithCycle) {
+        const err = new Error("Cycle detected");
+        (err as any).code = "PROVIDER_ALIAS_CYCLE_DETECTED";
+        throw err;
+      }
+      if (raw.aliasWithMaxDepthExceeded) {
+        const err = new Error("Max depth exceeded");
+        (err as any).code = "PROVIDER_ALIAS_MAX_DEPTH_EXCEEDED";
+        throw err;
+      }
+      if (raw.aliasWithNamespaceConflict) {
+        const err = new Error("Namespace conflict");
+        (err as any).code = "PROVIDER_ALIAS_NAMESPACE_CONFLICT";
+        throw err;
+      }
+      if (raw.aliasWithProviderReplacement) {
+        const err = new Error("Provider replacement");
+        (err as any).code = "PROVIDER_ALIAS_PROVIDER_REPLACEMENT";
+        throw err;
+      }
+      if (raw.aliasWithProviderRequired) {
+        const err = new Error("Provider required");
+        (err as any).code = "PROVIDER_ALIAS_PROVIDER_REQUIRED";
+        throw err;
+      }
+      if (raw.aliasWithInvalidDefinition) {
+        const err = new Error("Invalid definition");
+        (err as any).code = "PROVIDER_ALIAS_INVALID_DEFINITION";
+        throw err;
+      }
+
+      // Default mock behavior
+      const aliases: any = {};
+      for (const [name, val] of Object.entries(raw)) {
+        const aliasVal = val as any;
+        aliases[name] = {
+          name,
+          inheritanceChain: aliasVal.extends ? [aliasVal.extends, name] : [name],
+          provider: aliasVal.provider || "mock",
+          digest: `sha256:${name}-digest`,
+          origins: { provider: name },
+          ...(aliasVal.model !== undefined ? { model: aliasVal.model } : {}),
+          ...(aliasVal.thinkingEffort !== undefined ? { thinkingEffort: aliasVal.thinkingEffort } : {}),
+          ...(aliasVal.timeoutMs !== undefined ? { timeoutMs: aliasVal.timeoutMs } : {}),
+          ...(aliasVal.retry !== undefined ? { retry: aliasVal.retry } : {}),
+        };
+      }
+      return { aliases };
+    }),
+    toResolvedProviderAliasArtifactRegistry: vi.fn((registry: any) => {
+      const result: any = {};
+      for (const [key, value] of Object.entries(registry)) {
+        const { origins, ...rest } = value as any;
+        result[key] = rest;
+      }
+      return result;
+    })
+  };
+});
+
+vi.mock("../../../src/agents/provider-names.js", () => {
+  return {
+    BUILT_IN_PROVIDER_NAMES: ["mock", "codex", "gemini", "copilot", "opencode", "antigravity", "pi", "cursor"]
+  };
+});
+
 import { loadConfig } from "../../../src/config/load.js";
 import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
@@ -446,6 +552,156 @@ retry:
     expect(configWithCli.retry?.source).toBe("cli");
 
     // Clean up
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig provider alias: omitted aliases yield empty registry and max depth 8", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-alias-empty-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(config.providerAliases).toEqual({});
+    expect(config.providerAliasMaxDepth).toBe(8);
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig provider alias: resolves aliases at load time without executing a workflow", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-alias-valid-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    
+    const configContent = `
+providerAliases:
+  aliasA:
+    provider: mock
+    extends: parentAlias
+    model: gpt-4
+`;
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(config.providerAliases).toBeDefined();
+    expect(config.providerAliases.aliasA).toBeDefined();
+    expect(config.providerAliases.aliasA.name).toBe("aliasA");
+    expect(config.providerAliases.aliasA.inheritanceChain).toEqual(["parentAlias", "aliasA"]);
+    expect(config.providerAliases.aliasA.provider).toBe("mock");
+    expect(config.providerAliases.aliasA.digest).toBe("sha256:aliasA-digest");
+    expect(config.providerAliases.aliasA.model).toBe("gpt-4");
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig provider alias: rejects loading if resolveProviderAliases throws an error", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-alias-failures-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+
+    const cases = [
+      {
+        content: "providerAliases:\n  aliasWithMissingParent:\n    extends: missing-parent\n",
+        code: "PROVIDER_ALIAS_PARENT_NOT_FOUND"
+      },
+      {
+        content: "providerAliases:\n  aliasWithUnknownProvider:\n    provider: unknown\n",
+        code: "PROVIDER_ALIAS_PROVIDER_NOT_FOUND"
+      },
+      {
+        content: "providerAliases:\n  aliasWithCycle:\n    extends: aliasWithCycle\n",
+        code: "PROVIDER_ALIAS_CYCLE_DETECTED"
+      },
+      {
+        content: "providerAliases:\n  aliasWithMaxDepthExceeded:\n    extends: parent\n",
+        code: "PROVIDER_ALIAS_MAX_DEPTH_EXCEEDED"
+      },
+      {
+        content: "providerAliases:\n  aliasWithNamespaceConflict:\n    extends: parent\n",
+        code: "PROVIDER_ALIAS_NAMESPACE_CONFLICT"
+      },
+      {
+        content: "providerAliases:\n  aliasWithProviderReplacement:\n    extends: parent\n",
+        code: "PROVIDER_ALIAS_PROVIDER_REPLACEMENT"
+      },
+      {
+        content: "providerAliases:\n  aliasWithProviderRequired:\n    extends: parent\n",
+        code: "PROVIDER_ALIAS_PROVIDER_REQUIRED"
+      },
+      {
+        content: "providerAliases:\n  aliasWithInvalidDefinition:\n    extends: parent\n",
+        code: "PROVIDER_ALIAS_INVALID_DEFINITION"
+      }
+    ];
+
+    for (const testCase of cases) {
+      writeFileSync(join(configDir, "config.yaml"), testCase.content);
+      await expect(
+        loadConfig({ cwd: tempDir, cli: {} })
+      ).rejects.toThrow();
+    }
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig provider alias: defaultProvider cannot be an alias name in this phase", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-alias-default-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+
+    const configContent = `
+defaultProvider: aliasA
+providerAliases:
+  aliasA:
+    provider: mock
+`;
+    writeFileSync(join(configDir, "config.yaml"), configContent);
+
+    // Should reject because defaultProvider must be defined in providers (existing concrete provider rule)
+    await expect(
+      loadConfig({ cwd: tempDir, cli: {} })
+    ).rejects.toThrow(/defaultProvider.*must be defined in providers/);
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig: default-config file malformed and duplicate keys are surfaced, not silently ignored", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-default-malformed-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+
+    // case 1: malformed YAML
+    writeFileSync(join(configDir, "config.yaml"), "providerAliases:\n  aliasA\n    provider: : : :");
+    await expect(
+      loadConfig({ cwd: tempDir, cli: {} })
+    ).rejects.toThrow(/Invalid YAML in config file/);
+
+    // case 2: duplicate key
+    writeFileSync(join(configDir, "config.yaml"), "providerAliases:\n  aliasA:\n    provider: mock\n  aliasA:\n    provider: codex");
+    await expect(
+      loadConfig({ cwd: tempDir, cli: {} })
+    ).rejects.toThrow(/Duplicate provider alias definition/);
+
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("loadConfig: missing default config is ignored, empty YAML normalized to {}", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-default-empty-" + Date.now());
+    mkdirSync(tempDir, { recursive: true });
+    
+    // Genuinely missing config file
+    const config = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(config.defaultProvider).toBe("mock");
+
+    // Empty YAML document config file
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), "");
+    const configEmpty = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(configEmpty.defaultProvider).toBe("mock");
+
     rmSync(tempDir, { recursive: true, force: true });
   });
 });

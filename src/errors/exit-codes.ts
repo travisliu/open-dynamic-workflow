@@ -42,6 +42,15 @@ export function exitCodeForError(error: unknown): ExitCode {
       case ErrorCode.TOOL_DUPLICATE_DEFINITION:
       case ErrorCode.TOOL_INVALID_DEFINITION:
       case ErrorCode.TOOL_INVALID_CONTEXT:
+      case ErrorCode.PROVIDER_ALIAS_INVALID_DEFINITION:
+      case ErrorCode.PROVIDER_ALIAS_DUPLICATE_DEFINITION:
+      case ErrorCode.PROVIDER_ALIAS_NAMESPACE_CONFLICT:
+      case ErrorCode.PROVIDER_ALIAS_PARENT_NOT_FOUND:
+      case ErrorCode.PROVIDER_ALIAS_CYCLE_DETECTED:
+      case ErrorCode.PROVIDER_ALIAS_MAX_DEPTH_EXCEEDED:
+      case ErrorCode.PROVIDER_ALIAS_PROVIDER_REQUIRED:
+      case ErrorCode.PROVIDER_ALIAS_PROVIDER_REPLACEMENT:
+      case ErrorCode.PROVIDER_ALIAS_PROVIDER_NOT_FOUND:
         return ExitCode.WorkflowInvalid;
 
       case ErrorCode.PROVIDER_UNAVAILABLE:

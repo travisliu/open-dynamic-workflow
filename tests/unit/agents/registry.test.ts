@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ProviderRegistry, createDefaultProviderRegistry } from "../../../src/agents/registry.js";
 import type { AgentAdapter, ResolvedConfig } from "../../../src/agents/types.js";
+import { BUILT_IN_PROVIDER_NAMES } from "../../../src/agents/provider-names.js";
 
 describe("ProviderRegistry", () => {
   it("54. creates default registry with all built-in providers in stable order", () => {
@@ -95,5 +96,39 @@ describe("ProviderRegistry", () => {
 
     registry.register(mockAdapter);
     expect(() => registry.register(mockAdapter)).toThrow("Provider adapter already registered: test-provider");
+  });
+
+  it("compares sorted adapter names with sorted BUILT_IN_PROVIDER_NAMES", () => {
+    const dummyConfig = {
+      defaultProvider: "mock",
+      concurrency: 1,
+      timeoutMs: 1000,
+      providers: {
+        codex: { command: "codex" },
+        gemini: { command: "gemini" },
+        copilot: { command: "copilot" },
+        opencode: { command: "opencode" },
+        antigravity: { command: "agy" },
+        pi: { command: "pi" },
+        cursor: { command: "agent" }
+      },
+      security: {
+        allowWorkflowImports: false,
+        passEnv: [],
+        redactEnv: []
+      },
+      reporting: {
+        mode: "pretty",
+        verbose: false
+      },
+      cwd: "/root",
+      outDir: "/root/out",
+      cliArgs: {}
+    } as unknown as ResolvedConfig;
+
+    const registry = createDefaultProviderRegistry({ config: dummyConfig });
+    const registryNames = registry.list().map(a => a.name).sort();
+    const expectedNames = [...BUILT_IN_PROVIDER_NAMES].sort();
+    expect(registryNames).toEqual(expectedNames);
   });
 });

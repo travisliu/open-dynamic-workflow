@@ -1,4 +1,5 @@
 import { describe, expect, it, afterEach, vi } from "vitest";
+
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { FileSystemArtifactStore } from "../../../src/artifacts/run-store.js";
@@ -171,5 +172,82 @@ describe("FileSystemArtifactStore", () => {
     const index = JSON.parse(await fs.readFile(artifacts.cacheIndexPath, "utf8"));
     expect(index.entries).toEqual([]);
     expect(index.schemaVersion).toBeDefined();
+  });
+
+  it("createRun() serializes resolved provider aliases correctly and safely in config.resolved.json", async () => {
+    const store = new FileSystemArtifactStore();
+    const resolvedConfig = {
+      defaultProvider: "mock",
+      providerAliasMaxDepth: 8,
+      providerAliases: {
+        "alias-b": {
+          name: "alias-b",
+          inheritanceChain: ["alias-b"],
+          provider: "mock",
+          digest: "sha256:alias-b-digest",
+          origins: {
+            provider: "alias-b",
+            retry: {
+              sourceAlias: "alias-b",
+              fieldSources: { maxAttempts: "alias-b" }
+            }
+          },
+          model: "gpt-4",
+          retry: {
+            maxAttempts: 2
+          }
+        },
+        "alias-a": {
+          name: "alias-a",
+          inheritanceChain: ["alias-a"],
+          provider: "mock",
+          digest: "sha256:alias-a-digest",
+          origins: { provider: "alias-a" }
+        }
+      }
+    };
+
+    const input = {
+      ...defaultRunInput,
+      runId: "test-run-alias-123",
+      resolvedConfig
+    };
+
+    const artifacts = await store.createRun(input);
+
+    // Read config.resolved.json
+    const configContent = await fs.readFile(artifacts.resolvedConfigPath, "utf8");
+    const config = JSON.parse(configContent);
+
+    // Assert that providerAliases exists and has sorted keys
+    expect(config.providerAliases).toBeDefined();
+    const keys = Object.keys(config.providerAliases);
+    expect(keys).toEqual(["alias-a", "alias-b"]);
+
+    // Assert alias-a properties (origins must be omitted)
+    expect(config.providerAliases["alias-a"]).toEqual({
+      name: "alias-a",
+      inheritanceChain: ["alias-a"],
+      provider: "mock",
+      digest: "sha256:alias-a-digest"
+    });
+    expect(config.providerAliases["alias-a"].origins).toBeUndefined();
+
+    // Assert alias-b properties (origins must be omitted)
+    expect(config.providerAliases["alias-b"]).toEqual({
+      name: "alias-b",
+      inheritanceChain: ["alias-b"],
+      provider: "mock",
+      digest: "sha256:alias-b-digest",
+      model: "gpt-4",
+      retry: {
+        maxAttempts: 2
+      }
+    });
+    expect(config.providerAliases["alias-b"].origins).toBeUndefined();
+
+    // Assert other fields remain intact
+    expect(config.defaultProvider).toBe("mock");
+    expect(config.providerAliasMaxDepth).toBe(8);
   });
 });

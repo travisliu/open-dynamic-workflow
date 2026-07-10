@@ -5,6 +5,7 @@ import { createInitialManifest, updateManifestStatus } from "./manifest.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { ErrorCode } from "../errors/codes.js";
 import { resolveProjectPath } from "../cli/paths.js";
+import { toResolvedConfigArtifact } from "../config/resolved-artifact.js";
 
 export function defaultRunsDir(cwd = process.cwd()): string {
   return resolveProjectPath(".open-dynamic-workflow/runs", cwd);
@@ -70,7 +71,8 @@ export class FileSystemArtifactStore implements ArtifactStore {
 
     // Resolved config
     const resolvedConfigPath = path.join(runRootDir, "config.resolved.json");
-    await fs.writeFile(resolvedConfigPath, JSON.stringify(input.resolvedConfig, null, 2), "utf8");
+    const projectedConfig = toResolvedConfigArtifact(input.resolvedConfig);
+    await fs.writeFile(resolvedConfigPath, JSON.stringify(projectedConfig, null, 2), "utf8");
 
     // Resume/cache artifacts
     await fs.writeFile(path.join(runRootDir, "run-input.json"), "{}", "utf8");

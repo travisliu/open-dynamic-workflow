@@ -1,6 +1,6 @@
 import type { JsonObject, ProviderName, ReporterMode } from "./common.js";
 import type { ThinkingEffort } from "./thinking-effort.js";
-import type { ResolvedRetryPolicy, RetryBackoff, RetryConfigInput } from "./retry.js";
+import type { ResolvedRetryPolicy, RetryBackoff, RetryConfigInput, RetryPolicyInput, RetryPolicy } from "./retry.js";
 
 
 export interface ProviderModelArgConfig {
@@ -97,6 +97,54 @@ export interface OrchestrationConfig {
   concurrency?: number;
 }
 
+export interface ProviderAliasConfig {
+  provider?: string | undefined;
+  extends?: string | undefined;
+  model?: string | null | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
+  timeoutMs?: number | undefined;
+  retry?: RetryPolicyInput | undefined;
+}
+
+export type ProviderAliasesConfig = Record<string, ProviderAliasConfig>;
+
+export type ProviderAliasSettingName =
+  | "provider"
+  | "model"
+  | "thinkingEffort"
+  | "timeoutMs"
+  | "retry";
+
+export interface ProviderAliasRetryProvenance {
+  sourceAlias: string;
+  fieldSources: Partial<Record<keyof RetryPolicy, string>>;
+}
+
+export interface ResolvedProviderAlias {
+  name: string;
+  inheritanceChain: readonly string[];
+  provider: string;
+
+  model?: string | null | undefined;
+  thinkingEffort?: ThinkingEffort | undefined;
+  timeoutMs?: number | undefined;
+  retry?: RetryPolicyInput | undefined;
+
+  origins: Readonly<{
+    provider: string;
+    model?: string | undefined;
+    thinkingEffort?: string | undefined;
+    timeoutMs?: string | undefined;
+    retry?: ProviderAliasRetryProvenance | undefined;
+  }>;
+
+  digest: string;
+}
+
+export type ResolvedProviderAliasRegistry = Readonly<
+  Record<string, ResolvedProviderAlias>
+>;
+
 export interface OpenDynamicWorkflowConfig {
   defaultProvider: ProviderName;
   concurrency: number;
@@ -112,14 +160,18 @@ export interface OpenDynamicWorkflowConfig {
   workflow: WorkflowConfig;
   orchestration?: OrchestrationConfig;
   profiles?: WorkflowProfileCatalog | undefined;
+  providerAliasMaxDepth?: number | undefined;
+  providerAliases?: ProviderAliasesConfig | undefined;
 }
 
-export interface ResolvedConfig extends OpenDynamicWorkflowConfig {
+export interface ResolvedConfig extends Omit<OpenDynamicWorkflowConfig, "providerAliases"> {
   cwd: string;
   outDir: string;
   configPath?: string;
   cliArgs?: Record<string, string | boolean | number> | undefined;
   retry?: ResolvedRetryPolicy | undefined;
+  providerAliasMaxDepth: number;
+  providerAliases: ResolvedProviderAliasRegistry;
 }
 
 export interface CliRunOptions {

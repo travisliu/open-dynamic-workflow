@@ -159,6 +159,20 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
     );
   }
 
+  // providerAliasMaxDepth validation
+  if ((config as any).providerAliasMaxDepth !== undefined) {
+    if (
+      typeof (config as any).providerAliasMaxDepth !== "number" ||
+      !Number.isInteger((config as any).providerAliasMaxDepth) ||
+      (config as any).providerAliasMaxDepth < 1
+    ) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CONFIG_VALIDATION_ERROR,
+        "Config value 'providerAliasMaxDepth' must be a positive integer."
+      );
+    }
+  }
+
   // defaultModel validation
   if (config.defaultModel !== undefined && config.defaultModel !== null && typeof config.defaultModel !== "string") {
     throw new OpenDynamicWorkflowError(

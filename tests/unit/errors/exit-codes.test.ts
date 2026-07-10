@@ -44,6 +44,25 @@ describe("Exit Codes Mapping", () => {
     }
   });
 
+  it("maps provider alias configuration/setup errors to WorkflowInvalid (3)", () => {
+    const codes = [
+      ErrorCode.PROVIDER_ALIAS_INVALID_DEFINITION,
+      ErrorCode.PROVIDER_ALIAS_DUPLICATE_DEFINITION,
+      ErrorCode.PROVIDER_ALIAS_NAMESPACE_CONFLICT,
+      ErrorCode.PROVIDER_ALIAS_PARENT_NOT_FOUND,
+      ErrorCode.PROVIDER_ALIAS_CYCLE_DETECTED,
+      ErrorCode.PROVIDER_ALIAS_MAX_DEPTH_EXCEEDED,
+      ErrorCode.PROVIDER_ALIAS_PROVIDER_REQUIRED,
+      ErrorCode.PROVIDER_ALIAS_PROVIDER_REPLACEMENT,
+      ErrorCode.PROVIDER_ALIAS_PROVIDER_NOT_FOUND
+    ];
+
+    for (const code of codes) {
+      const err = new OpenDynamicWorkflowError(code, "test alias error");
+      expect(exitCodeForError(err)).toBe(ExitCode.WorkflowInvalid);
+    }
+  });
+
   it("maps workflow target and file not found to ResourceNotFound (4)", () => {
     const codes = [
       ErrorCode.WORKFLOW_TARGET_NOT_FOUND,

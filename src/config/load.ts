@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { parse } from "yaml";
+import { parseConfigYaml } from "./yaml.js";
 import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
@@ -9,6 +9,8 @@ import type { ResolvedOpenDynamicWorkflowConfig, ConfigDiagnosticContext, Discov
 import { resolveUserPath, resolveProjectPath } from "../cli/paths.js";
 import { normalizeDiscoveryConfig } from "./path-discovery.js";
 import { getFatalConfigDiagnostics } from "./path-diagnostics.js";
+import { resolveProviderAliases } from "./provider-aliases.js";
+import { BUILT_IN_PROVIDER_NAMES } from "../agents/provider-names.js";
 
 export interface LoadConfigInput {
   cwd: string;
@@ -33,11 +35,14 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
     try {
       const content = await readFile(resolvedConfigPath, "utf8");
       try {
-        fileConfig = parse(content);
+        fileConfig = parseConfigYaml(content, resolvedConfigPath);
         if (typeof fileConfig !== "object" || fileConfig === null) {
           fileConfig = {};
         }
       } catch (err: any) {
+        if (err instanceof OpenDynamicWorkflowError) {
+          throw err;
+        }
         throw new OpenDynamicWorkflowError(
           ErrorCode.CONFIG_VALIDATION_ERROR,
           `Invalid YAML in config file: ${resolvedConfigPath}. ${err.message}`,
@@ -61,25 +66,44 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
       const content = await readFile(defPath, "utf8");
       resolvedConfigPath = defPath;
       try {
-        fileConfig = parse(content);
+        fileConfig = parseConfigYaml(content, defPath);
         if (typeof fileConfig !== "object" || fileConfig === null) {
           fileConfig = {};
         }
       } catch (err: any) {
+        if (err instanceof OpenDynamicWorkflowError) {
+          throw err;
+        }
         throw new OpenDynamicWorkflowError(
           ErrorCode.CONFIG_VALIDATION_ERROR,
           `Invalid YAML in config file: ${defPath}. ${err.message}`,
           { cause: err }
         );
       }
-    } catch {
-      // If default config doesn't exist, ignore and use defaults
+    } catch (err: any) {
+      if (err instanceof OpenDynamicWorkflowError) {
+        throw err;
+      }
+      if (err.code !== "ENOENT") {
+        throw new OpenDynamicWorkflowError(
+          ErrorCode.CONFIG_VALIDATION_ERROR,
+          `Unable to read config file: ${defPath}`,
+          { cause: err }
+        );
+      }
     }
   }
 
   validateRetryConfigInput(fileConfig?.retry);
   const merged = mergeConfig(DEFAULT_CONFIG, fileConfig || {}, input.cli);
   validateConfig(merged);
+
+  const aliasResult = resolveProviderAliases({
+    rawAliases: (merged as any).providerAliases,
+    providers: merged.providers,
+    builtInProviderNames: new Set(BUILT_IN_PROVIDER_NAMES),
+    maxDepth: (merged as any).providerAliasMaxDepth ?? 8,
+  });
 
   const context = input.diagnosticContext ?? "list";
 
@@ -107,6 +131,8 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
 
   const result: ResolvedOpenDynamicWorkflowConfig = {
     ...merged,
+    providerAliases: aliasResult.aliases,
+    providerAliasMaxDepth: (merged as any).providerAliasMaxDepth ?? 8,
     sharedAgents: {
       ...merged.sharedAgents,
       include: discovery.sharedAgents.include,

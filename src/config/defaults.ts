@@ -137,7 +137,9 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
   reporting: {
     mode: "pretty",
     verbose: false
-  }
+  },
+  providerAliasMaxDepth: 8,
+  providerAliases: {}
 };
 
 export function getBuiltInProviderDefaults() {
