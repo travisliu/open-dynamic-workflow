@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { loadToolRegistry } from "../../../src/tools/load.js";
@@ -857,6 +857,307 @@ describe("loadToolRegistry", () => {
       expect(registry.has("nested-tool")).toBe(true);
       const definition = registry.require("nested-tool").definition;
       expect(definition.id).toBe("nested-tool");
+    });
+  });
+
+  describe("global runtime compatibility and concurrency", () => {
+    let originalDescriptor: PropertyDescriptor | undefined;
+
+    beforeEach(() => {
+      originalDescriptor = Object.getOwnPropertyDescriptor(globalThis, "defineTool");
+      // @ts-ignore
+      delete globalThis.__evalOrder;
+    });
+
+    afterEach(() => {
+      if (originalDescriptor) {
+        Object.defineProperty(globalThis, "defineTool", originalDescriptor);
+      } else {
+        // @ts-ignore
+        delete globalThis.defineTool;
+      }
+      // @ts-ignore
+      delete globalThis.__evalOrder;
+    });
+
+    it("no-import JavaScript loads through loadToolRegistry from a disposable workspace with no package.json, node_modules, or ODW install", async () => {
+      const workspaceDir = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-load-test-js-"));
+      try {
+        const toolsDir = join(workspaceDir, "tools");
+        await mkdir(toolsDir, { recursive: true });
+
+        await writeFile(
+          join(toolsDir, "tool.js"),
+          `export default defineTool({
+            id: "no-import-js",
+            description: "desc",
+            inputSchema: {},
+            run: () => "ran-js"
+          });`
+        );
+
+        const registry = await loadToolRegistry({
+          cwd: workspaceDir,
+          dir: "tools",
+          maxDefinitions: 10
+        });
+
+        expect(registry.has("no-import-js")).toBe(true);
+        const registered = registry.require("no-import-js");
+        expect(registered.definition.id).toBe("no-import-js");
+        const result = await registered.definition.run({}, {} as any);
+        expect(result).toBe("ran-js");
+      } finally {
+        await rm(workspaceDir, { recursive: true, force: true });
+      }
+    });
+
+    it("no-import TypeScript loads through the existing transpilation path", async () => {
+      const workspaceDir = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-load-test-ts-"));
+      try {
+        const toolsDir = join(workspaceDir, "tools");
+        await mkdir(toolsDir, { recursive: true });
+
+        await writeFile(
+          join(toolsDir, "tool.ts"),
+          `export default defineTool({
+            id: "no-import-ts",
+            description: "desc",
+            inputSchema: {},
+            run: () => "ran-ts"
+          });`
+        );
+
+        const registry = await loadToolRegistry({
+          cwd: workspaceDir,
+          dir: "tools",
+          maxDefinitions: 10
+        });
+
+        expect(registry.has("no-import-ts")).toBe(true);
+        const registered = registry.require("no-import-ts");
+        expect(registered.definition.id).toBe("no-import-ts");
+        const result = await registered.definition.run({}, {} as any);
+        expect(result).toBe("ran-ts");
+      } finally {
+        await rm(workspaceDir, { recursive: true, force: true });
+      }
+    });
+
+    it("a legacy package import loads in the same zero-install conditions", async () => {
+      const workspaceDir = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-load-test-legacy-"));
+      try {
+        const toolsDir = join(workspaceDir, "tools");
+        await mkdir(toolsDir, { recursive: true });
+
+        await writeFile(
+          join(toolsDir, "legacy.ts"),
+          `import { defineTool } from "@travisliu/open-dynamic-workflow";
+          export default defineTool({
+            id: "legacy-imported",
+            description: "desc",
+            inputSchema: {},
+            run: () => "ran-legacy"
+          });`
+        );
+
+        const registry = await loadToolRegistry({
+          cwd: workspaceDir,
+          dir: "tools",
+          maxDefinitions: 10
+        });
+
+        expect(registry.has("legacy-imported")).toBe(true);
+        const registered = registry.require("legacy-imported");
+        expect(registered.definition.id).toBe("legacy-imported");
+        const result = await registered.definition.run({}, {} as any);
+        expect(result).toBe("ran-legacy");
+      } finally {
+        await rm(workspaceDir, { recursive: true, force: true });
+      }
+    });
+
+    it("foreign data and accessor globals reject before candidate evaluation, preserve the complete descriptor, and leave an evaluation marker absent", async () => {
+      const workspaceDir = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-load-test-foreign-"));
+      try {
+        const toolsDir = join(workspaceDir, "tools");
+        await mkdir(toolsDir, { recursive: true });
+
+        const markerFile = join(workspaceDir, "eval.marker");
+        await writeFile(
+          join(toolsDir, "tool.js"),
+          `import * as fs from "node:fs";
+          fs.writeFileSync(${JSON.stringify(markerFile)}, "evaluated");
+          export default defineTool({
+            id: "foreign-test",
+            description: "desc",
+            inputSchema: {},
+            run: () => {}
+          });`
+        );
+
+        const foreignVal = () => "foreign";
+        Object.defineProperty(globalThis, "defineTool", {
+          get: () => foreignVal,
+          configurable: true,
+          enumerable: true
+        });
+
+        await expect(loadToolRegistry({
+          cwd: workspaceDir,
+          dir: "tools",
+          maxDefinitions: 10
+        })).rejects.toThrowError(/Cannot install the active tool runtime/);
+
+        // Verify evaluation marker is absent
+        const markerExists = await stat(markerFile).then(() => true).catch(() => false);
+        expect(markerExists).toBe(false);
+
+        // Verify descriptor is preserved
+        const desc = Object.getOwnPropertyDescriptor(globalThis, "defineTool");
+        expect(desc).toBeDefined();
+        expect(desc?.get).toBeDefined();
+        expect(desc?.get?.()).toBe(foreignVal);
+      } finally {
+        await rm(workspaceDir, { recursive: true, force: true });
+      }
+    });
+
+    it("cleanup removes the unique temp root (including shim and mirrors) after success and import failure", async () => {
+      const workspaceDir = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-load-test-cleanup-"));
+      try {
+        const toolsDir = join(workspaceDir, "tools");
+        await mkdir(toolsDir, { recursive: true });
+
+        // Success case
+        await writeFile(
+          join(toolsDir, "good.js"),
+          `export default defineTool({ id: "good", description: "desc", inputSchema: {}, run: () => {} });`
+        );
+
+        await loadToolRegistry({
+          cwd: workspaceDir,
+          dir: "tools",
+          maxDefinitions: 10
+        });
+
+        // Verify temp files inside .open-dynamic-workflow are cleaned up
+        const odwDir = join(workspaceDir, ".open-dynamic-workflow");
+        const odwExists = await stat(odwDir).then(() => true).catch(() => false);
+        expect(odwExists).toBe(false);
+
+        // Failure case
+        await writeFile(
+          join(toolsDir, "bad.js"),
+          `export default defineTool({ id: "bad"` // syntax error
+        );
+
+        await expect(loadToolRegistry({
+          cwd: workspaceDir,
+          dir: "tools",
+          maxDefinitions: 10
+        })).rejects.toThrow();
+
+        // Verify temp files are still cleaned up
+        const odwExistsFailure = await stat(odwDir).then(() => true).catch(() => false);
+        expect(odwExistsFailure).toBe(false);
+      } finally {
+        await rm(workspaceDir, { recursive: true, force: true });
+      }
+    });
+
+    it("two concurrent calls using separate disposable workspaces both succeed, their observable import sessions do not interleave, and the original global descriptor is restored afterward", async () => {
+      function createDeferred<T = void>() {
+        let resolve!: (value: T | PromiseLike<T>) => void;
+        let reject!: (reason?: any) => void;
+        const promise = new Promise<T>((res, rej) => {
+          resolve = res;
+          reject = rej;
+        });
+        return { promise, resolve, reject };
+      }
+
+      const wsA = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-load-test-concurrent-a-"));
+      const wsB = await mkdtemp(join(tmpdir(), "open-dynamic-workflow-load-test-concurrent-b-"));
+      
+      const concurrentEvents: string[] = [];
+      const startedA1 = createDeferred<void>();
+      const gateA1 = createDeferred<void>();
+
+      (globalThis as any).__concurrentEvents = concurrentEvents;
+      (globalThis as any).__startedA1 = startedA1;
+      (globalThis as any).__gateA1 = gateA1.promise;
+
+      try {
+        const toolsA = join(wsA, "tools");
+        const toolsB = join(wsB, "tools");
+        await mkdir(toolsA, { recursive: true });
+        await mkdir(toolsB, { recursive: true });
+
+        // Workspace A tools
+        await writeFile(
+          join(toolsA, "toolA1.js"),
+          `globalThis.__concurrentEvents.push("start-A1");
+          globalThis.__startedA1.resolve();
+          await globalThis.__gateA1;
+          globalThis.__concurrentEvents.push("end-A1");
+          export default defineTool({ id: "toolA1", description: "desc", inputSchema: {}, run: () => {} });`
+        );
+        await writeFile(
+          join(toolsA, "toolA2.js"),
+          `globalThis.__concurrentEvents.push("eval-A2");
+          export default defineTool({ id: "toolA2", description: "desc", inputSchema: {}, run: () => {} });`
+        );
+
+        // Workspace B tools
+        await writeFile(
+          join(toolsB, "toolB1.js"),
+          `globalThis.__concurrentEvents.push("eval-B1");
+          export default defineTool({ id: "toolB1", description: "desc", inputSchema: {}, run: () => {} });`
+        );
+
+        // Start A first
+        const promiseA = loadToolRegistry({ cwd: wsA, dir: "tools", maxDefinitions: 10 });
+
+        // Wait until Workspace A's first module starts and is held
+        await startedA1.promise;
+
+        // Start B (it should be blocked by A's lock)
+        const promiseB = loadToolRegistry({ cwd: wsB, dir: "tools", maxDefinitions: 10 });
+
+        // Yield to microtasks
+        await Promise.resolve();
+
+        // At this point, Workspace B should not have started evaluation of B1 because A holds the exclusive lock
+        expect(concurrentEvents).toEqual(["start-A1"]);
+        expect(concurrentEvents).not.toContain("eval-B1");
+
+        // Now release Workspace A's gate
+        gateA1.resolve();
+
+        // Wait for both loads to complete
+        const [regA, regB] = await Promise.all([promiseA, promiseB]);
+
+        expect(regA.has("toolA1")).toBe(true);
+        expect(regA.has("toolA2")).toBe(true);
+        expect(regB.has("toolB1")).toBe(true);
+
+        // Verify ordering: A1 start, A1 end, A2, and finally B1
+        expect(concurrentEvents.indexOf("start-A1")).toBe(0);
+        expect(concurrentEvents.indexOf("end-A1")).toBe(1);
+        expect(concurrentEvents.indexOf("eval-A2")).toBe(2);
+        expect(concurrentEvents.indexOf("eval-B1")).toBe(3);
+
+        // Global cleanup
+        expect(Object.prototype.hasOwnProperty.call(globalThis, "defineTool")).toBe(false);
+      } finally {
+        delete (globalThis as any).__concurrentEvents;
+        delete (globalThis as any).__startedA1;
+        delete (globalThis as any).__gateA1;
+
+        await rm(wsA, { recursive: true, force: true });
+        await rm(wsB, { recursive: true, force: true });
+      }
     });
   });
 });
