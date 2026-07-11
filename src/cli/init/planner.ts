@@ -3,12 +3,16 @@ import { stat } from "node:fs/promises";
 import {
   toDisplayPath,
   DEFAULT_INIT_CONFIG_PATH,
-  DEFAULT_INIT_EXAMPLE_FILE
+  DEFAULT_INIT_EXAMPLE_FILE,
+  DEFAULT_INIT_GLOBALS_PATH,
+  DEFAULT_INIT_EXAMPLE_TOOL_FILE
 } from "./defaults.js";
 import {
   buildGeneratedConfig,
   renderGeneratedConfigYaml,
-  renderExampleWorkflow
+  renderExampleWorkflow,
+  loadGlobalsDeclaration,
+  renderExampleTool
 } from "./renderer.js";
 import type {
   ResolvedInitOptions,
@@ -32,6 +36,10 @@ export async function buildInitPlan(input: {
   });
   const configYaml = renderGeneratedConfigYaml(config);
   const workflowContent = renderExampleWorkflow();
+  const globalsContent = await loadGlobalsDeclaration();
+  const globalsPath = join(cwd, DEFAULT_INIT_GLOBALS_PATH);
+  const starterToolPath = join(options.toolsDir, DEFAULT_INIT_EXAMPLE_TOOL_FILE);
+  const starterToolContent = renderExampleTool(starterToolPath, globalsPath);
 
   const targets: InitTarget[] = [
     {
@@ -40,28 +48,32 @@ export async function buildInitPlan(input: {
       displayPath: DEFAULT_INIT_CONFIG_PATH,
       content: configYaml,
       overwrite: options.force,
-      requiredForStrict: true
+      requiredForStrict: true,
+      generatedFileKind: "config"
     },
     {
       kind: "directory",
       path: options.agentsDir,
       displayPath: toDisplayPath(cwd, options.agentsDir),
       overwrite: false,
-      requiredForStrict: true
+      requiredForStrict: true,
+      generatedFileKind: "agents-dir"
     },
     {
       kind: "directory",
       path: options.toolsDir,
       displayPath: toDisplayPath(cwd, options.toolsDir),
       overwrite: false,
-      requiredForStrict: true
+      requiredForStrict: true,
+      generatedFileKind: "tools-dir"
     },
     {
       kind: "directory",
       path: options.workflowsDir,
       displayPath: toDisplayPath(cwd, options.workflowsDir),
       overwrite: false,
-      requiredForStrict: true
+      requiredForStrict: true,
+      generatedFileKind: "workflows-dir"
     },
     {
       kind: "file",
@@ -69,7 +81,26 @@ export async function buildInitPlan(input: {
       displayPath: join(toDisplayPath(cwd, options.workflowsDir), DEFAULT_INIT_EXAMPLE_FILE).split(/[\\/]/).join("/"),
       content: workflowContent,
       overwrite: options.force,
-      requiredForStrict: true
+      requiredForStrict: true,
+      generatedFileKind: "workflow-template"
+    },
+    {
+      kind: "file",
+      path: globalsPath,
+      displayPath: DEFAULT_INIT_GLOBALS_PATH,
+      content: globalsContent,
+      overwrite: options.force,
+      requiredForStrict: true,
+      generatedFileKind: "globals"
+    },
+    {
+      kind: "file",
+      path: starterToolPath,
+      displayPath: join(toDisplayPath(cwd, options.toolsDir), DEFAULT_INIT_EXAMPLE_TOOL_FILE).split(/[\\/]/).join("/"),
+      content: starterToolContent,
+      overwrite: options.force,
+      requiredForStrict: true,
+      generatedFileKind: "tool-template"
     }
   ];
 
@@ -96,6 +127,8 @@ export async function buildInitPlan(input: {
 
       if (target.kind === "directory" && exists && existingKind !== "directory") {
         conflictReason = `Cannot reuse "${target.displayPath}" as a directory because it is a ${existingKind}.`;
+      } else if (target.kind === "file" && exists && existingKind !== "file") {
+        conflictReason = `Cannot reuse "${target.displayPath}" as a file because it is a ${existingKind}.`;
       }
 
       return {

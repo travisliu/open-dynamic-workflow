@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   buildGeneratedConfig,
   renderGeneratedConfigYaml,
-  renderExampleWorkflow
+  renderExampleWorkflow,
+  loadGlobalsDeclaration,
+  renderExampleTool
 } from "../../src/cli/init/renderer.js";
 import { validateConfig } from "../../src/config/schema.js";
 
@@ -106,6 +108,53 @@ describe("Init Renderer Services", () => {
       expect(workflow).toContain('projectName: context.get("projectName")');
       expect(workflow).not.toContain("ctx.context");
       expect(workflow).not.toContain("context:");
+    });
+  });
+
+  describe("loadGlobalsDeclaration", () => {
+    it("loads globals declaration containing the ambient names and contracts", async () => {
+      const decl = await loadGlobalsDeclaration();
+      expect(decl).toContain("interface OdwToolExecutionContext");
+      expect(decl).toContain("interface OdwToolDefinition");
+      expect(decl).toContain("declare function defineTool");
+      expect(decl).toContain("runId: string");
+      expect(decl).toContain("toolCallId: string");
+      expect(decl).toContain("definitionId: string");
+      expect(decl).toContain("workflowInvocationId: string");
+      expect(decl).toContain("artifactsDir: string");
+      expect(decl).toContain("signal: AbortSignal");
+      expect(decl).toContain("log(message: string, data?: unknown): void");
+      expect(decl).not.toContain("@travisliu/open-dynamic-workflow");
+    });
+  });
+
+  describe("renderExampleTool", () => {
+    it("renders tool template referencing globals correctly", () => {
+      const starterPath = "/project/.open-dynamic-workflow/tools/example.tool.ts";
+      const globalsPath = "/project/.open-dynamic-workflow/globals.d.ts";
+      const tool = renderExampleTool(starterPath, globalsPath);
+
+      expect(tool).toContain('/// <reference path="../globals.d.ts" />');
+      expect(tool).toContain("export default defineTool(");
+      expect(tool).toContain('id: "example-tool"');
+      expect(tool).not.toContain("@travisliu/open-dynamic-workflow");
+    });
+
+    it("renders correct reference path for custom tools directory", () => {
+      const starterPath = "/project/custom-tools/example.tool.ts";
+      const globalsPath = "/project/.open-dynamic-workflow/globals.d.ts";
+      const tool = renderExampleTool(starterPath, globalsPath);
+
+      expect(tool).toContain('/// <reference path="../.open-dynamic-workflow/globals.d.ts" />');
+      expect(tool).toContain("export default defineTool(");
+    });
+
+    it("renders correct reference path for same directory", () => {
+      const starterPath = "/project/.open-dynamic-workflow/example.tool.ts";
+      const globalsPath = "/project/.open-dynamic-workflow/globals.d.ts";
+      const tool = renderExampleTool(starterPath, globalsPath);
+
+      expect(tool).toContain('/// <reference path="./globals.d.ts" />');
     });
   });
 });

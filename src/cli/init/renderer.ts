@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { join, dirname, relative } from "node:path";
 import { stringify } from "yaml";
 import { getBuiltInProviderDefaults } from "../../config/defaults.js";
 import { validateConfig } from "../../config/schema.js";
@@ -7,7 +10,6 @@ import {
   workflowIncludePatterns,
   sharedAgentIncludePatterns,
   toolIncludePatterns,
-  INIT_EXCLUDE_PATTERNS,
   toDisplayPath
 } from "./defaults.js";
 
@@ -100,5 +102,48 @@ export default {
   result,
   projectName: context.get("projectName")
 };
+`;
+}
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+export async function loadGlobalsDeclaration(): Promise<string> {
+  const templatePath = join(__dirname, "templates", "tool-runtime-globals.d.ts");
+  const content = await readFile(templatePath, "utf-8");
+  return content.replace(/\r\n/g, "\n");
+}
+
+export function renderExampleTool(starterToolPath: string, globalsPath: string): string {
+  let rel = relative(dirname(starterToolPath), globalsPath);
+  rel = rel.split(/[\\/]/).join("/");
+  if (!rel.startsWith(".") && !rel.includes("/")) {
+    rel = "./" + rel;
+  }
+  return `/// <reference path="${rel}" />
+
+export default defineTool({
+  id: "example-tool",
+  description: "A starter Open Dynamic Workflow tool that echoes input.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      message: { type: "string" }
+    },
+    required: ["message"]
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      echo: { type: "string" }
+    },
+    required: ["echo"]
+  },
+  run(input: { message: string }, context) {
+    context.log("Executing example-tool", { message: input.message });
+    return {
+      echo: input.message
+    };
+  }
+});
 `;
 }

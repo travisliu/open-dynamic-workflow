@@ -94,6 +94,134 @@ export default defineTool({ id: "legacy", description: "desc", inputSchema: {}, 
     expect(results[0].definition.id).toBe("legacy");
   });
 
+  it("should invoke diagnostic callback for a legacy-import candidate upon successful load", async () => {
+    const lock = createToolRuntimeGlobalLock();
+    await prepareToolRuntimePackageShim({ tempDir: tempBaseDir });
+
+    const candidatePath = join(tempBaseDir, "legacy-tool-diag.mjs");
+    await writeFile(
+      candidatePath,
+      `import { defineTool } from "@travisliu/open-dynamic-workflow";
+export default defineTool({ id: "legacy-diag", description: "desc", inputSchema: {}, run: () => {} });`
+    );
+
+    const diagnostics: any[] = [];
+    const results = await loadMirroredToolModules({
+      lock,
+      runtimeApi: activeToolRuntimeApi,
+      onLegacyRuntimeImport: (info) => {
+        diagnostics.push(info);
+      },
+      candidates: [
+        {
+          sourcePath: "/original/path/legacy-diag.ts",
+          relativePath: "legacy-diag.ts",
+          modulePath: candidatePath,
+          isLegacyImport: true,
+        },
+      ],
+    });
+
+    expect(results).toHaveLength(1);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toEqual({
+      sourcePath: "/original/path/legacy-diag.ts",
+      relativePath: "legacy-diag.ts",
+    });
+  });
+
+  it("should not invoke diagnostic callback for a no-import candidate", async () => {
+    const lock = createToolRuntimeGlobalLock();
+    const candidatePath = join(tempBaseDir, "no-import-tool.mjs");
+    await writeFile(
+      candidatePath,
+      `export default defineTool({ id: "no-import", description: "desc", inputSchema: {}, run: () => {} });`
+    );
+
+    const diagnostics: any[] = [];
+    const results = await loadMirroredToolModules({
+      lock,
+      runtimeApi: activeToolRuntimeApi,
+      onLegacyRuntimeImport: (info) => {
+        diagnostics.push(info);
+      },
+      candidates: [
+        {
+          sourcePath: "/original/path/no-import.ts",
+          relativePath: "no-import.ts",
+          modulePath: candidatePath,
+          isLegacyImport: false,
+        },
+      ],
+    });
+
+    expect(results).toHaveLength(1);
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("should not invoke diagnostic callback if evaluation/brand validation fails", async () => {
+    const lock = createToolRuntimeGlobalLock();
+    const candidatePath = join(tempBaseDir, "invalid-brand.mjs");
+    await writeFile(
+      candidatePath,
+      `export default { id: "invalid", description: "desc", inputSchema: {}, run: () => {} };`
+    );
+
+    const diagnostics: any[] = [];
+    await expect(
+      loadMirroredToolModules({
+        lock,
+        runtimeApi: activeToolRuntimeApi,
+        onLegacyRuntimeImport: (info) => {
+          diagnostics.push(info);
+        },
+        candidates: [
+          {
+            sourcePath: "/original/path/invalid.ts",
+            relativePath: "invalid.ts",
+            modulePath: candidatePath,
+            isLegacyImport: true,
+          },
+        ],
+      })
+    ).rejects.toThrow();
+
+    expect(diagnostics).toHaveLength(0);
+  });
+
+  it("should not let a throwing diagnostic callback break the load session or cleanup", async () => {
+    const lock = createToolRuntimeGlobalLock();
+    await prepareToolRuntimePackageShim({ tempDir: tempBaseDir });
+
+    const candidatePath = join(tempBaseDir, "throwing-diag.mjs");
+    await writeFile(
+      candidatePath,
+      `import { defineTool } from "@travisliu/open-dynamic-workflow";
+export default defineTool({ id: "throwing-diag", description: "desc", inputSchema: {}, run: () => {} });`
+    );
+
+    const results = await loadMirroredToolModules({
+      lock,
+      runtimeApi: activeToolRuntimeApi,
+      onLegacyRuntimeImport: () => {
+        throw new Error("Diagnostic callback error");
+      },
+      candidates: [
+        {
+          sourcePath: "/original/path/throwing.ts",
+          relativePath: "throwing.ts",
+          modulePath: candidatePath,
+          isLegacyImport: true,
+        },
+      ],
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].definition.id).toBe("throwing-diag");
+    // Verify global cleanup completed successfully
+    expect(Object.prototype.hasOwnProperty.call(globalThis, "defineTool")).toBe(false);
+  });
+
   it("should load multiple candidates sequentially and preserve input order", async () => {
     function createDeferred<T = void>() {
       let resolve!: (value: T | PromiseLike<T>) => void;

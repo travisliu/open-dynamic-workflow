@@ -903,7 +903,68 @@ type ToolCallInput = {
 
 ### Registered Tool Definition API
 
-Tools must be defined using the `defineTool()` wrapper and exported as the default export of their respective files.
+Registered tools allow workflows to read or compute local data before executing agent steps. Open Dynamic Workflow uses a zero-install model: tools do not require a dependency on the `@travisliu/open-dynamic-workflow` package, as the active CLI automatically injects `defineTool` into the global scope at runtime.
+
+For editor support (autocomplete and type checking), TypeScript tools should reference the locally generated `globals.d.ts` file.
+
+#### Recommended Syntax (No-Import)
+
+##### JavaScript Tool:
+```javascript
+export default defineTool({
+  id: "my-tool",
+  description: "A tool that does something local",
+  inputSchema: { type: "object" },
+  run: (input, context) => {
+    return "result";
+  }
+});
+```
+
+##### TypeScript Tool:
+```typescript
+/// <reference path="../globals.d.ts" />
+
+export default defineTool({
+  id: "my-tool",
+  description: "A tool that does something local",
+  inputSchema: { type: "object" },
+  run(input, context) {
+    return "result";
+  }
+});
+```
+
+#### Legacy Import Syntax (Backward Compatible)
+For compatibility with tools developed under older versions, importing `defineTool` from `@travisliu/open-dynamic-workflow` is fully supported:
+```javascript
+import { defineTool } from "@travisliu/open-dynamic-workflow";
+
+export default defineTool({
+  id: "my-tool",
+  description: "Legacy tool",
+  inputSchema: { type: "object" },
+  run: () => "result"
+});
+```
+*Note: Using legacy imports in verbose mode will output an informational migration message to stderr.*
+
+#### Declaration Purpose & Types
+- **OdwToolDefinition**: The wrapper type created by `defineTool`.
+- **OdwToolExecutionContext**: The execution context passed to the tool `run(input, context)` function, containing:
+  - `runId`: the current run ID.
+  - `toolCallId`: the unique ID of the tool call.
+  - `definitionId`: the ID of the tool definition.
+  - `workflowInvocationId`: the ID of the executing workflow invocation.
+  - `parentWorkflowInvocationId`: the ID of the parent workflow invocation, if any.
+  - `artifactsDir`: path to the directory where artifacts should be saved.
+  - `signal`: AbortSignal to monitor for cancellation.
+  - `log(message, data?)`: logs a message with optional payload.
+
+#### Constraints
+1. **Trusted local execution**: Tools execute in the host process and must be trusted.
+2. **Static default-export shape**: The tool must have a static `export default defineTool({ ... })` declaration.
+3. **No package requirement**: No target package.json or ODW node_modules dependencies are required in the workspace.
 
 #### Tool Definition Metadata Contract
 

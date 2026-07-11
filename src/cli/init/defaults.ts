@@ -38,6 +38,8 @@ export const DEFAULT_INIT_AGENTS_DIR = ".open-dynamic-workflow/agents";
 export const DEFAULT_INIT_TOOLS_DIR = ".open-dynamic-workflow/tools";
 export const DEFAULT_INIT_CONFIG_PATH = ".open-dynamic-workflow/config.yaml";
 export const DEFAULT_INIT_EXAMPLE_FILE = "example.workflow.ts";
+export const DEFAULT_INIT_GLOBALS_PATH = ".open-dynamic-workflow/globals.d.ts";
+export const DEFAULT_INIT_EXAMPLE_TOOL_FILE = "example.tool.ts";
 
 export function toDisplayPath(cwd: string, absolutePath: string): string {
   const rel = relative(cwd, absolutePath);

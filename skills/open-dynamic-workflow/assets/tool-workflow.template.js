@@ -1,32 +1,30 @@
-export const meta = {
-  name: "tool-workflow",
-  description: "Run a workflow that invokes a registered tool and processes the result with an agent",
-  phases: ["fetch", "analyze"]
-};
+// This file is an example of defining a tool in Open Dynamic Workflow.
+// Note: defineTool is provided in the global scope by the runtime during tool module loading.
+// There is no need to import defineTool or any package dependencies.
 
-phase("fetch");
-
-context.set("targetFile", "input.json");
-
-// Invoke a registered deterministic tool to read data
-const data = await tool({
-  definition: "read-json",
-  args: {
-    path: context.get("targetFile")
+export default defineTool({
+  id: "tool-workflow-example",
+  description: "A sample tool that performs a simple length check and returns the result",
+  inputSchema: {
+    type: "object",
+    properties: {
+      data: { type: "string" }
+    },
+    required: ["data"]
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      success: { type: "boolean" },
+      length: { type: "number" }
+    },
+    required: ["success", "length"]
+  },
+  run(input, context) {
+    context.log("Running sample tool-workflow-example tool", { data: input.data });
+    return {
+      success: true,
+      length: input.data.length
+    };
   }
 });
-
-phase("analyze");
-
-// Pass the tool output directly to a provider-backed agent
-const analysis = await agent({
-  id: "analyze-data",
-  provider: "codex",
-  prompt: `Analyze this dataset for anomalies and correctness:\n${JSON.stringify(data, null, 2)}`
-});
-
-export default {
-  data,
-  analysis,
-  context: context.snapshot()
-};

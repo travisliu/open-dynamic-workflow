@@ -142,6 +142,21 @@ describe("CLI package execution and installation", () => {
     expect(existsSync(path.join(initProjectDir, ".open-dynamic-workflow/config.yaml"))).toBe(true);
     expect(existsSync(path.join(initProjectDir, "workflows/example.workflow.ts"))).toBe(true);
 
+    const globalsDtsPath = path.join(initProjectDir, ".open-dynamic-workflow/globals.d.ts");
+    const exampleToolPath = path.join(initProjectDir, ".open-dynamic-workflow/tools/example.tool.ts");
+
+    expect(existsSync(globalsDtsPath)).toBe(true);
+    expect(existsSync(exampleToolPath)).toBe(true);
+
+    const globalsContent = await fs.readFile(globalsDtsPath, "utf8");
+    expect(globalsContent).not.toContain("@travisliu/open-dynamic-workflow");
+    expect(globalsContent).toContain("declare function defineTool");
+
+    const toolContent = await fs.readFile(exampleToolPath, "utf8");
+    expect(toolContent.trim().startsWith('/// <reference path="../globals.d.ts" />')).toBe(true);
+    expect(toolContent).toContain("export default defineTool({");
+    expect(toolContent).not.toContain("@travisliu/open-dynamic-workflow");
+
     // Init with smoke test
     const smokeTestDir = path.join(TEMP_NPM_DIR, "smoke-test-project");
     await fs.mkdir(smokeTestDir, { recursive: true });

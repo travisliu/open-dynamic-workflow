@@ -13,12 +13,14 @@ export interface MirroredToolCandidate {
   relativePath: string;
   modulePath: string;
   staticContract?: StaticToolContract;
+  isLegacyImport?: boolean;
 }
 
 export interface RuntimeModuleLoaderInput {
   candidates: readonly MirroredToolCandidate[];
   runtimeApi: ToolRuntimeApi;
   lock: ToolRuntimeGlobalLock;
+  onLegacyRuntimeImport?: ((input: { sourcePath: string; relativePath: string }) => void) | undefined;
 }
 
 export interface LoadedToolDefinition {
@@ -177,6 +179,17 @@ export async function loadMirroredToolModules(
           definition,
           sourcePath: candidate.sourcePath,
         });
+
+        if (candidate.isLegacyImport && input.onLegacyRuntimeImport) {
+          try {
+            input.onLegacyRuntimeImport({
+              sourcePath: candidate.sourcePath,
+              relativePath: candidate.relativePath,
+            });
+          } catch {
+            // A thrown callback must not break tool loading
+          }
+        }
       }
       return results;
     })

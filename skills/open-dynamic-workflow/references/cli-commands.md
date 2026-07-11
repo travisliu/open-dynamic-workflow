@@ -19,8 +19,10 @@ By default, `open-dynamic-workflow init` creates:
 ```text
 .open-dynamic-workflow/
   config.yaml       # Core project configuration
+  globals.d.ts      # Standalone TS declaration file for global defineTool
   agents/           # Shared agents directory (empty)
   tools/            # Tools directory (empty)
+    example.tool.ts # Starter tool template
 workflows/
   example.workflow.ts # Starter workflow template
 ```
@@ -304,6 +306,16 @@ Before they are imported at runtime, tool metadata is statically discoverable. C
 * Invalid definitions fail consistently with `TOOL_INVALID_DEFINITION`.
 * Duplicate tool IDs fail consistently with `TOOL_DUPLICATE_DEFINITION` (or the corresponding CLI duplicate error) before execution begins.
 Individual `tool({ definition })` calls are checked statically during validation to ensure they reference a registered tool ID.
+
+### Legacy Tool Diagnostic
+
+When running `validate` or `run` with `--verbose` (or with `reporting.verbose: true` in config), Open Dynamic Workflow scans tool implementations for legacy imports from `@travisliu/open-dynamic-workflow`.
+If a legacy import is detected, the CLI writes an informational diagnostic message to `stderr`:
+`Legacy ODW defineTool import detected in <path>; it remains supported, but new tools should use global defineTool without an import.`
+
+This diagnostic is:
+* **Informational only**: It does not change the command exit status, error codes, or success/failure results.
+* **Separated from stdout**: It is written to `stderr` and does not affect `stdout` outputs. In JSON or JSONL report modes, `stdout` remains fully machine-readable and parseable.
 
 ---
 

@@ -14,11 +14,17 @@ import type { ProfileDiagnostic } from "../../types/config.js";
 export interface ValidateCommandInput {
   workflowFile: string;
   rawOptions: any;
+  deps?: {
+    stderr?: NodeJS.WritableStream;
+  } | undefined;
 }
 
 export interface ValidateWorkflowServiceInput {
   workflowFile: string;
   rawOptions?: any;
+  deps?: {
+    stderr?: NodeJS.WritableStream;
+  } | undefined;
 }
 
 export interface ValidateWorkflowServiceResult {
@@ -86,7 +92,14 @@ export async function validateWorkflowService(
   const toolRegistry = await loadToolRegistry({
     cwd: config.cwd,
     precollected: precollected.tools.loadInput,
-    maxDefinitions: config.tools?.maxDefinitions ?? 100
+    maxDefinitions: config.tools?.maxDefinitions ?? 100,
+    verbose: !!config.reporting?.verbose,
+    onDiagnostic: (msg: string) => {
+      const writer = input.deps?.stderr
+        ? (chunk: string) => (input.deps!.stderr as any).write(chunk)
+        : (chunk: string) => process.stderr.write(chunk);
+      writer(msg + "\n");
+    }
   });
 
   const knownProviderReferences = Object.freeze(new Set([
@@ -136,7 +149,11 @@ export async function validateCommand(input: ValidateCommandInput): Promise<void
   });
 
   try {
-    const result = await validateWorkflowService(input);
+    const result = await validateWorkflowService({
+      workflowFile: input.workflowFile,
+      rawOptions,
+      deps: input.deps
+    });
     printValidationSuccess(result.workflowName, result.workflowFileRelative);
   } catch (error) {
     throw attachHintToError(error, hintContext);

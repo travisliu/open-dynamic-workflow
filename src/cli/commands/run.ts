@@ -28,13 +28,13 @@ export interface RunCommandDeps {
 export interface RunCommandInput {
   workflowFile: string;
   rawOptions: any;
-  deps?: Partial<RunCommandDeps>;
+  deps?: Partial<RunCommandDeps> | undefined;
 }
 
 export interface RunWorkflowServiceInput {
   workflowFile: string;
   rawOptions?: any;
-  deps?: Partial<RunCommandDeps>;
+  deps?: Partial<RunCommandDeps> | undefined;
 }
 
 export async function runWorkflowService(
@@ -213,7 +213,14 @@ export async function runWorkflowService(
   const toolRegistry = await loadToolRegistry({
     cwd: config.cwd,
     precollected: precollected.tools.loadInput,
-    maxDefinitions: config.tools?.maxDefinitions ?? 100
+    maxDefinitions: config.tools?.maxDefinitions ?? 100,
+    verbose: !!config.reporting?.verbose,
+    onDiagnostic: (msg: string) => {
+      const writer = input.deps?.stderr
+        ? (chunk: string) => (input.deps!.stderr as any).write(chunk)
+        : (chunk: string) => process.stderr.write(chunk);
+      writer(msg + "\n");
+    }
   });
 
   const knownProviderReferences = Object.freeze(new Set([

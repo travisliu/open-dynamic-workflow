@@ -85,8 +85,7 @@ describe("Phase 4 acceptance: documentation and template refactoring", () => {
       { name: "basic template", text: basicTemplate },
       { name: "parallel template", text: parallelTemplate },
       { name: "pipeline template", text: pipelineTemplate },
-      { name: "loop template", text: loopTemplate },
-      { name: "tool template", text: toolTemplate }
+      { name: "loop template", text: loopTemplate }
     ];
 
     // Assert
@@ -134,12 +133,15 @@ describe("Phase 4 acceptance: documentation and template refactoring", () => {
     expect(phaseSurfaces[5].text).not.toContain("ctx.context");
     expect(phaseSurfaces[5].text).not.toContain("loop({ context:");
 
-    expect(phaseSurfaces[6].text).toContain('context.set("targetFile", "input.json")');
-    expect(phaseSurfaces[6].text).toContain('path: context.get("targetFile")');
-    expect(phaseSurfaces[6].text).toContain("context: context.snapshot()");
-    expectBefore(phaseSurfaces[6].text, 'context.set("targetFile", "input.json")', "const data = await tool({");
-    expect(phaseSurfaces[6].text).not.toContain("ctx.context");
-    expect(phaseSurfaces[6].text).not.toContain("workflow({ context:");
+    // Assertions for migrated no-import defineTool example
+    expect(toolTemplate).toContain("export default defineTool(");
+    expect(toolTemplate).not.toContain("@travisliu/open-dynamic-workflow");
+    expect(toolTemplate).not.toContain("context.set");
+    expect(toolTemplate).not.toContain("context.get");
+    expect(toolTemplate).not.toContain("context.snapshot");
+    expect(toolTemplate).not.toContain("phase(");
+    expect(toolTemplate).not.toContain("agent(");
+    expect(toolTemplate).not.toContain("tool(");
   });
 
   it("renders the init starter with direct global context and no retired forms", () => {
@@ -179,5 +181,27 @@ describe("Phase 4 acceptance: documentation and template refactoring", () => {
     expectNegativeProse(negativeProseDocs.apiDocument, "context` options");
     expectNegativeProse(negativeProseDocs.skill, "ctx.context");
     expectNegativeProse(negativeProseDocs.skill, "context configuration options");
+  });
+
+  it("documents OdwToolExecutionContext properties and does not claim cwd is part of it", () => {
+    const apiDocument = readText("skills/open-dynamic-workflow/references/api-document.md");
+    
+    // Assert it contains the supported properties
+    expect(apiDocument).toContain("OdwToolExecutionContext");
+    expect(apiDocument).toContain("runId");
+    expect(apiDocument).toContain("toolCallId");
+    expect(apiDocument).toContain("definitionId");
+    expect(apiDocument).toContain("workflowInvocationId");
+    expect(apiDocument).toContain("parentWorkflowInvocationId");
+    expect(apiDocument).toContain("artifactsDir");
+    expect(apiDocument).toContain("signal");
+    expect(apiDocument).toContain("log(message, data?)");
+    
+    // Assert it does not claim cwd is part of OdwToolExecutionContext
+    const contextSection = apiDocument.slice(apiDocument.indexOf("OdwToolExecutionContext"));
+    const endOfSection = contextSection.indexOf("---");
+    const sectionText = contextSection.slice(0, endOfSection > 0 ? endOfSection : 2000);
+    
+    expect(sectionText).not.toContain("cwd");
   });
 });

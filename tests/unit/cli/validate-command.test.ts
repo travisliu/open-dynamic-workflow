@@ -141,7 +141,9 @@ describe("Validate Command", () => {
     expect(loadToolRegistry).toHaveBeenCalledWith({
       cwd: "/mock-cwd",
       precollected: mockLoadInputTools,
-      maxDefinitions: 100
+      maxDefinitions: 100,
+      verbose: false,
+      onDiagnostic: expect.any(Function)
     });
     expect(discoverWorkflowRegistry).toHaveBeenCalledWith({
       rootWorkflowPath: "valid-simple.js",

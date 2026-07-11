@@ -58,6 +58,15 @@ export interface ProviderSelection {
   warning?: string;
 }
 
+export type InitGeneratedFileKind =
+  | "config"
+  | "agents-dir"
+  | "tools-dir"
+  | "workflows-dir"
+  | "workflow-template"
+  | "globals"
+  | "tool-template";
+
 export interface InitTarget {
   kind: InitTargetKind;
   path: string;              // normalized absolute path
@@ -65,6 +74,7 @@ export interface InitTarget {
   content?: string;          // only for file targets
   overwrite: boolean;
   requiredForStrict: boolean;
+  generatedFileKind?: InitGeneratedFileKind;
 }
 
 export interface InitPlannedTarget extends InitTarget {

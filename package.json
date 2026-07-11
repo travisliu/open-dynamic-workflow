@@ -50,7 +50,7 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "tsc",
-    "postbuild": "node scripts/fix-bin-permissions.mjs",
+    "postbuild": "node scripts/copy-init-templates.mjs && node scripts/fix-bin-permissions.mjs",
     "dev": "tsx src/bin/open-dynamic-workflow.ts",
     "start": "node dist/bin/open-dynamic-workflow.js",
     "typecheck": "npm run check",

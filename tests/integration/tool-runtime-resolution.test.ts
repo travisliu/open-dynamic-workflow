@@ -454,16 +454,17 @@ describe("tool runtime resolution compatibility", () => {
       // 9. Assert a third load is not poisoned by the previous failure
       const ws3 = await makeProject("concurrency-third");
       await addTool(ws3, "third.tool.js", `
+        import { defineTool } from "@travisliu/open-dynamic-workflow";
         export default defineTool({
           id: "third-tool",
-          description: "third",
+          description: "third-legacy",
           inputSchema: {},
-          run: () => "third-val"
+          run: () => "third-legacy-val"
         });
       `);
       const registry3 = await loadToolRegistry({ cwd: ws3, dir: ".open-dynamic-workflow/tools", maxDefinitions: 10 });
       expect(registry3.has("third-tool")).toBe(true);
-      expect(await registry3.require("third-tool").definition.run({}, {} as any)).toBe("third-val");
+      expect(await registry3.require("third-tool").definition.run({}, {} as any)).toBe("third-legacy-val");
 
       // Check all workspaces lack tmp
       await assertTmpAbsent(ws1);
@@ -621,6 +622,7 @@ providers:
         await expect(fs.access(path.join(cwd, "package.json"))).rejects.toThrow();
         await expect(fs.access(path.join(cwd, "node_modules"))).rejects.toThrow();
         await expect(fs.access(path.join(cwd, ".open-dynamic-workflow", "tmp"))).rejects.toThrow();
+        await expect(fs.access(path.join(cwd, ".open-dynamic-workflow", "globals.d.ts"))).rejects.toThrow();
 
         runSuccess = true;
       } finally {

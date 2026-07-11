@@ -22,6 +22,8 @@ export interface LoadToolRegistryInput {
   precollected?: PrecollectedResourceLoadInput;
   maxDefinitions: number;
   configDiagnostics?: ConfigDiagnostic[];
+  verbose?: boolean;
+  onDiagnostic?: ((message: string) => void) | undefined;
 }
 
 const SUPPORTED_EXTENSIONS = [".ts", ".js", ".mjs", ".cjs"];
@@ -145,7 +147,26 @@ async function mirrorDirectory(
   }
 }
 
-
+async function hasLegacyImport(filePath: string): Promise<boolean> {
+  try {
+    const content = await readFile(filePath, "utf8");
+    const sourceFile = ts.createSourceFile(
+      filePath,
+      content,
+      ts.ScriptTarget.Latest,
+      true
+    );
+    for (const statement of sourceFile.statements) {
+      if (ts.isImportDeclaration(statement)) {
+        const specifier = statement.moduleSpecifier;
+        if (ts.isStringLiteral(specifier) && specifier.text === "@travisliu/open-dynamic-workflow") {
+          return true;
+        }
+      }
+    }
+  } catch {}
+  return false;
+}
 
 interface LoadCandidate {
   candidate: CandidateFile;
@@ -216,6 +237,7 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
   // Pre-import static contract validation for all candidates
   const allDiagnostics: { path: string; code: string; message: string }[] = [];
   const successfulContracts = new Map<string, StaticToolContract>();
+  const legacyImports = new Map<string, boolean>();
 
   for (const item of candidates) {
     const result = await validateStaticToolContract(item.candidate);
@@ -229,6 +251,8 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
       }
     } else {
       successfulContracts.set(item.sourcePath, result.contract);
+      const isLegacy = await hasLegacyImport(item.sourcePath);
+      legacyImports.set(item.sourcePath, isLegacy);
     }
   }
 
@@ -380,9 +404,16 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
 
     const activeTempDir = tempDir;
     await prepareToolRuntimePackageShim({ tempDir: activeTempDir });
+
+    const seenLegacyPaths = new Set<string>();
     const loaded = await loadMirroredToolModules({
       runtimeApi: activeToolRuntimeApi,
       lock: toolRuntimeGlobalLock,
+      onLegacyRuntimeImport: (input.verbose && input.onDiagnostic) ? (diag) => {
+        if (seenLegacyPaths.has(diag.sourcePath)) return;
+        seenLegacyPaths.add(diag.sourcePath);
+        input.onDiagnostic!(`Legacy ODW defineTool import detected in ${diag.relativePath}; it remains supported, but new tools should use global defineTool without an import.`);
+      } : undefined,
       candidates: candidates.map(item => {
         const ext = extname(item.sourcePath);
         const relPath = relative(realCwd, item.sourcePath);
@@ -393,6 +424,7 @@ export async function loadToolRegistry(input: LoadToolRegistryInput): Promise<To
           sourcePath: item.sourcePath,
           relativePath: item.candidate.relativePath,
           modulePath: mirroredModule,
+          isLegacyImport: legacyImports.get(item.sourcePath) || false,
           ...(staticContract ? { staticContract } : {}),
         };
       })

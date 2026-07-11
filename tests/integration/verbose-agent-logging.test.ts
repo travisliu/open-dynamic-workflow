@@ -93,8 +93,12 @@ describe("Integration - verbose agent logging", () => {
     expect(result.stdout).not.toContain("SECRET_FROM_ENV");
     expect(result.stdout).toContain("[REDACTED]");
     
-    // Stderr should be empty (no verbose blocks)
-    expect(result.stderr).toBe("");
+    // Stderr should be empty (no verbose blocks, except legacy import warnings)
+    const nonLegacyStderr = result.stderr
+      .split("\n")
+      .filter(line => line && !line.includes("Legacy ODW defineTool import detected"))
+      .join("\n");
+    expect(nonLegacyStderr).toBe("");
   });
 
   it("--report json -v writes verbose blocks to stderr and report to stdout", async () => {

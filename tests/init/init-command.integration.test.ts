@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { initCommand } from "../../src/cli/commands/init.js";
 import { PassThrough } from "node:stream";
+import ts from "typescript";
 
 describe("open-dynamic-workflow init integration", () => {
   let tmpDir: string;
@@ -64,11 +65,49 @@ describe("open-dynamic-workflow init integration", () => {
     return { stdoutData, stderrData };
   }
 
-  it("creates default project structure", async () => {
+  it("creates default project structure and compiles the starter tool successfully", async () => {
     await runInit();
 
-    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, "workflows/example.workflow.ts"))).toBe(true);
+    const configPath = path.join(tmpDir, ".open-dynamic-workflow/config.yaml");
+    const workflowPath = path.join(tmpDir, "workflows/example.workflow.ts");
+    const globalsPath = path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts");
+    const toolTemplatePath = path.join(tmpDir, ".open-dynamic-workflow/tools/example.tool.ts");
+
+    expect(fs.existsSync(configPath)).toBe(true);
+    expect(fs.existsSync(workflowPath)).toBe(true);
+    expect(fs.existsSync(globalsPath)).toBe(true);
+    expect(fs.existsSync(toolTemplatePath)).toBe(true);
+
+    // Verify globals.d.ts content
+    const globalsContent = fs.readFileSync(globalsPath, "utf8");
+    expect(globalsContent).toContain("interface OdwToolExecutionContext");
+    expect(globalsContent).toContain("interface OdwToolDefinition");
+    expect(globalsContent).toContain("declare function defineTool");
+
+    // Verify example.tool.ts content
+    const toolContent = fs.readFileSync(toolTemplatePath, "utf8");
+    expect(toolContent).toContain('/// <reference path="../globals.d.ts" />');
+    expect(toolContent).toContain("export default defineTool(");
+
+    // Run real TypeScript compilation check
+    const program = ts.createProgram([toolTemplatePath, globalsPath], {
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      strict: true,
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"]
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    const errors = diagnostics.filter(d => d.category === ts.DiagnosticCategory.Error);
+    if (errors.length > 0) {
+      const formatted = ts.formatDiagnosticsWithColorAndContext(errors, {
+        getCanonicalFileName: p => p,
+        getCurrentDirectory: () => tmpDir,
+        getNewLine: () => "\n"
+      });
+      throw new Error(`TypeScript compilation failed:\n${formatted}`);
+    }
   });
 
   it("succeeds with --run-smoke-test", async () => {
@@ -105,14 +144,50 @@ describe("open-dynamic-workflow init integration", () => {
       "--tools-dir", "config/tools"
     ]);
 
+    const customToolPath = path.join(tmpDir, "config/tools/example.tool.ts");
+    const customGlobalsPath = path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts");
+
     expect(fs.existsSync(path.join(tmpDir, "flows/example.workflow.ts"))).toBe(true);
     expect(fs.existsSync(path.join(tmpDir, "config/agents"))).toBe(true);
-    expect(fs.existsSync(path.join(tmpDir, "config/tools"))).toBe(true);
+    expect(fs.existsSync(customToolPath)).toBe(true);
 
     const config = fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"), "utf8");
     expect(config).toContain("- flows/**/*.workflow.ts");
     expect(config).toContain("- config/agents/**/*.ts");
     expect(config).toContain("- config/tools/**/*.ts");
+
+    // Read the produced example.tool.ts
+    const toolContent = fs.readFileSync(customToolPath, "utf8");
+    
+    // Calculate expected relative path from customToolPath to customGlobalsPath
+    let expectedRel = path.relative(path.dirname(customToolPath), customGlobalsPath);
+    expectedRel = expectedRel.split(/[\\/]/).join("/");
+    if (!expectedRel.startsWith(".") && !expectedRel.includes("/")) {
+      expectedRel = "./" + expectedRel;
+    }
+
+    // Assert the directive in example.tool.ts equals that value
+    expect(toolContent).toContain(`/// <reference path="${expectedRel}" />`);
+
+    // Typecheck the generated starter
+    const program = ts.createProgram([customToolPath, customGlobalsPath], {
+      noEmit: true,
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      strict: true,
+      lib: ["lib.es2022.d.ts", "lib.dom.d.ts"]
+    });
+    const diagnostics = ts.getPreEmitDiagnostics(program);
+    const errors = diagnostics.filter(d => d.category === ts.DiagnosticCategory.Error);
+    if (errors.length > 0) {
+      const formatted = ts.formatDiagnosticsWithColorAndContext(errors, {
+        getCanonicalFileName: p => p,
+        getCurrentDirectory: () => tmpDir,
+        getNewLine: () => "\n"
+      });
+      throw new Error(`TypeScript compilation failed:\n${formatted}`);
+    }
   });
 
   it("fails in strict mode if files exist", async () => {
@@ -250,5 +325,68 @@ describe("open-dynamic-workflow init integration", () => {
     
     // Check if missing targets were NOT created
     expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/agents"))).toBe(false);
+  });
+
+  it("preserves/overwrites globals.d.ts and example.tool.ts and manages them in strict/force mode", async () => {
+    // 1. First init: creates them
+    await runInit();
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts"))).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/tools/example.tool.ts"))).toBe(true);
+
+    // Write sentinel content
+    fs.writeFileSync(path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts"), "sentinel globals");
+    fs.writeFileSync(path.join(tmpDir, ".open-dynamic-workflow/tools/example.tool.ts"), "sentinel tool");
+
+    // 2. Second init without force: skips them
+    const { stdoutData } = await runInit();
+    expect(fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts"), "utf8")).toBe("sentinel globals");
+    expect(fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/tools/example.tool.ts"), "utf8")).toBe("sentinel tool");
+    expect(stdoutData).toContain(".open-dynamic-workflow/globals.d.ts");
+    expect(stdoutData).toContain(".open-dynamic-workflow/tools/example.tool.ts");
+
+    // 3. Init in strict mode: fails and lists them
+    let error: any;
+    try {
+      await runInit(["--strict"]);
+    } catch (e) {
+      error = e;
+    }
+    expect(error).toBeDefined();
+    expect(error.message).toContain("already exist in strict mode");
+    expect(error.stdoutData).toContain(".open-dynamic-workflow/globals.d.ts");
+    expect(error.stdoutData).toContain(".open-dynamic-workflow/tools/example.tool.ts");
+
+    // 4. Init with force: overwrites them
+    await runInit(["--force"]);
+    expect(fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts"), "utf8")).not.toBe("sentinel globals");
+    expect(fs.readFileSync(path.join(tmpDir, ".open-dynamic-workflow/tools/example.tool.ts"), "utf8")).not.toBe("sentinel tool");
+  });
+
+  it("fails before writing when a directory exists at .open-dynamic-workflow/globals.d.ts", async () => {
+    fs.mkdirSync(path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts"), { recursive: true });
+
+    await expect(runInit()).rejects.toThrow(/Cannot reuse "\.open-dynamic-workflow\/globals\.d\.ts" as a file because it is a directory/);
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "workflows/example.workflow.ts"))).toBe(false);
+
+    // One force invocation
+    await expect(runInit(["--force"])).rejects.toThrow(/Cannot reuse "\.open-dynamic-workflow\/globals\.d\.ts" as a file because it is a directory/);
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "workflows/example.workflow.ts"))).toBe(false);
+  });
+
+  it("fails before writing when a directory exists at tool template path", async () => {
+    fs.mkdirSync(path.join(tmpDir, ".open-dynamic-workflow/tools/example.tool.ts"), { recursive: true });
+
+    await expect(runInit()).rejects.toThrow(/Cannot reuse "\.open-dynamic-workflow\/tools\/example\.tool\.ts" as a file because it is a directory/);
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "workflows/example.workflow.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts"))).toBe(false);
+
+    // One force invocation
+    await expect(runInit(["--force"])).rejects.toThrow(/Cannot reuse "\.open-dynamic-workflow\/tools\/example\.tool\.ts" as a file because it is a directory/);
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/config.yaml"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, "workflows/example.workflow.ts"))).toBe(false);
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/globals.d.ts"))).toBe(false);
   });
 });
