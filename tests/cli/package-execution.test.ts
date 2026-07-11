@@ -9,20 +9,30 @@ const TEMP_NPM_DIR = path.resolve(WORKSPACE_DIR, "tests/temp-npm-prefix");
 const PACKAGE_VERSION = JSON.parse(readFileSync(path.join(WORKSPACE_DIR, "package.json"), "utf8")).version;
 let packedTarballPath = "";
 
+const lockPath = path.join(WORKSPACE_DIR, "tests", "packed-cli-build.lock");
+
+import { acquireLock, releaseLock } from "../lock-helper.js";
+
 describe("CLI package execution and installation", () => {
   beforeAll(async () => {
-    // Ensure project is built
-    execSync("npm run build", { cwd: WORKSPACE_DIR, stdio: "ignore" });
+    await acquireLock(lockPath);
+    try {
+      // Ensure project is built
+      execSync("npm run build", { cwd: WORKSPACE_DIR, stdio: "ignore" });
 
-    // Clean and recreate temp directory inside workspace
-    await fs.rm(TEMP_NPM_DIR, { recursive: true, force: true });
-    await fs.mkdir(TEMP_NPM_DIR, { recursive: true });
+      // Clean and recreate temp directory inside workspace
+      await fs.rm(TEMP_NPM_DIR, { recursive: true, force: true });
+      await fs.mkdir(TEMP_NPM_DIR, { recursive: true });
 
-    // Pack the package
-    const packOutput = execSync("npm pack", { cwd: WORKSPACE_DIR, encoding: "utf8" }).trim();
-    const tarballName = packOutput.split("\n").pop() || `travisliu-open-dynamic-workflow-${PACKAGE_VERSION}.tgz`;
-    packedTarballPath = path.resolve(WORKSPACE_DIR, tarballName);
-  }, 60000);
+      // Pack the package
+      const packOutput = execSync("npm pack", { cwd: WORKSPACE_DIR, encoding: "utf8" }).trim();
+      const tarballName = packOutput.split("\n").pop() || `travisliu-open-dynamic-workflow-${PACKAGE_VERSION}.tgz`;
+      packedTarballPath = path.resolve(WORKSPACE_DIR, tarballName);
+    } catch (err) {
+      await releaseLock(lockPath);
+      throw err;
+    }
+  }, 120000);
 
   afterAll(async () => {
     // Clean up temporary npm prefix
@@ -31,6 +41,7 @@ describe("CLI package execution and installation", () => {
     if (packedTarballPath && existsSync(packedTarballPath)) {
       await fs.unlink(packedTarballPath);
     }
+    await releaseLock(lockPath);
   });
 
   it("can execute npx . --help", () => {
