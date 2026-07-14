@@ -8,3 +8,7 @@ coverage/
 .antigravitycli/
 GEMINI.md
 plans/
+
+# Website build outputs (keep package-lock.json)
+website/node_modules/
+website/dist/
