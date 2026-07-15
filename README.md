@@ -13,12 +13,6 @@
   </a>
 </p>
 
-<p align="center">
-  <a href="https://travisliu.github.io/open-dynamic-workflow/">
-    Documentation Website
-  </a>
-</p>
-
 <p align="center">&nbsp;</p>
 
 Open Dynamic Workflow is a local-first workflow runner for orchestrating external coding-agent CLIs such as Codex, Gemini, Copilot, OpenCode, Antigravity, Pi, Cursor, and a deterministic mock provider.
@@ -230,48 +224,7 @@ Expected result:
 * The loop result containing the final state directly, or a settled success/failure envelope.
 * Commands such as `npx @travisliu/open-dynamic-workflow validate workflows/loop-review.ts` and `npx @travisliu/open-dynamic-workflow run workflows/loop-review.ts`.
 
-### Global workflow context
-
-Each workflow run receives exactly one JSON-safe global `context` store. It is not process-wide state and is not a per-branch store. The same store is visible in:
-- Top-level workflow code
-- No-argument default-exported workflow functions
-- Child workflows
-- Pipeline stage callbacks
-- Loop round callbacks
-
-Here is a compact, syntactically valid workflow snippet using the global context:
-
-```ts
-import { agent, context } from "@travisliu/open-dynamic-workflow";
-
-export default async function() {
-  // Set initial state
-  context.set("status", "initialized");
-  
-  const result = await agent({
-    id: "run-step",
-    prompt: `Analyze project files. Status is ${context.get("status")}`
-  });
-  
-  context.set("analysis.output", result.content);
-  return {
-    status: context.get("status"),
-    snapshot: context.snapshot()
-  };
-}
-```
-
-#### Distinction between global `context` and callback `ctx`
-
-*   **Global `context`** holds workflow state (read/write workflow state). Note that a default-exported workflow function receives no callback parameter.
-*   **Callback `ctx`** provides stage/round operational lifecycle helpers (such as `ctx.agent()`, `ctx.workflow()`, and logging/signals). The property `ctx.context` is completely unsupported.
-
-#### Concurrency Guidance
-
-Parallel tasks share the same run store. To avoid race conditions, you should initialize state before a fan-out (e.g. before calling `parallel()`), read state after a fan-in, or write to independent deterministic paths.
-
 ### Prompting Tips
-
 
 * Name the workflow you want.
 * Describe the input files, documents, or targets.
@@ -360,14 +313,6 @@ providers:
       - json
     defaultModel: gemini-3-flash-preview
 
-providerAliases:
-  fast-review:
-    provider: gemini
-    model: gemini-3-flash-preview
-    timeoutMs: 300000
-    retry:
-      maxAttempts: 2
-
 security:
   passEnv: []
   redactEnv:
@@ -378,20 +323,15 @@ security:
     - '*_SECRET'
 ```
 
-Configuration precedence for provider-backed execution (highest precedence first):
+Configuration precedence:
 
-1. Explicit `agent()` values.
-2. The selected provider alias values.
-3. CLI run-level defaults (`--provider`, `--model`, `--timeout-ms`, retry flags).
-4. Concrete provider configuration.
-5. Global configuration.
-6. Built-in defaults.
+1. CLI safety ceilings and hard overrides.
+2. Explicit `agent()` options.
+3. Workflow defaults, if introduced later.
+4. Config file.
+5. Built-in defaults.
 
-`providerAliases` contains reusable execution presets. An alias may define only `provider`, `extends`, `model`, `thinkingEffort`, `timeoutMs`, and `retry`; it cannot contain permissions, environment, command, arguments, or other provider process settings. Aliases have one parent at most, are resolved during configuration loading, and share the namespace with concrete providers.
-
-The existing `agent({ provider: "..." })` field accepts either a concrete provider or an alias. `--provider` sets the default provider reference for calls that omit `provider`; it does not override an explicit provider inside an `agent()` call. Explicit `null` for `model` and `false` for `retry` disable inherited values.
-
-Alias selection is recorded in `providerSelection` metadata and included in resume/cache fingerprints. Changing an effective alias or inherited parent setting invalidates the affected cache prefix. Provider adapters receive only the resolved concrete provider and remain alias-unaware.
+`--provider` sets the default provider. It does not override an explicit provider inside an `agent()` call.
 
 `maxAgentCalls` limits how many live provider agent calls a run may start. Resume cache hits do not count as new live calls. The CLI flag `--max-agent-calls` overrides the config value for that run.
 
@@ -410,76 +350,6 @@ Alias selection is recorded in `providerSelection` metadata and included in resu
   - Workflows that omit the `permissions` field default to `{ mode: "default" }` (which does not pass any write-enabling flags to the provider).
 
 Be careful before sharing `.openflow/runs/<runId>` artifacts, because they may contain prompts, source snippets, stdout, stderr, and model outputs.
-
-## Run Profiles
-
-Profiles allow bundling reusable execution parameters (arguments, workflow context, and runner options) under a single named configuration.
-
-### Example Profile Catalog
-
-Profiles can be configured inline in the project's config file (e.g., `.open-dynamic-workflow/config.yaml`) or loaded from an external file:
-
-```yaml
-profiles:
-  base:
-    args:
-      iterations: 3
-    context:
-      mode: "normal"
-      quality: { level: "standard" }
-    run:
-      provider: "mock"
-      concurrency: 2
-
-  fast:
-    extends: base
-    args:
-      iterations: 1
-    context:
-      mode: "fast"
-```
-
-To run with a profile:
-```bash
-odw run workflows/my-workflow.js --profile fast
-```
-Or to load profiles from an external catalog:
-```bash
-odw run workflows/my-workflow.js --profiles custom-profiles.yaml --profile fast
-```
-
-### Precedence
-
-Execution settings are applied in the following ascending order of precedence (highest overrides lowest):
-1. **Built-in defaults**
-2. **Active project configuration** (e.g., `config.yaml`)
-3. **Selected resolved profile** (from config catalog or external profiles file)
-4. **Explicit CLI run flags** (e.g., `--concurrency`, `--timeout-ms`)
-5. **Explicit `--arg` values** (e.g., `--arg key=value`)
-
-### Inheritance & Overlay
-
-Profiles can inherit properties from other profiles using the `extends` field (accepts a profile name or an array of profile names).
-If an external profiles file is loaded (using `--profiles <path>`), its profiles overlay same-named profiles from the project configuration *before* any inheritance hierarchy is resolved. For the complete schema, see the [configuration reference](file:///root/projects/odw/skills/open-dynamic-workflow/references/configuration.md).
-
-### Deterministic Resume & Artifact Sensitivity
-
-When a run is resumed, it reuses the exact profile settings resolved at start:
-- **`odw resume <runId>`** and **`odw run <workflow> --resume <runId>`** (without profile flags) reuse the recorded profile snapshot.
-- Specifying explicit `--profile` or `--profiles` on `odw run --resume` will discard the recorded profile and resolve fresh inputs.
-
-> [!IMPORTANT]
-> The full resolved profile snapshot is written to `run-input.json` in the run artifacts directory. Because this file contains actual input arguments and context values, it is sensitive and should be handled securely. Reporting tools (pretty, JSON, and JSONL) only display compact metadata (name, source, path, and stable hash) to avoid exposing credentials or sensitive values.
-
-For example, the pretty summary reporter outputs profile selection compactly:
-```text
-Summary
-  status:    succeeded
-  workflows: 1 succeeded
-  agents:    1 succeeded
-  duration:  1.2s
-  profile:   fast (config)
-```
 
 ## License
 
