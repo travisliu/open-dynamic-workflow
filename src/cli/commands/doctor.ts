@@ -108,14 +108,29 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
     discoveryCliOverrides,
   });
 
-  const { profileRunAsCli, selection } = await resolveRunProfile({
-    cwd: baseConfig.cwd,
-    configPath: baseConfig.configPath,
-    baseConfig,
-    rawOptions: rawOptions.profile === undefined ? {} : { profile: rawOptions.profile },
-    explicitCliOverrides,
-    explicitArgs: {},
-  });
+  let profileResolution: Awaited<ReturnType<typeof resolveRunProfile>>;
+  try {
+    profileResolution = await resolveRunProfile({
+      cwd: baseConfig.cwd,
+      configPath: baseConfig.configPath,
+      baseConfig,
+      rawOptions: rawOptions.profile === undefined ? {} : { profile: rawOptions.profile },
+      explicitCliOverrides,
+      explicitArgs: {},
+    });
+  } catch (error) {
+    if (
+      rawOptions.profile !== undefined &&
+      error instanceof OpenDynamicWorkflowError &&
+      error.code === ErrorCode.PROFILE_NOT_FOUND &&
+      error.message.startsWith(`Profile '${rawOptions.profile}' not found.`)
+    ) {
+      throw new OpenDynamicWorkflowError(ErrorCode.CLI_USAGE_ERROR, error.message);
+    }
+    throw error;
+  }
+
+  const { profileRunAsCli, selection } = profileResolution;
   const config = await loadConfig({
     cwd,
     configPath: rawOptions.config,

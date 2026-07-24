@@ -95,7 +95,7 @@ export function renderCliError(error: unknown, context: ErrorOutputContext): voi
   const stderr = context.streams?.stderr ?? process.stderr;
   const { command, report } = parseReportModeAndCommand(context.argv);
 
-  if (command === "run" && (report === "json" || report === "jsonl")) {
+  if ((command === "run" || command === "resume") && (report === "json" || report === "jsonl")) {
     writeMachineReadableCliError(error, context);
     return;
   }
