@@ -2,6 +2,7 @@ import type { OpenDynamicWorkflowConfig } from "./types.js";
 
 export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
   defaultProvider: "mock",
+  outDir: ".open-dynamic-workflow/runs",
   concurrency: 4,
   timeoutMs: 900_000,
   providers: {
@@ -138,6 +139,7 @@ export const DEFAULT_CONFIG: OpenDynamicWorkflowConfig = {
     mode: "pretty",
     verbose: false
   },
+  profiles: {},
   providerAliasMaxDepth: 8,
   providerAliases: {}
 };

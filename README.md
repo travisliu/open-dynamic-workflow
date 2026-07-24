@@ -21,6 +21,10 @@ Natural-language prompts are flexible, but they are not always reliable for repe
 
 A workflow script defines which agents run, how they are coordinated, what outputs are expected, and how failures are handled. This gives teams more stable execution than ad-hoc prompting, while making workflows easier to review, debug, reuse, and maintain.
 
+### Workflow state
+
+Each workflow run receives exactly one JSON-safe global `context` store. Distinction between global `context` and callback `ctx`: use `context` for run-scoped workflow state, while callback `ctx` provides operational helpers such as `ctx.agent()` and `ctx.workflow()`.
+
 ## Start with an AI-generated workflow
 
 To get started quickly, you can describe the workflow you want in natural language to an AI coding assistant to generate the workflow script. Once generated, use the CLI to validate and run it:

@@ -119,7 +119,7 @@ describe("Profile Schema Validation", () => {
 
     it("rejects unknown profile keys", () => {
       expect(() => validateWorkflowProfile({ security: {} }, "profiles.p")).toThrow(
-        "profiles.p.security is not allowed. Profiles may configure only description, extends, args, context, and run."
+        "profiles.p.security is not allowed. Profiles may configure only description, extends, args, context, run, and outDir."
       );
       expect(() => validateWorkflowProfile({ unknownKey: true }, "profiles.p")).toThrow(
         "profiles.p.unknownKey is not allowed"

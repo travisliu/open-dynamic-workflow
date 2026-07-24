@@ -63,7 +63,24 @@ export interface OrchestrationConfig {
 
 export type ProfileName = string;
 
-export interface WorkflowProfile {
+export interface RunProfileConfig {
+  outDir?: string | undefined;
+}
+
+export type OutDirResolutionSource =
+  | "cli"
+  | "profile"
+  | "config"
+  | "built-in-default";
+
+export interface ResolvedOutDir {
+  path: string;
+  source: OutDirResolutionSource;
+  rawValue: string;
+  selectedProfile?: string | undefined;
+}
+
+export interface WorkflowProfile extends RunProfileConfig {
   description?: string | undefined;
   extends?: ProfileName | ProfileName[] | undefined;
   args?: JsonObject | undefined;
@@ -107,6 +124,7 @@ export interface ProfileCatalogEntry {
 
 export interface ResolvedWorkflowProfile {
   description?: string | undefined;
+  outDir?: string | undefined;
   args: JsonObject;
   context: JsonObject;
   run: WorkflowProfileRunOptions;
@@ -226,6 +244,7 @@ export interface OpenDynamicWorkflowConfig {
     verbose: boolean;
   };
   failFast?: boolean;
+  outDir?: string | undefined;
   retry?: false | RetryConfigInput | ResolvedRetryPolicy | undefined;
   profiles?: WorkflowProfileCatalog | undefined;
   providerAliasMaxDepth?: number | undefined;
@@ -300,6 +319,7 @@ export interface ResolvedOpenDynamicWorkflowConfig extends Omit<OpenDynamicWorkf
   configPath?: string;
   cwd: string;
   outDir: string;
+  _resolution?: { outDir: ResolvedOutDir } | undefined;
 
   sharedAgents: ResolvedSharedAgentsConfig;
   tools: ResolvedToolsConfig;

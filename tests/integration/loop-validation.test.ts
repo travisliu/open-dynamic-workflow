@@ -43,9 +43,25 @@ async function runCli(args: string[]) {
 }
 
 describe("Loop Validation Integration", () => {
+  beforeEach(async () => {
+    await Promise.all([
+      fs.mkdir(path.join(TEMP_DIR, "workflows"), { recursive: true }),
+      fs.mkdir(path.join(TEMP_DIR, ".open-dynamic-workflow/agents"), { recursive: true }),
+      fs.mkdir(path.join(TEMP_DIR, ".open-dynamic-workflow/tools"), { recursive: true })
+    ]);
+    await fs.copyFile(
+      path.resolve("tests/fixtures/workflows/invalid-loop-max-rounds.workflow.js"),
+      path.join(TEMP_DIR, "workflows/invalid-loop-max-rounds.workflow.js")
+    );
+  });
+
+  afterEach(async () => {
+    await fs.rm(TEMP_DIR, { recursive: true, force: true });
+  });
+
   it("fails validation if maxRounds exceeds default ceiling", async () => {
-    const workflowPath = path.resolve("tests/fixtures/workflows/invalid-loop-max-rounds.workflow.js");
-    const result = await runCli(["validate", workflowPath]);
+    const workflowPath = path.join(TEMP_DIR, "workflows/invalid-loop-max-rounds.workflow.js");
+    const result = await runCli(["validate", workflowPath, "--cwd", TEMP_DIR]);
 
     expect(result.error).toBeDefined();
     expect(result.stderr).toContain("maxRounds");

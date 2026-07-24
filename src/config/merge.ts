@@ -20,11 +20,44 @@ export interface ConfigCliOverrides {
   thinkingEffort?: ThinkingEffort | undefined;
 }
 
+export interface MergedConfigResult {
+  config: OpenDynamicWorkflowConfig;
+  explicit: { outDir: boolean };
+}
+
+function isOrdinaryDescriptorSafeProfileCatalog(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) {
+    return false;
+  }
+  if (Object.getOwnPropertySymbols(value).length > 0) {
+    return false;
+  }
+  for (const key of Object.getOwnPropertyNames(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || descriptor.get !== undefined || descriptor.set !== undefined) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function mergeConfig(
   defaults: OpenDynamicWorkflowConfig,
   fileConfig: Partial<OpenDynamicWorkflowConfig>,
   cli: ConfigCliOverrides
 ): OpenDynamicWorkflowConfig {
+  return mergeConfigWithMetadata(defaults, fileConfig, cli).config;
+}
+
+export function mergeConfigWithMetadata(
+  defaults: OpenDynamicWorkflowConfig,
+  fileConfig: Partial<OpenDynamicWorkflowConfig>,
+  cli: ConfigCliOverrides
+): MergedConfigResult {
   const mergedProviders = { ...defaults.providers };
   if (fileConfig.providers) {
     for (const [key, value] of Object.entries(fileConfig.providers)) {
@@ -36,6 +69,17 @@ export function mergeConfig(
       }
     }
   }
+
+  const fileProfilesDescriptor = Object.getOwnPropertyDescriptor(fileConfig, "profiles");
+  const fileProfiles = fileProfilesDescriptor && "value" in fileProfilesDescriptor
+    ? fileProfilesDescriptor.value
+    : undefined;
+  const hasFileProfiles = fileProfilesDescriptor !== undefined;
+  const mergedProfiles = !hasFileProfiles
+    ? defaults.profiles
+    : isOrdinaryDescriptorSafeProfileCatalog(fileProfiles)
+      ? { ...(defaults.profiles ?? {}), ...fileProfiles }
+      : fileProfiles;
 
   const merged: OpenDynamicWorkflowConfig = {
     ...defaults,
@@ -66,7 +110,8 @@ export function mergeConfig(
         ...(typeof defaults.workflow.discovery === "object" && defaults.workflow.discovery !== null ? defaults.workflow.discovery : {}),
         ...(typeof fileConfig.workflow?.discovery === "object" && fileConfig.workflow?.discovery !== null ? fileConfig.workflow?.discovery : {})
       }
-    }
+    },
+    profiles: mergedProfiles as OpenDynamicWorkflowConfig["profiles"]
   };
 
   if (cli.provider) merged.defaultProvider = cli.provider;
@@ -92,5 +137,10 @@ export function mergeConfig(
     cliOverrides
   });
 
-  return merged;
+  return {
+    config: merged,
+    explicit: {
+      outDir: Object.prototype.hasOwnProperty.call(fileConfig, "outDir")
+    }
+  };
 }

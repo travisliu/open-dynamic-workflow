@@ -308,6 +308,10 @@ export function mergeProfiles(base: ResolvedWorkflowProfile, child: WorkflowProf
   if (description !== undefined) {
     result.description = description;
   }
+  const outDir = child.outDir !== undefined ? child.outDir : base.outDir;
+  if (outDir !== undefined) {
+    result.outDir = outDir;
+  }
 
   return result;
 }
@@ -338,6 +342,9 @@ export function canonicalProfileHash(profile: ResolvedWorkflowProfile): string {
   };
   if (profile.description !== undefined) {
     cleanProfile.description = profile.description;
+  }
+  if (profile.outDir !== undefined) {
+    cleanProfile.outDir = profile.outDir;
   }
 
   const sorted = sortRecursively(cleanProfile);

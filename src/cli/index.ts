@@ -168,6 +168,7 @@ Examples:
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
     .option("--max-agent-calls <number>", "Maximum live provider agent calls for the continuation run")
     .option("--no-cache", "Disable resume/cache lookup and cache index updates")
+    .option("--profile <name>", "Select a named run profile from current configuration")
     .addHelpText(
       "after",
       `
@@ -175,6 +176,7 @@ Examples:
   ${displayName} resume last-run
   ${displayName} resume .open-dynamic-workflow/runs/2025-01-01T00-00-00Z
   ${displayName} resume last-run --report pretty
+  ${displayName} resume last-run --profile ci
 `
     )
     .action(async (runIdOrPath, options) => {
@@ -214,12 +216,14 @@ Examples:
     .option("-c, --config <path>", "Path to config file")
     .option("--cwd <path>", "Custom working directory")
     .option("-v, --verbose", "Enable verbose logging")
+    .option("--profile <name>", "Select a named run profile from current configuration")
     .addHelpText(
       "after",
       `
 Examples:
   ${displayName} doctor
   ${displayName} doctor --verbose
+  ${displayName} doctor --profile ci
 `
     )
     .action(async (options) => {
@@ -289,4 +293,3 @@ export async function runCli(args: string[]): Promise<void> {
     process.exitCode = exitCodeForError(error);
   }
 }
-

@@ -152,6 +152,7 @@ export interface OpenDynamicWorkflowConfig {
   maxAgentCalls?: number | undefined;
   defaultModel?: string | null;
   failFast?: boolean;
+  outDir?: string | undefined;
   retry?: false | RetryConfigInput | ResolvedRetryPolicy | undefined;
   providers: Record<string, ProviderConfig>;
   security: SecurityConfig;
@@ -196,6 +197,7 @@ export interface ExecutionDefaultLayers {
 export interface ResolvedConfig extends Omit<OpenDynamicWorkflowConfig, "providerAliases"> {
   cwd: string;
   outDir: string;
+  _resolution?: { outDir: ResolvedOutDir } | undefined;
   configPath?: string;
   cliArgs?: Record<string, string | boolean | number> | undefined;
   retry?: ResolvedRetryPolicy | undefined;
@@ -232,7 +234,24 @@ export interface CliRunOptions {
 
 export type ProfileName = string;
 
-export interface WorkflowProfile {
+export interface RunProfileConfig {
+  outDir?: string | undefined;
+}
+
+export type OutDirResolutionSource =
+  | "cli"
+  | "profile"
+  | "config"
+  | "built-in-default";
+
+export interface ResolvedOutDir {
+  path: string;
+  source: OutDirResolutionSource;
+  rawValue: string;
+  selectedProfile?: string | undefined;
+}
+
+export interface WorkflowProfile extends RunProfileConfig {
   description?: string | undefined;
   extends?: ProfileName | ProfileName[] | undefined;
   args?: JsonObject | undefined;
@@ -296,6 +315,7 @@ export interface ProfileCatalogEntry {
 
 export interface ResolvedWorkflowProfile {
   description?: string | undefined;
+  outDir?: string | undefined;
   args: JsonObject;
   context: JsonObject;
   run: WorkflowProfileRunOptions;

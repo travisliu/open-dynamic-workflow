@@ -127,6 +127,14 @@ function validateResolvedRetryConfig(retry: unknown): void {
   validateRetryPolicyFields(retryObj.policy, "retry.policy");
 }
 
+export function validateOutDirValue(value: unknown, fieldPath: string): asserts value is string {
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CONFIG_VALIDATION_ERROR,
+      `Config value '${fieldPath}' must be a non-empty string.`
+    );
+  }
+}
 
 export function validateConfig(config: OpenDynamicWorkflowConfig): void {
   if (typeof config !== "object" || config === null) {
@@ -134,6 +142,11 @@ export function validateConfig(config: OpenDynamicWorkflowConfig): void {
       ErrorCode.CONFIG_VALIDATION_ERROR,
       "Configuration must be an object."
     );
+  }
+
+  if (Object.prototype.hasOwnProperty.call(config, "outDir")) {
+    const outDirDescriptor = Object.getOwnPropertyDescriptor(config, "outDir");
+    validateOutDirValue(outDirDescriptor ? outDirDescriptor.value : undefined, "outDir");
   }
 
   // concurrency validation
@@ -1083,13 +1096,13 @@ function validateWorkflowProfileRunOptions(run: unknown, path: string): void {
 export function validateWorkflowProfile(value: unknown, path: string): asserts value is WorkflowProfile {
   validateObjectOwnPropertiesOnly(value, path, `Profile at '${path}' must be an object.`);
 
-  const allowedKeys = ["description", "extends", "args", "context", "run"];
+  const allowedKeys = ["description", "extends", "args", "context", "run", "outDir"];
   const ownKeys = Object.getOwnPropertyNames(value);
   for (const key of ownKeys) {
     if (!allowedKeys.includes(key)) {
       throw new OpenDynamicWorkflowError(
         ErrorCode.PROFILE_VALIDATION_ERROR,
-        `${path}.${key} is not allowed. Profiles may configure only description, extends, args, context, and run.`
+        `${path}.${key} is not allowed. Profiles may configure only description, extends, args, context, run, and outDir.`
       );
     }
   }
@@ -1105,6 +1118,11 @@ export function validateWorkflowProfile(value: unknown, path: string): asserts v
       ErrorCode.PROFILE_VALIDATION_ERROR,
       `Profile '${path}.description' must be a string.`
     );
+  }
+
+  const outDir = getSafeVal(value, "outDir");
+  if (Object.prototype.hasOwnProperty.call(value, "outDir")) {
+    validateOutDirValue(outDir, `${path}.outDir`);
   }
 
   const ext = getSafeVal(value, "extends");
@@ -1172,13 +1190,13 @@ export function validateResolvedWorkflowProfile(value: unknown, path: string): a
 
   validateObjectOwnPropertiesOnly(value, path, `Resolved profile at '${path}' must be an object.`);
 
-  const allowedKeys = ["description", "args", "context", "run"];
+  const allowedKeys = ["description", "args", "context", "run", "outDir"];
   const ownKeys = Object.getOwnPropertyNames(value);
   for (const key of ownKeys) {
     if (!allowedKeys.includes(key)) {
       throw new OpenDynamicWorkflowError(
         ErrorCode.PROFILE_VALIDATION_ERROR,
-        `${path}.${key} is not allowed in resolved profile. Only description, args, context, and run are allowed.`
+        `${path}.${key} is not allowed in resolved profile. Only description, args, context, run, and outDir are allowed.`
       );
     }
   }
@@ -1194,6 +1212,11 @@ export function validateResolvedWorkflowProfile(value: unknown, path: string): a
       ErrorCode.PROFILE_VALIDATION_ERROR,
       `Resolved profile '${path}.description' must be a string.`
     );
+  }
+
+  const outDir = getSafeVal(value, "outDir");
+  if (Object.prototype.hasOwnProperty.call(value, "outDir")) {
+    validateOutDirValue(outDir, `${path}.outDir`);
   }
 
   const args = getSafeVal(value, "args");
