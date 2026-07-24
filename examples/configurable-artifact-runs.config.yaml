@@ -1,0 +1,27 @@
+# A portable project configuration: relative roots resolve from the active --cwd.
+defaultProvider: mock
+outDir: ".open-dynamic-workflow/runs"
+
+providers:
+  mock:
+    command: mock
+    args: []
+    defaultModel: null
+
+workflow:
+  include:
+    - "workflows/**/*.workflow.ts"
+  exclude: []
+
+profiles:
+  ci:
+    # A profile root wins over this file's top-level outDir when selected.
+    outDir: ".artifacts/ci-runs"
+  ci-retry:
+    # Inherits ci's runs root. A child can set outDir to choose another one.
+    extends: ci
+
+# Absolute roots outside the project are allowed when explicitly configured, for
+# example: outDir: "/var/tmp/odw-runs". Path text is literal: ~, $VAR, %VAR%,
+# and template-looking text are not expanded. Normal runs and doctor create
+# roots as needed; ordinary init, validate, list, and dry-run do not.

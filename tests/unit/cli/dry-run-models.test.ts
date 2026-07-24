@@ -1,7 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { printDryRunSummary } from "../../../src/cli/print.js";
 
 describe("Dry Run Models Output", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("prints global default model and provider model details for direct provider", () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -41,7 +45,6 @@ describe("Dry Run Models Output", () => {
     expect(output).toContain("mock: default model = mock-model, [model flag: --custom]");
     expect(output).toContain("gemini: default model = none, [no model selection]");
 
-    logSpy.mockRestore();
   });
 
   it("prints alias default provider details and chain when providerAlias is present", () => {
@@ -85,6 +88,63 @@ describe("Dry Run Models Output", () => {
     expect(output).not.toContain("args:");
     expect(output).not.toContain("credentials");
 
-    logSpy.mockRestore();
+  });
+
+  it("prints verbose output-root provenance and selected profile independently", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    printDryRunSummary({
+      workflowFile: "workflow.ts", workflowName: "workflow", description: "test", phases: [], provider: "mock",
+      concurrency: 1, timeoutMs: 1000, reportMode: "pretty", outDir: "/tmp/profile-runs",
+      outDirSource: "profile", selectedProfile: "ci", verbose: true
+    });
+
+    const output = logSpy.mock.calls.map((call) => call[0] || "").join("\n");
+    expect(output).toContain("Artifacts root: /tmp/profile-runs");
+    expect(output).toContain("Output-root source: profile");
+    expect(output).toContain("Selected profile: ci");
+  });
+
+  it("prints a selected profile when its root falls through to config", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    printDryRunSummary({
+      workflowFile: "workflow.ts", workflowName: "workflow", description: "test", phases: [], provider: "mock",
+      concurrency: 1, timeoutMs: 1000, reportMode: "pretty", outDir: "/tmp/config-runs",
+      outDirSource: "config", selectedProfile: "fast", verbose: true
+    });
+
+    const output = logSpy.mock.calls.map((call) => call[0] || "").join("\n");
+    expect(output).toContain("Output-root source: config");
+    expect(output).toContain("Selected profile: fast");
+  });
+
+  it("prints a CLI output root independently from the selected profile", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    printDryRunSummary({
+      workflowFile: "workflow.ts", workflowName: "workflow", description: "test", phases: [], provider: "mock",
+      concurrency: 1, timeoutMs: 1000, reportMode: "pretty", outDir: "/tmp/cli-runs",
+      outDirSource: "cli", selectedProfile: "ci", verbose: true
+    });
+
+    const output = logSpy.mock.calls.map((call) => call[0] || "").join("\n");
+    expect(output).toContain("Output-root source: cli");
+    expect(output).toContain("Selected profile: ci");
+  });
+
+  it("keeps provenance and selected profile out of non-verbose output", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    printDryRunSummary({
+      workflowFile: "workflow.ts", workflowName: "workflow", description: "test", phases: [], provider: "mock",
+      concurrency: 1, timeoutMs: 1000, reportMode: "pretty", outDir: "/tmp/runs",
+      outDirSource: "built-in-default", selectedProfile: "ci"
+    });
+
+    const output = logSpy.mock.calls.map((call) => call[0] || "").join("\n");
+    expect(output).toContain("Artifacts root: /tmp/runs");
+    expect(output).not.toContain("Output-root source:");
+    expect(output).not.toContain("Selected profile:");
   });
 });

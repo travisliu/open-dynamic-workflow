@@ -205,4 +205,88 @@ tools:
     expect(result.stdout).toContain("Pattern: workflows/**/*.js");
     expect(result.stdout).not.toContain("CONFIG_PATH_INCLUDE_MATCHED_NOTHING");
   });
+
+  it("checks and creates a missing relative configured runs root without leaving a probe", async () => {
+    const projectDir = path.join(TEMP_DIR, "relative-root");
+    const configPath = path.join(projectDir, "config.yaml");
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(configPath, "defaultProvider: mock\noutDir: artifacts/runs\n");
+
+    const result = await runCli(["doctor", "--config", configPath, "--cwd", projectDir]);
+    const root = path.join(projectDir, "artifacts/runs");
+
+    expect(result.error).toBeNull();
+    expect(result.stdout).toContain(`Artifact runs root available: ${root}`);
+    expect(await fs.readdir(root)).not.toContain(expect.stringMatching(/^\.odw-write-probe-/));
+  });
+
+  it("checks an absolute configured root without creating the legacy root", async () => {
+    const projectDir = path.join(TEMP_DIR, "absolute-root-project");
+    const root = path.join(TEMP_DIR, "absolute-root-outside");
+    const configPath = path.join(projectDir, "config.yaml");
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(configPath, `defaultProvider: mock\noutDir: ${root}\n`);
+
+    const result = await runCli(["doctor", "--config", configPath, "--cwd", projectDir]);
+
+    expect(result.error).toBeNull();
+    expect(await fs.stat(root)).toMatchObject({});
+    await expect(fs.stat(path.join(projectDir, ".open-dynamic-workflow/runs"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("reports inherited profile root provenance", async () => {
+    const projectDir = path.join(TEMP_DIR, "profile-root");
+    const configPath = path.join(projectDir, "config.yaml");
+    const root = path.join(projectDir, "inherited-runs");
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(configPath, `
+defaultProvider: mock
+profiles:
+  base:
+    outDir: inherited-runs
+  child:
+    extends: base
+`);
+
+    const result = await runCli(["doctor", "--config", configPath, "--cwd", projectDir, "--profile", "child", "--verbose"]);
+
+    expect(result.error).toBeNull();
+    expect(result.stdout).toContain(`Artifact runs root available: ${root}`);
+    expect(result.stdout).toContain("Output-root source: profile");
+    expect(result.stdout).toContain("Selected profile: child");
+  });
+
+  it("reports a configured root file conflict without modifying it or creating the legacy root", async () => {
+    const projectDir = path.join(TEMP_DIR, "root-file-conflict");
+    const configPath = path.join(projectDir, "config.yaml");
+    const rootFile = path.join(projectDir, "runs-file");
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(rootFile, "keep me");
+    await fs.writeFile(configPath, "defaultProvider: mock\noutDir: runs-file\n");
+
+    const result = await runCli(["doctor", "--config", configPath, "--cwd", projectDir]);
+
+    expect(result.error).toBeNull();
+    expect(result.stdout).toContain(`Artifact runs root unavailable: ${rootFile}`);
+    expect(result.stdout).toContain("directory is required");
+    expect(await fs.readFile(rootFile, "utf8")).toBe("keep me");
+    await expect(fs.stat(path.join(projectDir, ".open-dynamic-workflow/runs"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("does not create a candidate root for a missing profile or invalid config", async () => {
+    const projectDir = path.join(TEMP_DIR, "no-root-on-failure");
+    const configPath = path.join(projectDir, "config.yaml");
+    const candidate = path.join(projectDir, "candidate-runs");
+    await fs.mkdir(projectDir, { recursive: true });
+    await fs.writeFile(configPath, "defaultProvider: mock\noutDir: candidate-runs\n");
+
+    const missingProfile = await runCli(["doctor", "--config", configPath, "--cwd", projectDir, "--profile", "missing"]);
+    expect(missingProfile.error).toBeDefined();
+    await expect(fs.stat(candidate)).rejects.toMatchObject({ code: "ENOENT" });
+
+    await fs.writeFile(configPath, "defaultProvider: mock\noutDir: '   '\n");
+    const invalidConfig = await runCli(["doctor", "--config", configPath, "--cwd", projectDir]);
+    expect(invalidConfig.error).toBeDefined();
+    await expect(fs.stat(candidate)).rejects.toMatchObject({ code: "ENOENT" });
+  });
 });

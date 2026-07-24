@@ -58,8 +58,9 @@ open-dynamic-workflow init --force --provider codex
 * **Non-interactive mode**: Triggered by `--yes` or non-TTY stdin. Uses defaults or requested options.
 * **Mock fallback**: If a requested provider is not found in `PATH`, `init` offers a fallback to the `mock` provider.
 * **Safety**: Does **not** modify `package.json`. Existing files are skipped unless `--force` is used.
-* **Smoke test**: If `--run-smoke-test` is used, Open Dynamic Workflow performs a `validate` and `run --provider mock` on the generated example workflow (`workflows/example.workflow.ts`).
+* **Smoke test**: If `--run-smoke-test` is used, Open Dynamic Workflow performs a `validate` and real `run --provider mock` on the generated example workflow (`workflows/example.workflow.ts`), so it can create run artifacts.
 * **Path configuration**:
+  - Generated `config.yaml` explicitly includes `outDir: ".open-dynamic-workflow/runs"`. Ordinary `init` does not create or readiness-probe that root.
   - The generated `config.yaml` uses the new flat `include` / `exclude` arrays rather than legacy `dir` or `workflow.discovery` fields.
   - Suffix-specific patterns (e.g. `*.workflow.js`, `*.agent.ts`) are generated explicitly instead of using brace expansion.
   - `--workflows-dir`, `--agents-dir`, and `--tools-dir` options will customize both the created physical directories and their corresponding generated include patterns.
@@ -96,9 +97,10 @@ Use `open-dynamic-workflow list workflows` to see runnable names and their resol
 | `--report <pretty\|json\|jsonl>` | Output formatting mode for stdout. |
 | `--fail-fast` | Abort immediately on the first agent/task failure. |
 | `--resume <run-id>` | Resume a previous run using cache replay. |
+| `--dry-run` | Validate, resolve, and print a summary without providers or output-root writes. |
 | `--config <path>` | Path to the YAML configuration file. |
 | `--cwd <path>` | Current working directory to resolve workflows and configurations. |
-| `--out <path>` | Output directory for artifacts and reports. |
+| `--out <path>` | Artifact runs root (the parent of each `<runId>` directory). |
 | `--thinking-effort <effort>` | Override the thinking effort level for all eligible agent calls. Must be one of: `off`, `minimal`, `low`, `medium`, `high`, `xhigh`. This is an execution preference and does not guarantee identical reasoning depth across different providers. Per-agent `thinkingEffort` values defined in the workflow script override this CLI value. If this resolves to a value unsupported by the selected provider, execution will fail. |
 | `--retry-max-attempts <number>` | Override the global retry `maxAttempts` value. |
 | `--retry-delay-ms <ms>` | Override the global retry initial delay in milliseconds. |
@@ -132,6 +134,18 @@ open-dynamic-workflow run review --no-retry
 open-dynamic-workflow run review --strict
 ```
 
+`--out` is the artifact **runs root**, not a single run directory. Each normal or continuation run writes a fresh `<runsRoot>/<runId>` directory. Its selection order is: current `--out`, selected profile's direct or inherited `outDir`, explicit top-level config `outDir`, then the built-in `.open-dynamic-workflow/runs` root. Relative roots resolve from active `--cwd`; absolute roots may be outside the project. `~`, `$VAR`, `%VAR%`, and template-looking text are literal paths, not expansions.
+
+```bash
+open-dynamic-workflow run review --profile ci
+open-dynamic-workflow run review --out .artifacts/manual-runs
+open-dynamic-workflow run review --dry-run --verbose --profile ci
+```
+
+Verbose output identifies the `Artifacts root`, `Output-root source`, and `Selected profile`. Selection and source are separate: a selected profile without its own or inherited `outDir` falls through to the global/default root.
+
+`--dry-run` resolves configuration, profiles, and discovery without invoking providers. It never creates or probes the runs root and does not construct a current artifact store. When `--resume` is supplied it may perform a read-only previous-run lookup.
+
 Retry flags adjust the global retry policy before workflow code runs. Per-agent `retry` settings still take precedence, followed by the selected alias retry policy. `--no-retry` cannot be combined with the other retry flags. Alias references are validated during configuration loading; unknown aliases and invalid alias inheritance fail with the normal workflow-validation exit code. Alias resolution metadata is included in JSON/JSONL output and resume artifacts.
 
 ---
@@ -146,7 +160,8 @@ open-dynamic-workflow resume <runId-or-path> [options]
 
 ### Common options
 
-* `--out <path>`: Output directory for artifacts (optional).
+* `--out <path>`: Artifact runs root (optional).
+* `--profile <name>`: Select a profile from the current configuration.
 * `--report <mode>`: Output formatting mode (pretty, json, jsonl).
 * `--max-agent-calls <num>`: Max agent calls limit override.
 
@@ -162,10 +177,11 @@ Resume/cache is intentionally conservative. Open Dynamic Workflow replays the wo
 
 `open-dynamic-workflow resume` reuses the exact `workflowFile` recorded in the original run's `run-input.json`, even if the original run was started by name. This ensures deterministic replay even if name resolution would now point to a different file.
 
-#### Profile Resume & Precedence Rules
-Recorded profiles are reused by default to ensure deterministic replay:
-* **`open-dynamic-workflow resume <runId>`**: Reuses the recorded profile snapshot from the initial execution's `run-input.json`. It accepts no profile flags and does not re-read the configuration catalog or the stored external files.
-* **`open-dynamic-workflow run <workflow> --resume <runId>`**: Reuses the recorded profile settings by default. However, passing explicit `--profile` or `--profiles` flags will override and discard the recorded settings, resolving fresh profile definitions from config or the current external catalog path instead.
+#### Profile, lookup, and destination rules
+
+`open-dynamic-workflow run <workflow> --resume` uses only the current invocation's profile and root configuration. Standalone `resume` lets an explicit current `--profile` win; otherwise, after it finds the previous run, it may reuse a recorded **profile name** by resolving that name in the current configuration catalog. Standalone resume does not support external `--profiles`. Historical roots and resolved profile snapshots are audit-only.
+
+Before a standalone resume can read the previous `run-input.json`, a bare target is looked up with current explicit `--out`/`--profile` when supplied, otherwise with the current global/default root. A bare ID checks at most two direct candidates: that effective root, then legacy `.open-dynamic-workflow/runs` when different. It does not search profile roots or history. Explicit relative and absolute paths are checked directly and never fall back. Every continuation writes a fresh directory below the current effective runs root, never into the prior run.
 
 Use stable `id` values for loops, such as `id: \`round-${i}\``. Using `Date.now()`, `Math.random()`, and argument-free `new Date()` will trigger validation warnings (e.g., `Avoid Date.now(): it prevents deterministic resume/cache behavior. Use tool() instead.`) because they prevent deterministic replay. If you need non-deterministic values like timestamps or random numbers, wrap them in a custom `tool()` call so they are cached on the first run and replayed deterministically on subsequent runs.
 
@@ -187,6 +203,8 @@ open-dynamic-workflow validate <workflow-name-or-file> [options]
 | `--cwd <path>` | Custom working directory. |
 | `--verbose` | Enable verbose logging. |
 | `--strict` | Fail before loading when strict discovery or path diagnostics are present. By default, `validate` is lenient for path diagnostics. |
+| `--profile <name>` | Select a profile from config or `--profiles`. |
+| `--profiles <path>` | Load an external YAML profile catalog. |
 
 ### Examples
 
@@ -213,23 +231,28 @@ open-dynamic-workflow validate workflows/review.ts --strict
 * Tool definitions configured via `tools.include` / `exclude` (or legacy `tools.dir` fallback) are loaded and validated.
 * Verifies that `tool({ definition })` calls use string literal IDs that exist in the tool registry.
 
+Validation checks the configuration and profile `outDir` strings, but does not check their existence/writeability and does not create or probe a runs root.
+
 ---
 
 ## Check environment readiness
 
 ```bash
-open-dynamic-workflow doctor
+open-dynamic-workflow doctor [--profile <name>]
 ```
 
 ### Checks include
 
 * config file can be loaded.
+* The resolved global or selected-profile artifact runs root is checked. Doctor creates a missing root, rejects a file conflict, verifies access with an exclusive temporary probe, removes that probe, and reports the absolute path and reason.
 * provider CLIs are present.
 * `open-dynamic-workflow doctor` reports all built-in provider adapters.
 * Missing optional provider CLIs (like `copilot`, `opencode`, `agy`, or `pi`) are shown as unavailable but do not cause the doctor command to fail unless they are the configured `defaultProvider`.
 * Note: For `copilot`, the doctor command checks for the standalone `copilot` executable but does not perform authentication or login checks.
 * provider commands can be executed.
 * `secret-like environment values` are not printed.
+
+Doctor supports `--profile` but not `--out` or `--profiles`; it checks the root selected by current configuration.
 
 ---
 
@@ -281,6 +304,8 @@ If directory flags are supplied via the CLI (e.g., `--dir`, `--workflows-dir`, `
 
 The `list` command is lenient by default. It will report configuration warnings (such as legacy key usages) and discoverable resource errors but will exit with code `0` unless strict mode is enabled.
 In strict mode (using the `--strict` flag), any fatal path configurations (like symlink escapes, directory-only includes, or out-of-workspace patterns) or resource errors will cause the command to exit with a non-zero exit code (3).
+
+List validates configured root strings while loading configuration, but does not create, probe, or require existence/writeability of the artifact runs root.
 
 ---
 

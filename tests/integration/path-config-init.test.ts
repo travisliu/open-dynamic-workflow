@@ -72,6 +72,8 @@ describe("Init Command Path Config Integration", () => {
     // Read and parse YAML configuration
     const configContent = await fs.readFile(configPath, "utf8");
     const parsedConfig = parseYaml(configContent) as any;
+    expect(parsedConfig.outDir).toBe(".open-dynamic-workflow/runs");
+    await expect(fs.stat(path.join(tempDir, ".open-dynamic-workflow/runs"))).rejects.toThrow();
 
     // Assert flat structure without legacy keys
     expect(parsedConfig.sharedAgents).toBeDefined();

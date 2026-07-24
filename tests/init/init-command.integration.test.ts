@@ -5,6 +5,7 @@ import * as os from "node:os";
 import { initCommand } from "../../src/cli/commands/init.js";
 import { PassThrough } from "node:stream";
 import ts from "typescript";
+import { parse as parseYaml } from "yaml";
 
 describe("open-dynamic-workflow init integration", () => {
   let tmpDir: string;
@@ -77,6 +78,8 @@ describe("open-dynamic-workflow init integration", () => {
     expect(fs.existsSync(workflowPath)).toBe(true);
     expect(fs.existsSync(globalsPath)).toBe(true);
     expect(fs.existsSync(toolTemplatePath)).toBe(true);
+    expect(parseYaml(fs.readFileSync(configPath, "utf8")).outDir).toBe(".open-dynamic-workflow/runs");
+    expect(fs.existsSync(path.join(tmpDir, ".open-dynamic-workflow/runs"))).toBe(false);
 
     // Verify globals.d.ts content
     const globalsContent = fs.readFileSync(globalsPath, "utf8");

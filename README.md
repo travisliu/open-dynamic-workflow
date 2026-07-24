@@ -132,7 +132,7 @@ Expected result:
 * A workflow that calls `agent()` once.
 * A clear `review` phase.
 * A structured findings schema.
-* Commands such as `openflow validate workflows/single-review.ts` and `openflow run workflows/single-review.ts`.
+* Commands such as `open-dynamic-workflow validate workflows/single-review.ts` and `open-dynamic-workflow run workflows/single-review.ts`.
 
 ### Demo 2: Parallel Review Workflow
 
@@ -246,15 +246,22 @@ This directory contains:
 - Reference documentation under [references/](skills/open-dynamic-workflow/references/):
   - [api-document.md](skills/open-dynamic-workflow/references/api-document.md): Complete guide on workflow syntax, DSL primitives (`agent`, `parallel`, `pipeline`), structured outputs, and exit codes.
   - [cli-commands.md](skills/open-dynamic-workflow/references/cli-commands.md): Detailed usage details for the `run`, `validate`, and `doctor` commands.
-  - [configuration.md](skills/open-dynamic-workflow/references/configuration.md): Schema structure, precedence rules, and model customization guidelines for `.openflow/config.yaml`.
+  - [configuration.md](skills/open-dynamic-workflow/references/configuration.md): Schema structure, precedence rules, and model customization guidelines for `.open-dynamic-workflow/config.yaml`.
 - Reusable templates under `assets/` for building new workflows.
 
 ## Artifacts
 
-Every run creates a local artifact directory.
+Every normal or continuation run creates one local artifact directory under the configured artifact runs root. The default runs root is `.open-dynamic-workflow/runs`; it is configurable.
 
 ```text
-.openflow/runs/<runId>/
+outDir / runs root = absolute normalized parent directory for runs
+run directory       = <outDir>/<runId>
+```
+
+The run ID is appended exactly once.
+
+```text
+.open-dynamic-workflow/runs/<runId>/
   manifest.json
   workflow.input.ts
   config.resolved.json
@@ -284,6 +291,48 @@ Every run creates a local artifact directory.
 
 Artifacts are always enabled so failed or partial runs remain debuggable.
 
+### Artifact runs root
+
+The effective `outDir` is selected in this order:
+
+1. Current `--out`
+2. Selected profile's direct or inherited `outDir`
+3. Explicit top-level config `outDir`
+4. Built-in `.open-dynamic-workflow/runs`
+
+Relative roots are normalized from the active `--cwd`; absolute roots may be outside the project. Values are literal path text: `~`, `$VAR`, `%VAR%`, and template-looking strings are not expanded.
+
+```bash
+# Select a profile root.
+open-dynamic-workflow run review --profile ci
+
+# Override every configured root for this invocation.
+open-dynamic-workflow run review --out .artifacts/manual-runs
+
+# Inspect the resolved root, source, and selected profile without writing it.
+open-dynamic-workflow run review --dry-run --verbose --profile ci
+
+# Check the selected profile's root for readiness.
+open-dynamic-workflow doctor --profile ci
+```
+
+Verbose command output identifies the resolved `Artifacts root`, `Output-root source` (`cli`, `profile`, `config`, or `built-in-default`), and `Selected profile`. A selected profile can still fall through to a global or built-in root, so these fields are intentionally separate.
+
+Ordinary `init` writes the built-in `outDir` key but does not create the root. `validate`, `list`, and `run --dry-run` neither create nor readiness-probe it. Normal and continuation runs create their fresh run directory lazily. `doctor` is the explicit readiness command: it may create a missing root, probe write access, and removes its temporary probe. `init --run-smoke-test` is an exception because it starts a real run.
+
+For resume, a bare ID checks the effective current root and then the legacy default root only when those differ. It does not search profiles or historical roots. Explicit paths never fall back:
+
+```bash
+# After changing the current runs root, find a prior run by bare ID.
+open-dynamic-workflow run review --resume <previous-run-id>
+
+# Explicit relative and absolute previous-run paths are used directly.
+open-dynamic-workflow resume .open-dynamic-workflow/runs/<runId>
+open-dynamic-workflow resume /srv/odw-runs/<runId>
+```
+
+A continuation always writes a new run directory under the current effective root, never into the previous run directory.
+
 
 ## Configuration
 
@@ -297,6 +346,7 @@ Example:
 
 ```yaml
 defaultProvider: codex
+outDir: ".open-dynamic-workflow/runs"
 concurrency: 4
 timeoutMs: 900000
 maxAgentCalls: 20
@@ -325,7 +375,15 @@ security:
     - GOOGLE_API_KEY
     - '*_TOKEN'
     - '*_SECRET'
+
+profiles:
+  ci:
+    outDir: ".artifacts/ci-runs"
+  ci-retry:
+    extends: ci
 ```
+
+For a portable complete configuration with global, direct-profile, and inherited-profile roots, see [examples/configurable-artifact-runs.config.yaml](examples/configurable-artifact-runs.config.yaml).
 
 Configuration precedence:
 
@@ -353,7 +411,7 @@ Configuration precedence:
   - `mock`: Accepts `dangerously-full-access` without changing its deterministic mock behavior (useful for dry runs and testing).
   - Workflows that omit the `permissions` field default to `{ mode: "default" }` (which does not pass any write-enabling flags to the provider).
 
-Be careful before sharing `.openflow/runs/<runId>` artifacts, because they may contain prompts, source snippets, stdout, stderr, and model outputs.
+Be careful before sharing artifacts from any runs root, including custom, shared, or external locations. They may contain prompts, source excerpts, provider output, stdout, stderr, and reports.
 
 ## License
 

@@ -70,6 +70,12 @@ describe("CLI Profile Options Parsing", () => {
     expect(stdoutContent).toContain("Load an external YAML");
     expect(stdoutContent).toContain("odw run my-workflow --profile fast");
     expect(stdoutContent).toContain("odw run my-workflow --profiles .profiles.yml --profile ci");
+    expect(stdoutContent).toContain("Artifact runs root");
+    expect(stdoutContent).toContain("--out > selected profile outDir > explicit top-level");
+    expect(stdoutContent).toContain("config outDir > built-in .open-dynamic-workflow/runs");
+    expect(stdoutContent).toContain("Relative values resolve from");
+    expect(stdoutContent).toContain("literal and are not expanded");
+    expect(stdoutContent).toContain("--dry-run --verbose reports the resolved root");
 
     stdoutContent = "";
     await runHelp("validate");
@@ -87,6 +93,10 @@ describe("CLI Profile Options Parsing", () => {
     expect(stdoutContent).toContain("--profile <name>");
     expect(stdoutContent).toContain("Select a named run profile from current");
     expect(stdoutContent).toContain("odw resume last-run --profile ci");
+    expect(stdoutContent).toContain("Artifact runs root");
+    expect(stdoutContent).toContain("bare run ID checks the effective current lookup root");
+    expect(stdoutContent).toContain("Explicit relative or absolute paths");
+    expect(stdoutContent).toContain("fresh ID under");
     expect(stdoutContent).not.toContain("--profiles <path>");
   });
 
@@ -96,7 +106,9 @@ describe("CLI Profile Options Parsing", () => {
     expect(stdoutContent).toContain("--profile <name>");
     expect(stdoutContent).toContain("Select a named run profile from current configuration");
     expect(stdoutContent).toContain("odw doctor --profile ci");
+    expect(stdoutContent).toContain("doctor --profile <name> checks that profile's resolved");
     expect(stdoutContent).not.toContain("--profiles <path>");
+    expect(stdoutContent).not.toContain("--out <path>");
   });
 
   it("list --help and init --help advertise neither profile option", async () => {

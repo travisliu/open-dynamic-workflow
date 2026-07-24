@@ -1,3 +1,5 @@
+import type { OutDirResolutionSource } from "../config/types.js";
+
 export interface DryRunSummary {
   workflowFile: string;
   workflowName: string;
@@ -14,6 +16,8 @@ export interface DryRunSummary {
   timeoutMs: number;
   reportMode: string;
   outDir: string;
+  outDirSource?: OutDirResolutionSource | undefined;
+  selectedProfile?: string | undefined;
   verbose?: boolean | undefined;
 }
 
@@ -68,6 +72,12 @@ export function printDryRunSummary(summary: DryRunSummary): void {
   console.log(`Artifacts root: ${summary.outDir}\n`);
 
   if (summary.verbose) {
+    if (summary.outDirSource) {
+      console.log(`Output-root source: ${summary.outDirSource}`);
+    }
+    if (summary.selectedProfile) {
+      console.log(`Selected profile: ${summary.selectedProfile}`);
+    }
     console.log(`Agent Command Previews:`);
     console.log(`  (Command previews are unavailable in dry-run mode)\n`);
   }

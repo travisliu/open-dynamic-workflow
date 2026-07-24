@@ -17,6 +17,7 @@ import { loadToolRegistry } from "../../../src/tools/load.js";
 import { discoverWorkflowRegistry } from "../../../src/workflow/discovery.js";
 import { FileSystemArtifactStore } from "../../../src/artifacts/run-store.js";
 import { createReporter } from "../../../src/output/reporter.js";
+import { printDryRunSummary } from "../../../src/cli/print.js";
 
 const mockLoadInputWorkflow = { candidateFiles: ["workflow.js"], discoveryPolicy: { exclude: [] } };
 const mockLoadInputAgents = { candidateFiles: ["agent.js"], discoveryPolicy: { exclude: [] } };
@@ -51,7 +52,14 @@ vi.mock("../../../src/config/load.js", () => ({
         maxLoopRounds: 10
       },
       _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} },
-      _configDiagnostics: []
+      _configDiagnostics: [],
+      _resolution: {
+        outDir: {
+          path: "/mock-out",
+          rawValue: ".open-dynamic-workflow/runs",
+          source: "built-in-default"
+        }
+      }
     };
 
     if (input?.cli?.noRetry) {
@@ -108,6 +116,10 @@ vi.mock("../../../src/output/reporter.js", () => ({
   createReporter: vi.fn().mockImplementation(() => mockReporterInstance)
 }));
 
+vi.mock("../../../src/cli/print.js", () => ({
+  printDryRunSummary: vi.fn(),
+}));
+
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return {
@@ -147,7 +159,6 @@ describe("Run Command", () => {
   });
 
   it("valid dry-run does not call runtime but precollects and loads successfully", async () => {
-    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const runSpy = vi.fn();
     const mockRunner: RuntimeRunner = { run: runSpy };
 
@@ -173,8 +184,48 @@ describe("Run Command", () => {
       precollected: mockLoadInputWorkflow
     }));
     expect(runSpy).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Dry run: valid-simple"));
-    logSpy.mockRestore();
+    expect(printDryRunSummary).toHaveBeenCalledWith(expect.objectContaining({
+      outDir: "/mock-out",
+      outDirSource: "built-in-default",
+      selectedProfile: undefined,
+    }));
+    expect(FileSystemArtifactStore).not.toHaveBeenCalled();
+    expect(mockStoreInstance.createRun).not.toHaveBeenCalled();
+    expect(createReporter).not.toHaveBeenCalled();
+  });
+
+  it("passes selected-profile metadata independently when its root falls through", async () => {
+    const fallthroughConfig = {
+      ...DEFAULT_CONFIG,
+      cwd: "/mock-cwd",
+      configPath: "/mock-config.yaml",
+      outDir: "/mock-out",
+      workflow: { ...DEFAULT_CONFIG.workflow, maxLoopRounds: 10 },
+      _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} },
+      _configDiagnostics: [],
+      _resolution: {
+        outDir: {
+          path: "/mock-out",
+          rawValue: ".open-dynamic-workflow/runs",
+          source: "config",
+          selectedProfile: "ci",
+        }
+      }
+    } as any;
+    vi.mocked(loadConfig)
+      .mockImplementationOnce(async () => fallthroughConfig)
+      .mockImplementationOnce(async () => fallthroughConfig);
+
+    await runCommand({
+      workflowFile: "valid-simple.js",
+      rawOptions: { dryRun: true, cwd: "/mock-cwd" },
+    });
+
+    expect(printDryRunSummary).toHaveBeenCalledWith(expect.objectContaining({
+      outDir: "/mock-out",
+      outDirSource: "config",
+      selectedProfile: "ci",
+    }));
   });
 
   it("valid non-dry-run calls runtime once and asserts order", async () => {

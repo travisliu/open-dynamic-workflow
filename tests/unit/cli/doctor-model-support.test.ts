@@ -11,6 +11,13 @@ vi.mock("../../../src/tools/load.js", () => ({
 }));
 
 describe("Doctor Model Support Output", () => {
+  const artifactRootHealthChecker = vi.fn().mockResolvedValue({
+    ok: true,
+    path: "/root/out",
+    created: false,
+    writable: true,
+  });
+
   it("62. does not throw for unavailable optional provider when default provider is available", async () => {
     // Arrange
     const mockChecker = {
@@ -30,6 +37,7 @@ describe("Doctor Model Support Output", () => {
       },
       cwd: "/root",
       outDir: "/root/out",
+      _resolution: { outDir: { path: "/root/out", rawValue: "/root/out", source: "config" } },
       _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     } as any);
 
@@ -37,7 +45,7 @@ describe("Doctor Model Support Output", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     // Act & Assert
-    await expect(doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any } })).resolves.not.toThrow();
+    await expect(doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any, artifactRootHealthChecker } })).resolves.not.toThrow();
     
     expect(consoleSpy).toHaveBeenCalled();
     consoleSpy.mockRestore();
@@ -66,6 +74,7 @@ describe("Doctor Model Support Output", () => {
       },
       cwd: "/root",
       outDir: "/root/out",
+      _resolution: { outDir: { path: "/root/out", rawValue: "/root/out", source: "config" } },
       _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     } as any);
 
@@ -73,7 +82,7 @@ describe("Doctor Model Support Output", () => {
     const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     // Act
-    await doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any } });
+    await doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any, artifactRootHealthChecker } });
 
     // Assert
     const allOutput = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -104,6 +113,7 @@ describe("Doctor Model Support Output", () => {
       },
       cwd: "/root",
       outDir: "/root/out",
+      _resolution: { outDir: { path: "/root/out", rawValue: "/root/out", source: "config" } },
       _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     } as any);
 
@@ -111,7 +121,7 @@ describe("Doctor Model Support Output", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
 
     // Act & Assert
-    await expect(doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any } })).rejects.toThrow();
+    await expect(doctorCommand({ rawOptions, deps: { providerHealthChecker: mockChecker as any, artifactRootHealthChecker } })).rejects.toThrow();
   });
 
   it("resolves default alias to concrete provider before health checks", async () => {
@@ -141,6 +151,7 @@ describe("Doctor Model Support Output", () => {
       },
       cwd: "/root",
       outDir: "/root/out",
+      _resolution: { outDir: { path: "/root/out", rawValue: "/root/out", source: "config" } },
       _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     };
     
@@ -151,7 +162,7 @@ describe("Doctor Model Support Output", () => {
     // Act
     await doctorCommand({
       rawOptions: { config: "config.yaml", verbose: true },
-      deps: { providerHealthChecker: mockChecker as any }
+      deps: { providerHealthChecker: mockChecker as any, artifactRootHealthChecker }
     });
 
     // Assert
@@ -186,6 +197,7 @@ describe("Doctor Model Support Output", () => {
       },
       cwd: "/root",
       outDir: "/root/out",
+      _resolution: { outDir: { path: "/root/out", rawValue: "/root/out", source: "config" } },
       _normalizedDiscovery: { workflow: {}, sharedAgents: {}, tools: {} }
     } as any);
 
@@ -195,7 +207,7 @@ describe("Doctor Model Support Output", () => {
     await expect(
       doctorCommand({
         rawOptions: { config: "config.yaml" },
-        deps: { providerHealthChecker: mockChecker as any }
+        deps: { providerHealthChecker: mockChecker as any, artifactRootHealthChecker }
       })
     ).rejects.toThrow(expect.objectContaining({
       code: "PROVIDER_REFERENCE_NOT_FOUND"

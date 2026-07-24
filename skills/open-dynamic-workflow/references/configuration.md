@@ -6,21 +6,24 @@ This reference details Open Dynamic Workflow's configuration system, detailing t
 
 ## 1. Config Loading & Resolution
 
-When Open Dynamic Workflow initializes, it resolves config values through a three-stage pipeline:
+When Open Dynamic Workflow initializes, it resolves ordinary configuration values through a merge-and-validation pipeline. Artifact runs-root selection is a dedicated step after profile resolution; it is not determined by the generic CLI merge alone.
 
 ```mermaid
 graph TD
     A[Built-in Defaults] --> B(Merge File Configuration)
     B --> C(Merge CLI Overrides)
     C --> D[Validate Config Schema]
-    D --> E[Resolved Config Object]
+    D --> E[Resolve selected profile]
+    E --> F[Resolve artifact runs root]
+    F --> G[Resolved Config Object]
 ```
 
 ### Loading Sequence
 1.  **Read CLI Path**: If `-c` or `--config <path>` is specified, the CLI attempts to read that configuration file. If the file cannot be read or contains invalid YAML, a `CONFIG_VALIDATION_ERROR` is thrown.
 2.  **Default Location fallback**: If no CLI config flag is provided, the CLI looks for `.open-dynamic-workflow/config.yaml` in the active project directory. If it is missing, the loading continues using only built-in defaults.
-3.  **Merge CLI Options**: Overrides are applied from the command line (e.g. `--concurrency`, `--timeout-ms`, `--report`).
+3.  **Merge CLI Options**: Ordinary overrides are applied from the command line (for example `--concurrency`, `--timeout-ms`, and `--report`).
 4.  **Schema Validation**: The merged configuration object is validated. Any discrepancy raises an exit code 3 (`Workflow parse or validation error`).
+5.  **Output-root selection**: Commands that use an artifact root select it from `--out`, the selected profile, explicit top-level `outDir`, or the built-in default, then normalize it against `--cwd`.
 
 > [!NOTE]
 > When the default project configuration file (`.open-dynamic-workflow/config.yaml`) is missing, the CLI automatically falls back to built-in defaults and continues execution. However, if a setup-time failure (such as missing directories, missing shared agents, or unresolved child workflows) occurs in this uninitialized state, the CLI will attach an informational initialization hint to guide the user toward running the `init` command.
@@ -31,6 +34,7 @@ The `open-dynamic-workflow init` command generates a starter `.open-dynamic-work
 
 The generated config typically includes:
 - `defaultProvider`: Set to the provider selected during initialization (e.g., `mock` or `codex`).
+- `outDir`: Explicitly set to the built-in `.open-dynamic-workflow/runs` runs root. Ordinary initialization writes this setting but does not create or probe that directory.
 - `concurrency`, `timeoutMs`, `failFast`: Standard performance and error-handling defaults.
 - `providers`:
   - `mock`: Always included as a safe, built-in fallback.
@@ -51,6 +55,7 @@ Generated configuration is guaranteed to pass schema validation.
 | Option | Type | Default | Validation Rules | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `defaultProvider` | `string` | `"mock"` | Must be a key defined in `providers`. | Fallback provider used for agent calls if unspecified. |
+| `outDir` | `string` | `".open-dynamic-workflow/runs"` | Non-empty string; relative or absolute. Existence and writeability are not schema validation. | Artifact runs root. The loaded runtime config exposes an absolute normalized root. |
 | `concurrency` | `integer` | `4` | Positive integer (>= 1). | Maximum parallel tasks executed concurrently by the scheduler. |
 | `timeoutMs` | `integer` | `900_000` | Positive integer (>= 1) in ms. | Global timeout for workflow execution. |
 | `maxAgentCalls` | `integer` | unset | Positive integer (>= 1). | Maximum live provider agent calls a run may start. Resume cache hits do not count as new live calls. |
@@ -360,6 +365,56 @@ When evaluating configuration keys (like `model`, `timeoutMs`, or `retry`), the 
 
 For retry specifically, CLI overrides update the global retry policy before workflow code runs, and `agent({ retry })` can override or disable retry for a specific logical call.
 
+### Artifact runs-root precedence and path semantics
+
+`outDir` (the **runs root**) is selected independently of ordinary setting precedence:
+
+1. Current `--out` (`cli`)
+2. Selected profile's direct or inherited `outDir` (`profile`)
+3. Explicit top-level config `outDir` (`config`)
+4. Built-in `.open-dynamic-workflow/runs` (`built-in-default`)
+
+The resolved runs root is an absolute normalized parent directory. A **run directory** is always `<outDir>/<runId>`; the run ID is appended exactly once. Relative values resolve from the active `--cwd`; absolute values may be outside the project. Path text is literal: `~`, `$VAR`, `%VAR%`, and interpolation/template-looking strings are not expanded.
+
+The output-root source enum is exactly `cli`, `profile`, `config`, or `built-in-default`. It is independent from **selected profile**: selecting a profile that has no direct or inherited `outDir` falls through to the global or built-in root. A malformed config or missing explicitly selected profile fails before root filesystem work.
+
+```yaml
+# Relative global root
+outDir: ".artifacts/runs"
+
+profiles:
+  external-example:
+    # Illustrative absolute root; it may be outside the project.
+    outDir: "/path/outside-project/odw-runs"
+  ci:
+    outDir: ".artifacts/ci-runs"
+  ci-retry:
+    extends: ci # inherits .artifacts/ci-runs
+```
+
+See the portable [configurable artifact-runs example](../../../examples/configurable-artifact-runs.config.yaml).
+
+### Command side effects for the runs root
+
+| Command | Resolves config/profile | Creates or writeability-probes runs root | Looks up a previous run |
+| :--- | :--- | :--- | :--- |
+| Ordinary `init` | No project root resolution required | No | No |
+| `validate` | Yes, when config is loaded | No | No |
+| `list` | Yes, when config is loaded | No | No |
+| `run --dry-run` | Yes | No | Read-only only when `--resume` is supplied |
+| Normal `run` | Yes | Creates a fresh run directory lazily | No |
+| `run --resume` | Yes | Creates a fresh continuation directory lazily | Yes |
+| Standalone `resume` | Yes | Creates a fresh continuation directory lazily | Yes |
+| `doctor` | Yes, including `--profile` | May create and probe the resolved root | No |
+
+`init --run-smoke-test` is the explicit exception to ordinary init: it starts a real run and can create run artifacts.
+
+For a bare resume ID, lookup performs at most two direct checks: the current effective root, then the legacy `.open-dynamic-workflow/runs` root when different. An explicit relative or absolute path is used directly and never falls back. Resume never scans every profile or historical root. A continuation always writes a fresh run under the current effective root, never into the prior run.
+
+### Artifact persistence and provenance
+
+`config.resolved.json` records the absolute resolved `outDir` but excludes private `_resolution` metadata. Newly written `run-input.json` v2 records output metadata for audit: the effective root, output-root source, and selected profile. Readers remain compatible with v1 run input. Stored roots and recorded resolved-profile snapshots are audit data; they are never silently promoted to a future `--out` override or executable profile snapshot. Current configuration is re-resolved according to the resume command's semantics.
+
 ---
 
 ## 4. Shared Agents Configuration (`sharedAgents`)
@@ -443,7 +498,7 @@ See [path-safety.ts](../../../src/config/path-safety.ts) and [collect-files.ts](
 
 ## 7. Run Profiles Configuration (`profiles`)
 
-Profiles provide named presets for arguments, context parameters, and execution flags. They can be defined under the root `profiles` key in the project config file or in an external profiles catalog YAML file.
+Profiles provide named presets for arguments, context parameters, execution flags, and an optional artifact runs root. They can be defined under the root `profiles` key in the project config file or in an external profiles catalog YAML file.
 
 ### Profile Schema
 
@@ -453,6 +508,7 @@ A profile catalog is a map of named profile configurations. Each profile support
 | :--- | :--- | :--- |
 | `description` | `string` | Optional text description of the profile's purpose. |
 | `extends` | `string \| string[]` | Profile name or array of names to inherit from. |
+| `outDir` | `string` | Optional artifact runs root. It is inherited normally and intentionally may change the storage location. |
 | `args` | `object` | JSON-safe arguments merged into the workflow's input parameters. |
 | `context` | `object` | JSON-safe context values seeded into the workflow's global context. |
 | `run` | `object` | Safe execution-related settings mapping to the run validator. |
@@ -475,8 +531,8 @@ To prevent arbitrary security overrides, only the following safe execution optio
 
 Profiles are restricted from modifying system security or provider adapters. The following configurations are forbidden in profiles and will fail validation:
 *   **Provider Command Construction**: Redefining provider `command` paths or changing CLI subprocess `args` templates.
-*   **Security & Path Settings**: Overriding security policies (such as `allowWorkflowImports` or `passEnv`/`redactEnv` lists) or discovery locations (`sharedAgents`, `tools`, `workflow.include`/`exclude`).
-*   **Arbitrary Configuration Overlays**: Any options outside of `WorkflowProfileRunOptions`.
+*   **Security & Discovery Path Settings**: Overriding security policies (such as `allowWorkflowImports` or `passEnv`/`redactEnv` lists) or discovery locations (`sharedAgents`, `tools`, `workflow.include`/`exclude`). `outDir` is the deliberate storage-location exception.
+*   **Arbitrary Configuration Overlays**: Any options outside of the documented profile fields (including the deliberate `outDir` exception).
 *   **Environment Interpolation**: Interpolating environment variables into profile arguments or context values.
 
 ### Catalog Overlay and Inheritance
@@ -500,5 +556,7 @@ At startup, the resolved profile `context` map is seeded into the workflow conte
 ### Hash & Artifact Boundary
 
 To prevent accidental leakage of sensitive keys, tokens, or inputs:
-1.  **Resolved Snapshot**: The full resolved profile parameters (including `args`, `context`, and `run`) are written exclusively to `run-input.json` in the run artifacts directory.
+1.  **Resolved Snapshot**: The full resolved profile parameters (including `args`, `context`, `run`, and optional `outDir`) may be recorded in `run-input.json` for audit.
 2.  **Report Redaction**: Reporting layers (pretty summary lines, `report.json`, and `events.jsonl` event streams) intentionally carry only the compact profile metadata (selection, source, optional path, and stable hash). They never output or expose resolved bodies or sensitive credential-like sentinel values.
+
+The persisted snapshot does not become executable authority for a later continuation. Current profile catalogs are resolved again under the resume command's rules; a recorded profile name can be used only where standalone resume permits it. This preserves audit evidence without allowing historical roots or profile data to silently change future output selection.

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { buildInitPlan } from "../../src/cli/init/planner.js";
 import * as fs from "node:fs/promises";
+import { resolve } from "node:path";
 
 vi.mock("node:fs/promises");
 
@@ -42,6 +43,15 @@ describe("Init Planner Services", () => {
     expect(globals?.path).toBe("/project/.open-dynamic-workflow/globals.d.ts");
     expect(tool).toBeDefined();
     expect(tool?.path).toBe("/project/.open-dynamic-workflow/tools/example.tool.ts");
+  });
+
+  it("does not include the generated config's default runs root in init targets", async () => {
+    vi.mocked(fs.stat).mockRejectedValue(new Error("ENOENT"));
+
+    const plan = await buildInitPlan({ options, providerSelection });
+    const runsRoot = resolve(options.cwd, ".open-dynamic-workflow/runs");
+
+    expect(plan.targets.some((target) => target.path === runsRoot || target.path.startsWith(runsRoot + "/"))).toBe(false);
   });
 
   it("plans skip actions for existing files by default", async () => {

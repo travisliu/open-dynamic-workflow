@@ -2,14 +2,20 @@ import { ErrorCode } from "../../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../../errors/types.js";
 import { loadConfig } from "../../config/load.js";
 import { loadToolRegistry } from "../../tools/load.js";
-import type { ProviderHealthChecker, DoctorResult } from "../../doctors/public.js";
+import {
+  checkArtifactRootHealth,
+  type ArtifactRootHealthResult,
+  type ProviderHealthChecker,
+  type DoctorResult,
+} from "../../doctors/public.js";
 import { createDefaultProviderRegistry } from "../../agents/registry.js";
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import { getPackageVersion } from "../package-info.js";
+import { resolveRunProfile } from "../profile-resolution.js";
 
 export interface DoctorCommandDeps {
   providerHealthChecker: ProviderHealthChecker;
+  artifactRootHealthChecker(input: { runsRoot: string; createIfMissing: boolean }): Promise<ArtifactRootHealthResult>;
 }
 
 export interface DoctorCommandInput {
@@ -81,32 +87,64 @@ export async function doctorCommand(input: DoctorCommandInput): Promise<void> {
     console.log("✕ Current directory not writable");
   }
 
-  // .open-dynamic-workflow/runs can be created or accessed check
-  const runsDir = path.resolve(cwd, ".open-dynamic-workflow/runs");
-  try {
-    await fs.mkdir(runsDir, { recursive: true });
-    await fs.access(runsDir, fs.constants.W_OK);
-    console.log(`✓ Artifact directory available: .open-dynamic-workflow/runs`);
-  } catch {
-    console.log("✕ Artifact directory unavailable");
-  }
+  const explicitCliOverrides = {
+    verbose: rawOptions.verbose !== undefined ? !!rawOptions.verbose : undefined,
+  };
+  const discoveryCliOverrides = {
+    resourceType: rawOptions.resourceType,
+    dir: rawOptions.dir,
+    workflowsDir: rawOptions.workflowsDir,
+    agentsDir: rawOptions.agentsDir,
+    toolsDir: rawOptions.toolsDir,
+  };
 
-  // Load config
+  // Load a base config, then resolve a requested profile before finalizing the
+  // root and all downstream doctor dependencies.
+  const baseConfig = await loadConfig({
+    cwd,
+    configPath: rawOptions.config,
+    cli: explicitCliOverrides,
+    diagnosticContext: "doctor",
+    discoveryCliOverrides,
+  });
+
+  const { profileRunAsCli, selection } = await resolveRunProfile({
+    cwd: baseConfig.cwd,
+    configPath: baseConfig.configPath,
+    baseConfig,
+    rawOptions: rawOptions.profile === undefined ? {} : { profile: rawOptions.profile },
+    explicitCliOverrides,
+    explicitArgs: {},
+  });
   const config = await loadConfig({
     cwd,
     configPath: rawOptions.config,
-    cli: {
-      verbose: rawOptions.verbose !== undefined ? !!rawOptions.verbose : undefined
-    },
+    cli: { ...profileRunAsCli.config, ...explicitCliOverrides },
     diagnosticContext: "doctor",
-    discoveryCliOverrides: {
-      resourceType: rawOptions.resourceType,
-      dir: rawOptions.dir,
-      workflowsDir: rawOptions.workflowsDir,
-      agentsDir: rawOptions.agentsDir,
-      toolsDir: rawOptions.toolsDir
-    }
+    discoveryCliOverrides,
+    ...(selection ? {
+      selectedProfileName: selection.selected,
+      selectedProfile: selection.resolved,
+    } : {}),
   });
+
+  const artifactRootHealthChecker = input.deps?.artifactRootHealthChecker ?? checkArtifactRootHealth;
+  const rootHealth = await artifactRootHealthChecker({ runsRoot: config.outDir, createIfMissing: true });
+  if (rootHealth.ok) {
+    console.log(`✓ Artifact runs root available: ${rootHealth.path}${rootHealth.created ? " (created)" : ""}`);
+  } else {
+    console.log(`✕ Artifact runs root unavailable: ${rootHealth.path}: ${rootHealth.message ?? "unknown failure"}`);
+  }
+
+  if (rawOptions.verbose) {
+    const outDirResolution = config._resolution?.outDir;
+    if (outDirResolution) {
+      console.log(`Output-root source: ${outDirResolution.source}`);
+      if (outDirResolution.selectedProfile) {
+        console.log(`Selected profile: ${outDirResolution.selectedProfile}`);
+      }
+    }
+  }
 
   const { resolveProviderReference } = await import("../../agents/resolve-provider-selection.js");
   const ref = resolveProviderReference({

@@ -271,6 +271,8 @@ export async function runWorkflowService(
       timeoutMs: config.timeoutMs,
       reportMode: config.reporting.mode,
       outDir: config.outDir,
+      outDirSource: config._resolution?.outDir.source,
+      selectedProfile: config._resolution?.outDir.selectedProfile,
       verbose: config.reporting.verbose
     });
     return;

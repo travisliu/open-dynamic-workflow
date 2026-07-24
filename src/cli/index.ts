@@ -121,7 +121,7 @@ Examples:
     .option("-a, --arg <key=value>", "Workflow input argument (can be repeated)", collectArgs, [])
     .option("-c, --config <path>", "Path to config file")
     .option("--cwd <path>", "Custom working directory")
-    .option("-o, --out <path>", "Runs artifact directory")
+    .option("-o, --out <path>", "Artifact runs root (parent of <runId>)")
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
     .option("--concurrency <number>", "Maximum parallel concurrency")
     .option("--timeout-ms <ms>", "Workflow run timeout in ms")
@@ -147,11 +147,18 @@ Examples:
 Examples:
   ${displayName} run my-workflow
   ${displayName} run my-workflow --provider gemini
+  ${displayName} run my-workflow --out .artifacts/runs
   ${displayName} run my-workflow --arg key1=val1 --arg key2=val2
   ${displayName} run my-workflow --report json
-  ${displayName} run my-workflow --dry-run
+  ${displayName} run my-workflow --dry-run --verbose
   ${displayName} run my-workflow --profile fast
   ${displayName} run my-workflow --profiles .profiles.yml --profile ci
+
+Artifact runs-root precedence: --out > selected profile outDir > explicit top-level
+config outDir > built-in .open-dynamic-workflow/runs. Relative values resolve from
+the active --cwd. ~, environment-variable forms, and interpolation/template text
+are literal and are not expanded. --dry-run --verbose reports the resolved root,
+its source, and selected profile without creating or probing the output root.
 `
     )
     .action(async (workflowFile, options) => {
@@ -164,7 +171,7 @@ Examples:
     .argument("<run-id-or-path>", "Previous run id or run directory path")
     .option("-c, --config <path>", "Path to config file")
     .option("--cwd <path>", "Custom working directory")
-    .option("-o, --out <path>", "Runs artifact directory")
+    .option("-o, --out <path>", "Artifact runs root (parent of <runId>)")
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
     .option("--max-agent-calls <number>", "Maximum live provider agent calls for the continuation run")
     .option("--no-cache", "Disable resume/cache lookup and cache index updates")
@@ -181,8 +188,14 @@ Examples:
 Examples:
   ${displayName} resume last-run
   ${displayName} resume .open-dynamic-workflow/runs/2025-01-01T00-00-00Z
+  ${displayName} resume /mnt/archived-runs/2025-01-01T00-00-00Z
   ${displayName} resume last-run --report pretty
   ${displayName} resume last-run --profile ci
+
+A bare run ID checks the effective current lookup root, then legacy
+.open-dynamic-workflow/runs when different. Explicit relative or absolute paths
+are checked directly and never fall back. A continuation receives a fresh ID under
+the current effective artifact runs root; it never writes into the previous run.
 `
     )
     .action(async (runIdOrPath, options) => {
@@ -230,6 +243,9 @@ Examples:
   ${displayName} doctor
   ${displayName} doctor --verbose
   ${displayName} doctor --profile ci
+
+Artifact runs root: doctor --profile <name> checks that profile's resolved
+artifact runs root.
 `
     )
     .action(async (options) => {

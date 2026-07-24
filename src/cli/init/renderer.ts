@@ -33,6 +33,7 @@ export function buildGeneratedConfig(input: {
   const toolsDirDisplay = toDisplayPath(options.cwd, options.toolsDir);
 
   const config: OpenDynamicWorkflowConfig = {
+    outDir: ".open-dynamic-workflow/runs",
     defaultProvider: selectedProvider,
     concurrency: 4,
     timeoutMs: 900000,

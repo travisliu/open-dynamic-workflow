@@ -1089,7 +1089,7 @@ Use for CI logs, dashboards, and live event consumers.
 
 ## 14. Artifacts
 
-Every run creates a local artifact directory.
+Every normal or continuation run creates a local artifact directory. The tree below is the default layout; its default runs root is `.open-dynamic-workflow/runs`.
 
 ```text
 .open-dynamic-workflow/runs/<runId>/
@@ -1144,6 +1144,14 @@ Use artifacts to debug:
 * event order
 
 Artifacts may contain prompts, source snippets, and model outputs. Treat them as sensitive.
+
+### Artifact runs-root reference
+
+`outDir` is the **runs root**: an absolute normalized parent directory for runs. A **run directory** is `<outDir>/<runId>`. The four output-root sources are `cli`, `profile`, `config`, and `built-in-default`, selected in that order by current `--out`, selected profile `outDir`, explicit global `outDir`, and the built-in default. A selected profile may fall through to a global/default root, so selected-profile and output-root-source metadata are distinct.
+
+Relative roots resolve from active `--cwd`; absolute roots may be outside the project. Path text is literal: no home-directory, environment-variable, or template interpolation occurs. Artifacts can contain prompts, source excerpts, provider output, stdout/stderr, and reports, so custom, shared, and external roots need the same protection as the default root.
+
+For command write behavior, see the [configuration command-side-effect matrix](configuration.md#command-side-effects-for-the-runs-root) and [CLI command reference](cli-commands.md). In particular, ordinary init, validate, list, and dry-run do not create or readiness-probe a runs root; doctor is the explicit readiness command.
 
 ---
 
@@ -1214,6 +1222,12 @@ Open Dynamic Workflow supports resuming a previous run to reuse cached results f
 
 1.  **`open-dynamic-workflow run <workflow> --resume <runId-or-path>`**: Re-runs a workflow file while attempting to reuse results from the previous run.
 2.  **`open-dynamic-workflow resume <runId-or-path>`**: Re-runs the exact same workflow invocation recorded in the previous run's `run-input.json`.
+
+### Resume targets and output provenance
+
+A bare resume ID checks at most two direct candidates: the effective current runs root, then legacy `.open-dynamic-workflow/runs` when different. An explicit relative or absolute run-directory path is used directly and never falls back; resume does not scan profile roots or historical roots. The continuation gets a fresh `<current-outDir>/<newRunId>` directory rather than writing into the prior run.
+
+New writers produce `run-input.json` v2 with output-root provenance (effective root, source, and selected profile), while readers remain compatible with v1 run input. That provenance, historical roots, and resolved profile snapshots are audit data. Current configuration remains authoritative for continuation output and current profile resolution.
 
 ### Deterministic Replay Model
 
