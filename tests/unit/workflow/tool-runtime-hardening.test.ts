@@ -32,7 +32,8 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
     `;
 
     const result = await runner.run({
-      parsedWorkflow: mockWorkflow(body),
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: mockWorkflow(body),
       config: { providers: {} } as any,
       cli: { cwd: "/tmp" } as any,
       toolRegistry: {
@@ -71,7 +72,8 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
     `;
 
     const result = await runner.run({
-      parsedWorkflow: mockWorkflow(body),
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: mockWorkflow(body),
       config: { providers: {} } as any,
       cli: { cwd: "/tmp" } as any,
       toolRegistry: {
@@ -109,7 +111,8 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
     `;
 
     const result = await runner.run({
-      parsedWorkflow: mockWorkflow(body),
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: mockWorkflow(body),
       config: { providers: {} } as any,
       cli: { cwd: "/tmp" } as any,
       toolRegistry: {
@@ -148,7 +151,8 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
     `;
 
     const result = await runner.run({
-      parsedWorkflow: mockWorkflow(body),
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: mockWorkflow(body),
       config: { providers: {} } as any,
       cli: { cwd: "/tmp" } as any,
       toolRegistry: {
@@ -194,7 +198,8 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
     `;
 
     const result = await runner.run({
-      parsedWorkflow: mockWorkflow(body),
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: mockWorkflow(body),
       config: { providers: {} } as any,
       cli: { cwd: "/tmp" } as any,
       toolRegistry: {
@@ -235,7 +240,8 @@ describe("Tool Alias Hardening - Runtime Enforcement", () => {
     `;
 
     const result = await runner.run({
-      parsedWorkflow: mockWorkflow(body),
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: mockWorkflow(body),
       config: { providers: {} } as any,
       cli: { cwd: "/tmp" } as any,
       toolRegistry: {

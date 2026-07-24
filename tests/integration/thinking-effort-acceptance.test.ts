@@ -119,7 +119,7 @@ export default async () => {
     
     // Verify run-input.json has the raw CLI options preserved
     const runInput = JSON.parse(await fs.readFile(path.join(runDir, "run-input.json"), "utf8"));
-    expect(runInput.rawOptions.thinkingEffort).toBe("medium");
+    expect(runInput.invocation.thinkingEffort).toBe("medium");
 
     // Verify agent resolution source and final thinkingEffort in metadata.json
     const metadata = JSON.parse(await fs.readFile(path.join(runDir, "agents/codex-agent/metadata.json"), "utf8"));

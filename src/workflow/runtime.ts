@@ -35,6 +35,11 @@ export interface IdGenerator {
 }
 
 export interface RuntimeRunInput {
+  run: {
+    runId: string;
+    runDir: string;
+    previousRunDir?: string | undefined;
+  };
   parsedWorkflow: ParsedWorkflow;
   workflowRegistry?: WorkflowRegistry | undefined;
   workflowIdentity?: ResolvedWorkflowIdentity | undefined;
@@ -66,11 +71,13 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     input: RuntimeRunInput,
     deps: RuntimeDependencies
   ): Promise<WorkflowRunResult> {
+    const { run } = input;
+    this.validateRunInput(run);
     const startTime = deps.clock ? deps.clock.now() : new Date();
-    const runId = deps.idGenerator ? deps.idGenerator.nextId("run") : crypto.randomUUID();
+    const runId = run.runId;
 
     const cwd = input.cli.cwd || input.config.cwd || process.cwd();
-    const artifactsDir = input.cli.outDir || input.config.outDir || path.resolve(cwd, ".open-dynamic-workflow/runs", runId);
+    const artifactsDir = path.resolve(run.runDir);
 
     const schedulerConcurrency = input.cli.concurrency ?? input.config.concurrency ?? 1;
 
@@ -84,9 +91,8 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
 
     const runtimeAbortController = createLinkedAbortController(input.signal);
     const callCache = await loadRuntimeCallCache({
-      resume: input.cli.resume,
-      noCache: input.cli.noCache,
-      outDir: input.config.outDir
+      previousRunDir: run.previousRunDir,
+      noCache: input.cli.noCache
     });
 
     const registry = input.workflowRegistry || createRootWorkflowRegistry(input.parsedWorkflow);
@@ -165,7 +171,7 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
     if (deps.artifactStore && !deps.artifactStore.isRunCreated()) {
       await deps.artifactStore.createRun({
         runId,
-        outDir: artifactsDir,
+        runsRoot: path.dirname(artifactsDir),
         workflowPath: input.parsedWorkflow.sourcePath,
         workflowSource: input.parsedWorkflow.sourceText || "",
         workflowHash: input.parsedWorkflow.sourceHash,
@@ -415,6 +421,34 @@ export class DefaultRuntimeRunner implements RuntimeRunner {
         await deps.artifactStore.updateManifest("failed", result.error);
       }
       return result;
+    }
+  }
+
+  private validateRunInput(run: RuntimeRunInput["run"]): void {
+    if (
+      !run ||
+      typeof run.runId !== "string" ||
+      run.runId.trim() === "" ||
+      run.runId === "." ||
+      run.runId === ".." ||
+      run.runId.includes("/") ||
+      run.runId.includes("\\")
+    ) {
+      throw new OpenDynamicWorkflowError(ErrorCode.CLI_USAGE_ERROR, "Runtime run ID must be a safe non-empty path segment.");
+    }
+    if (!path.isAbsolute(run.runDir)) {
+      throw new OpenDynamicWorkflowError(ErrorCode.CLI_USAGE_ERROR, `Runtime run directory must be an absolute path: ${run.runDir}`);
+    }
+    if (run.previousRunDir !== undefined && !path.isAbsolute(run.previousRunDir)) {
+      throw new OpenDynamicWorkflowError(ErrorCode.CLI_USAGE_ERROR, `Previous run directory must be an absolute path: ${run.previousRunDir}`);
+    }
+    const runDir = path.resolve(run.runDir);
+    const expectedRunDir = path.resolve(path.dirname(runDir), run.runId);
+    if (runDir !== expectedRunDir) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.CLI_USAGE_ERROR,
+        `Runtime run directory ${runDir} does not match run ID ${run.runId}.`
+      );
     }
   }
 }

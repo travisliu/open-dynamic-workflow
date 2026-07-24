@@ -59,6 +59,7 @@ describe("Pipeline cancellation integration", () => {
 
     const runPromise = runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: defaultConfig,
         cli: {
@@ -155,6 +156,7 @@ describe("Pipeline cancellation integration", () => {
 
     const runPromise = runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: defaultConfig,
         cli: {

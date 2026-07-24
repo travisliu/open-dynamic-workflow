@@ -573,7 +573,7 @@ describe("Retry execution orchestration and failure classification (Phase 3)", (
     const runId = "phase-3-executor-run";
     await artifactStore.createRun({
       runId,
-      outDir: tempDir,
+      runsRoot: tempDir,
       workflowPath: "workflow.ts",
       workflowSource: "",
       workflowHash: "hash",

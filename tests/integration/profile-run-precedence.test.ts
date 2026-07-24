@@ -153,8 +153,7 @@ profiles:
     // Verify run-input.json has embedded profile and args
     const runInputPath = path.join(runDir, "run-input.json");
     const runInputData = JSON.parse(await fs.readFile(runInputPath, "utf8"));
-    expect(runInputData.args.iterations).toBe(1);
-    expect(runInputData.args.goal).toBe("default");
+    expect(runInputData.invocation.args).toEqual([]);
 
     // Recorded profile must have compact identity fields plus resolved body and inheritance chain
     expect(runInputData.profile).toBeDefined();
@@ -209,7 +208,7 @@ profiles:
     // Verify run-input.json contains embedded profile and args
     const runInputPath = path.join(runDir, "run-input.json");
     const runInputData = JSON.parse(await fs.readFile(runInputPath, "utf8"));
-    expect(runInputData.args.goal).toBe("ci");
+    expect(runInputData.invocation.args).toEqual([]);
 
     expect(runInputData.profile).toBeDefined();
     expect(runInputData.profile.selected).toBe("ci");
@@ -250,7 +249,7 @@ profiles:
     const runInputPath = path.join(runDir, "run-input.json");
     const runInputData = JSON.parse(await fs.readFile(runInputPath, "utf8"));
     // Since external fast overrides config fast, iterations should be 2.
-    expect(runInputData.args.iterations).toBe(2);
+    expect(runInputData.profile.resolved.args.iterations).toBe(2);
   });
 
   it("ensures CLI provider and arg override win over profile values", async () => {
@@ -286,8 +285,7 @@ profiles:
 
     const runInputPath = path.join(runDir, "run-input.json");
     const runInputData = JSON.parse(await fs.readFile(runInputPath, "utf8"));
-    expect(runInputData.args.iterations).toBe(5);
-    expect(runInputData.args.goal).toBe("cli-goal");
+    expect(runInputData.invocation.args).toEqual(["iterations=5", "goal=cli-goal"]);
 
     const reportPath = path.join(runDir, "report.json");
     const reportData = JSON.parse(await fs.readFile(reportPath, "utf8"));

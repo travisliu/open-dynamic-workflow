@@ -168,6 +168,12 @@ Examples:
     .option("-r, --report <mode>", "Reporter mode (pretty, json, jsonl)")
     .option("--max-agent-calls <number>", "Maximum live provider agent calls for the continuation run")
     .option("--no-cache", "Disable resume/cache lookup and cache index updates")
+    .option("--retry-max-attempts <number>", "Maximum retry attempts")
+    .option("--retry-delay-ms <ms>", "Initial retry delay in milliseconds")
+    .option("--retry-max-delay-ms <ms>", "Maximum retry delay in milliseconds")
+    .option("--retry-backoff <type>", "Retry backoff type (fixed, exponential)")
+    .option("--retry-disable-delay", "Disable retry delay (run attempts immediately)")
+    .option("--no-retry", "Disable retries")
     .option("--profile <name>", "Select a named run profile from current configuration")
     .addHelpText(
       "after",

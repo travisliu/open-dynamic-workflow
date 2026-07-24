@@ -1,9 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { runWorkflowService } from "../../../src/cli/commands/run.js";
-import { readRunInput } from "../../../src/cli/run-input.js";
-import { DefaultRuntimeRunner } from "../../../src/runtime/public.js";
-import type { RecordedRunProfileInput } from "../../../src/types/artifacts.js";
-import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
 
 // Setup mocks
 vi.mock("../../../src/config/load.js", () => ({
@@ -21,9 +17,12 @@ vi.mock("../../../src/config/load.js", () => ({
   })
 }));
 
-vi.mock("../../../src/cli/run-input.ts", () => ({
-  readRunInput: vi.fn(),
-  resolveRunRoot: vi.fn().mockReturnValue("/mock-run-root"),
+const { resolvePreviousRun } = vi.hoisted(() => ({
+  resolvePreviousRun: vi.fn().mockResolvedValue({ runDir: "/previous-runs/prev-run-id" }),
+}));
+vi.mock("../../../src/cli/artifact-paths.js", () => ({
+  legacyRunsRoot: vi.fn().mockReturnValue("/mock-cwd/.open-dynamic-workflow/runs"),
+  resolvePreviousRun,
 }));
 
 const mockRunnerRun = vi.fn().mockResolvedValue({ status: "succeeded", agents: [] });
@@ -44,7 +43,7 @@ vi.mock("../../../src/artifacts/run-store.js", () => {
         createRun: vi.fn().mockResolvedValue(undefined),
         writeJson: vi.fn().mockResolvedValue(undefined),
         writeFinalReport: vi.fn().mockResolvedValue(undefined),
-        getRunArtifacts: vi.fn().mockReturnValue({}),
+        getRunArtifacts: vi.fn().mockReturnValue({ rootDir: "/current-runs/current-run" }),
         isRunCreated: vi.fn().mockReturnValue(true),
       };
     })
@@ -94,93 +93,12 @@ vi.mock("../../../src/workflow/discovery.js", () => ({
 }));
 
 describe("runWorkflowService with --resume and profile", () => {
-  const dummyProfile: RecordedRunProfileInput = {
-    selected: "recorded-profile",
-    source: "external",
-    resolved: {
-      description: "Recorded profile description",
-      args: { arg1: "recorded-val-1", arg2: "recorded-val-2" },
-      context: { ctx1: "recorded-ctx-1" },
-      run: { provider: "recorded-provider" }
-    },
-    hash: "recorded-hash",
-  };
-
   beforeEach(() => {
     vi.clearAllMocks();
     mockRunnerRun.mockResolvedValue({ status: "succeeded", agents: [] });
   });
 
-  it("retrieves and injects recorded profile data before runtime on run --resume", async () => {
-    vi.mocked(readRunInput).mockResolvedValue({
-      previousRunRoot: "/mock-run-root",
-      runInput: {
-        schemaVersion: "open-dynamic-workflow.run-input.v1",
-        runId: "prev-run-id",
-        workflowFile: "workflow.js",
-        profile: dummyProfile,
-      }
-    });
-
-    await runWorkflowService({
-      workflowFile: "workflow.js",
-      rawOptions: { resume: "prev-run-id" }
-    });
-
-    expect(readRunInput).toHaveBeenCalledWith("prev-run-id", undefined, expect.any(String));
-    
-    // Prove it was injected into runtime runner
-    expect(mockRunnerRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        profileReport: expect.objectContaining({
-          selected: "recorded-profile",
-          source: "recorded",
-          hash: "recorded-hash"
-        }),
-        profileContextSeed: expect.objectContaining({
-          context: { ctx1: "recorded-ctx-1" },
-          metadata: expect.objectContaining({
-            name: "recorded-profile",
-            source: "recorded",
-            hash: "recorded-hash"
-          })
-        })
-      }),
-      expect.any(Object)
-    );
-  });
-
-  it("forces fresh resolution when current invocation includes --profile", async () => {
-    vi.mocked(readRunInput).mockResolvedValue({
-      previousRunRoot: "/mock-run-root",
-      runInput: {
-        schemaVersion: "open-dynamic-workflow.run-input.v1",
-        runId: "prev-run-id",
-        workflowFile: "workflow.js",
-        profile: dummyProfile,
-      }
-    });
-
-    // Fresh resolution tries to look up profile which does not exist in mock config, thus throwing PROFILE_NOT_FOUND
-    await expect(
-      runWorkflowService({
-        workflowFile: "workflow.js",
-        rawOptions: { resume: "prev-run-id", profile: "some-other-profile" }
-      })
-    ).rejects.toThrowError(/Profile 'some-other-profile' not found/);
-  });
-
-  it("handles legacy no-profile artifact run-input resume gracefully", async () => {
-    vi.mocked(readRunInput).mockResolvedValue({
-      previousRunRoot: "/mock-run-root",
-      runInput: {
-        schemaVersion: "open-dynamic-workflow.run-input.v1",
-        runId: "prev-run-id",
-        workflowFile: "workflow.js",
-        profile: undefined,
-      }
-    });
-
+  it("does not restore a recorded profile snapshot for run --resume", async () => {
     await runWorkflowService({
       workflowFile: "workflow.js",
       rawOptions: { resume: "prev-run-id" }
@@ -189,9 +107,34 @@ describe("runWorkflowService with --resume and profile", () => {
     expect(mockRunnerRun).toHaveBeenCalledWith(
       expect.objectContaining({
         profileReport: undefined,
-        profileContextSeed: undefined
+        profileContextSeed: undefined,
+        run: expect.objectContaining({ previousRunDir: "/previous-runs/prev-run-id" }),
       }),
       expect.any(Object)
     );
+  });
+
+  it("resolves a current profile fresh and fails before previous-run lookup when it is missing", async () => {
+    await expect(
+      runWorkflowService({
+        workflowFile: "workflow.js",
+        rawOptions: { resume: "prev-run-id", profile: "some-other-profile" }
+      })
+    ).rejects.toThrowError(/Profile 'some-other-profile' not found/);
+    expect(resolvePreviousRun).not.toHaveBeenCalled();
+  });
+
+  it("creates a distinct current run while passing the resolved previous directory", async () => {
+    await runWorkflowService({
+      workflowFile: "workflow.js",
+      rawOptions: { resume: "prev-run-id" }
+    });
+
+    expect(mockRunnerRun).toHaveBeenCalledWith(expect.objectContaining({
+      run: expect.objectContaining({
+        runDir: "/current-runs/current-run",
+        previousRunDir: "/previous-runs/prev-run-id",
+      }),
+    }), expect.any(Object));
   });
 });

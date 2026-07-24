@@ -144,7 +144,8 @@ describe("Workflow Runtime Execution Update Acceptance", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 

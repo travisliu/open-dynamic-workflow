@@ -856,7 +856,7 @@ providerAliases:
       // Act
       await store.createRun({
         runId: "test-run",
-        outDir: TEMP_DIR,
+        runsRoot: TEMP_DIR,
         workflowPath: "workflows/test.js",
         workflowSource: "// test",
         workflowHash: "abc",
@@ -932,7 +932,7 @@ providerAliases:
 
       await store1.createRun({
         runId: "run-1",
-        outDir: path.join(TEMP_DIR, "run1"),
+        runsRoot: path.join(TEMP_DIR, "run1"),
         workflowPath: "workflows/test.js",
         workflowSource: "// test",
         workflowHash: "abc",
@@ -943,7 +943,7 @@ providerAliases:
 
       await store2.createRun({
         runId: "run-2",
-        outDir: path.join(TEMP_DIR, "run2"),
+        runsRoot: path.join(TEMP_DIR, "run2"),
         workflowPath: "workflows/test.js",
         workflowSource: "// test",
         workflowHash: "abc",

@@ -503,17 +503,17 @@ describe("Retry configuration and CLI overrides validation (Phase 1)", () => {
     });
 
     // Assert
-    expect(loadConfigCalls).toHaveLength(1);
+    expect(loadConfigCalls).toHaveLength(2);
     expect(loadConfigCalls[0]).toEqual(
       expect.objectContaining({
         cwd: "/mock-cwd",
         cli: expect.objectContaining(expectedOverrides)
       })
     );
-    expect(runtimeExecutionOrder).toEqual(["loadConfig", "runtimeRunner.run"]);
+    expect(runtimeExecutionOrder).toEqual(["loadConfig", "loadConfig", "runtimeRunner.run"]);
     expect(vi.mocked(runtimeRunner.run)).toHaveBeenCalledTimes(1);
     expect(
-      loadConfigCalls[0].cli
+      loadConfigCalls[1].cli
     ).toEqual(expect.objectContaining(expectedOverrides));
   });
 });

@@ -382,9 +382,9 @@ describe("Integration - run workflow by name", () => {
     const runId = runs[0]!;
     const runDir = path.join(TEMP_DIR, runId);
 
-    // Verify run-input.json contains thinkingEffort in rawOptions
+    // Verify run-input.json contains the replayable CLI thinking effort.
     const runInputPath = path.join(runDir, "run-input.json");
     const runInput = JSON.parse(await fs.readFile(runInputPath, "utf8"));
-    expect(runInput.rawOptions.thinkingEffort).toBe("high");
+    expect(runInput.invocation.thinkingEffort).toBe("high");
   });
 });

@@ -81,26 +81,32 @@ export interface RuntimeCallCache {
   prefixCacheUsable: boolean;
 }
 
-export async function loadRuntimeCallCache(input: {
-  resume?: string | undefined;
+export interface LoadRuntimeCallCacheInput {
+  previousRunDir?: string | undefined;
   noCache?: boolean | undefined;
-  outDir: string;
-}): Promise<RuntimeCallCache> {
+}
+
+export async function loadRuntimeCallCache(input: LoadRuntimeCallCacheInput): Promise<RuntimeCallCache> {
   const cache: RuntimeCallCache = {
-    readEnabled: !!input.resume && !input.noCache,
+    readEnabled: !!input.previousRunDir && !input.noCache,
     writeIndex: !input.noCache,
     previousEntries: new Map(),
     currentEntries: [],
     prefixCacheUsable: true
   };
 
-  if (!input.resume || input.noCache) {
+  if (!input.previousRunDir || input.noCache) {
     return cache;
   }
 
-  const previousRunRoot = path.isAbsolute(input.resume)
-    ? input.resume
-    : path.resolve(input.outDir, input.resume);
+  if (!path.isAbsolute(input.previousRunDir)) {
+    throw new OpenDynamicWorkflowError(
+      ErrorCode.CLI_USAGE_ERROR,
+      `Previous run directory must be an absolute path: ${input.previousRunDir}`
+    );
+  }
+
+  const previousRunRoot = path.resolve(input.previousRunDir);
   const manifestPath = path.join(previousRunRoot, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
   const previousRunId = typeof manifest.runId === "string" ? manifest.runId : path.basename(previousRunRoot);

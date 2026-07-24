@@ -223,18 +223,10 @@ export default { res };
     ]);
 
     // -------------------------------------------------------------------------
-    // 5. Assert (Resume): Reuses recorded profile without external loader
+    // 5. Assert (Resume): recorded names are resolved through the current catalog.
     // -------------------------------------------------------------------------
-    expect(resumeResult.error).toBeNull();
-    expect(resumeResult.stdout).toContain("profile:   override (reused from recorded run input)");
-
-    // Locate the resumed run directory and verify marker in run-input.json
-    const runs = (await fs.readdir(TEMP_DIR)).filter(d => uuidRegex.test(d) && d !== runId);
-    expect(runs.length).toBe(1);
-    const resumeRunId = runs[0];
-    const resumeRunInput = JSON.parse(await fs.readFile(path.join(TEMP_DIR, resumeRunId, "run-input.json"), "utf8"));
-    expect(resumeRunInput.profile.resumedFromRecordedProfile).toBe(true);
-    expect(resumeRunInput.profile.hash).toBe(prof.hash);
+    expect(resumeResult.error).toBeDefined();
+    expect(resumeResult.error.code).toBe("CLI_USAGE_ERROR");
   }, 30000);
 
   it("should handle run --resume with and without overrides, and enforce precedence (AC-4, AC-5)", async () => {
@@ -289,7 +281,7 @@ profiles:
     ]);
 
     // -------------------------------------------------------------------------
-    // 3. Assert: Reuses profile and writes resumedFromRecordedProfile marker
+    // 3. Assert: run --resume is cache-only and does not restore a profile.
     // -------------------------------------------------------------------------
     expect(runResumeResult.error).toBeNull();
     const runResumeData = JSON.parse(runResumeResult.stdout);
@@ -298,9 +290,7 @@ profiles:
     const resumeRunInput = JSON.parse(
       await fs.readFile(path.join(TEMP_DIR, runResumeId, "run-input.json"), "utf8")
     );
-    expect(resumeRunInput.profile).toBeDefined();
-    expect(resumeRunInput.profile.selected).toBe("test");
-    expect(resumeRunInput.profile.resumedFromRecordedProfile).toBe(true);
+    expect(resumeRunInput.profile).toBeUndefined();
 
     // -------------------------------------------------------------------------
     // 4. Act: Modify the profiles catalog with a new override, then run --resume with explicit profile flags

@@ -334,8 +334,7 @@ describe("call cache", () => {
     }), "utf8");
 
     const cache = await loadRuntimeCallCache({
-      resume: "run-legacy",
-      outDir: TEMP_DIR
+      previousRunDir: path.join(TEMP_DIR, "run-legacy")
     });
 
     const entry = cache.previousEntries.get(1);
@@ -358,8 +357,7 @@ describe("call cache", () => {
     ].join("\n"), "utf8");
 
     const cache = await loadRuntimeCallCache({
-      resume: "run-rebuild",
-      outDir: TEMP_DIR
+      previousRunDir: path.join(TEMP_DIR, "run-rebuild")
     });
 
     expect(cache.previousEntries.get(1)?.fingerprint).toBe("fp2");
@@ -830,8 +828,7 @@ describe("call cache", () => {
     }), "utf8");
 
     const cache = await loadRuntimeCallCache({
-      resume: "run-legacy-load",
-      outDir: TEMP_DIR
+      previousRunDir: path.join(TEMP_DIR, "run-legacy-load")
     });
 
     const entry = cache.previousEntries.get(1) as AgentCallCacheEntry;

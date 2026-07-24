@@ -28,7 +28,7 @@ describe("FileSystemArtifactStore", () => {
 
   const defaultRunInput = {
     runId: "test-run-123",
-    outDir: TEST_OUT_DIR,
+    runsRoot: TEST_OUT_DIR,
     workflowPath: "workflows/mock-success.js",
     workflowSource: 'console.log("workflow source")',
     workflowHash: "hash-456",

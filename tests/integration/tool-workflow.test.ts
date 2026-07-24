@@ -964,6 +964,7 @@ describe("Tool Workflow Integration", () => {
 
     const runPromise = runner.run(
       {
+        run: { runId: "run-true-cancel", runDir: path.join(outDir, "run-true-cancel") },
         parsedWorkflow,
         config,
         cli: {
@@ -1004,7 +1005,7 @@ describe("Tool Workflow Integration", () => {
     expect(roundCancelledIdx).toBeGreaterThan(toolCancelledIdx);
     expect(loopCancelledIdx).toBeGreaterThan(roundCancelledIdx);
 
-    const runDir = path.join(outDir, "run-true-cancel", result.runId);
+    const runDir = result.artifactsDir;
     const metadata = JSON.parse(await fs.readFile(
       path.join(runDir, "tools/cancel-loop-round-1-tool-slow-cancellable/metadata.json"),
       "utf8"

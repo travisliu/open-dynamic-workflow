@@ -124,6 +124,7 @@ describe("Profile Runtime Context Integration", () => {
 
     const result1 = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(body),
         config,
         cli,
@@ -191,6 +192,7 @@ describe("Profile Runtime Context Integration", () => {
 
     const result2 = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(body2),
         config,
         cli

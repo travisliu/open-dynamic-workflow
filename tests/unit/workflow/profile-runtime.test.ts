@@ -75,6 +75,7 @@ describe("Profile Runtime Context Seeding and Events", () => {
 
     const result = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(body),
         config: defaultResolvedConfig,
         cli: defaultCliOptions,
@@ -118,6 +119,7 @@ describe("Profile Runtime Context Seeding and Events", () => {
 
     const result = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(body),
         workflowIdentity: {
           name: "test-workflow",
@@ -194,6 +196,7 @@ describe("Profile Runtime Context Seeding and Events", () => {
 
     const result = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(body),
         config: defaultResolvedConfig,
         cli: defaultCliOptions,
@@ -225,6 +228,7 @@ describe("Profile Runtime Context Seeding and Events", () => {
     `;
     const failResult = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(failBody),
         config: defaultResolvedConfig,
         cli: defaultCliOptions,
@@ -247,6 +251,7 @@ describe("Profile Runtime Context Seeding and Events", () => {
     abortController.abort("cancelled by user");
     const cancelResult = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(successBody),
         config: defaultResolvedConfig,
         cli: defaultCliOptions,
@@ -265,6 +270,7 @@ describe("Profile Runtime Context Seeding and Events", () => {
     // 3. No-profile run has no profile property
     const noProfileResult = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow: mockWorkflow(successBody),
         config: defaultResolvedConfig,
         cli: defaultCliOptions

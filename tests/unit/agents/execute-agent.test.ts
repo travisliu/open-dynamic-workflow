@@ -55,7 +55,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     
     await store.createRun({
       runId,
-      outDir: runOutDir,
+      runsRoot: TEST_OUT_DIR,
       workflowPath: "dummy.ts",
       workflowSource: "",
       workflowHash: "hash",
@@ -124,7 +124,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-timeout";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -166,7 +166,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-cancelled";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -210,7 +210,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-multi";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -251,7 +251,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-logs";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -303,7 +303,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-stdin-forwarding";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -344,7 +344,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const runOutDir = path.join(TEST_OUT_DIR, runId);
     await store.createRun({
       runId,
-      outDir: runOutDir,
+      runsRoot: TEST_OUT_DIR,
       workflowPath: "dummy.ts",
       workflowSource: "",
       workflowHash: "hash",
@@ -423,7 +423,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const runOutDir = path.join(TEST_OUT_DIR, runId);
     await store.createRun({
       runId,
-      outDir: runOutDir,
+      runsRoot: TEST_OUT_DIR,
       workflowPath: "dummy.ts",
       workflowSource: "",
       workflowHash: "hash",
@@ -491,7 +491,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-perm";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -552,7 +552,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-object-raw";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -613,7 +613,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-primitive-raw";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -674,7 +674,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-array-raw";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -718,7 +718,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-metadata-sanitization";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -780,7 +780,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
       const runId = "test-run-thinking-effort-runinput";
       const runOutDir = path.join(TEST_OUT_DIR, runId);
-      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
       const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
       const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -830,7 +830,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
       const runId = "test-run-unsupported-provider-effort";
       const runOutDir = path.join(TEST_OUT_DIR, runId);
-      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
       const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
       const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -888,7 +888,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
       const runId = "test-run-unsupported-codex-value";
       const runOutDir = path.join(TEST_OUT_DIR, runId);
-      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
       const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
       const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -953,7 +953,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
       const runId = "test-run-opencode-conflict";
       const runOutDir = path.join(TEST_OUT_DIR, runId);
-      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
       const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
       const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -1014,7 +1014,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     
     await store.createRun({
       runId,
-      outDir: runOutDir,
+      runsRoot: TEST_OUT_DIR,
       workflowPath: "dummy.ts",
       workflowSource: "",
       workflowHash: "hash",
@@ -1107,7 +1107,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
       const runId = "test-run-boundary";
       const runOutDir = path.join(TEST_OUT_DIR, runId);
-      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
       const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
       const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -1241,7 +1241,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
       const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
       const runId = "test-run-alias-null";
       const runOutDir = path.join(TEST_OUT_DIR, runId);
-      await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+      await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
       const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
       const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 
@@ -1313,7 +1313,7 @@ describe("DefaultAgentExecutor environment and redaction", () => {
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-concurrency";
     const runOutDir = path.join(TEST_OUT_DIR, runId);
-    await store.createRun({ runId, outDir: runOutDir, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     const eventBus = new EventBus({ runId, artifactStore: store, subscribers: [] });
     const executor = new DefaultAgentExecutor({ config, artifactStore: store, eventBus });
 

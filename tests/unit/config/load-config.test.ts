@@ -114,6 +114,41 @@ import { OpenDynamicWorkflowError } from "../../../src/errors/types.js";
 
 
 describe("Load Config", () => {
+  it("resolves runs roots with CLI, profile, config, and built-in precedence", async () => {
+    const tempDir = join(tmpdir(), "open-dynamic-workflow-test-runs-root-" + Date.now());
+    const configDir = join(tempDir, ".open-dynamic-workflow");
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, "config.yaml"), "outDir: configured-runs\n");
+
+    const fromConfig = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(fromConfig.outDir).toBe(join(tempDir, "configured-runs"));
+    expect(fromConfig._resolution?.outDir).toMatchObject({ source: "config", rawValue: "configured-runs" });
+
+    const fromProfile = await loadConfig({
+      cwd: tempDir,
+      cli: {},
+      selectedProfileName: "ci",
+      selectedProfile: { outDir: "profile-runs" },
+    });
+    expect(fromProfile.outDir).toBe(join(tempDir, "profile-runs"));
+    expect(fromProfile._resolution?.outDir).toMatchObject({ source: "profile", selectedProfile: "ci" });
+
+    const fromCli = await loadConfig({
+      cwd: tempDir,
+      outDir: "cli-runs",
+      cli: {},
+      selectedProfileName: "ci",
+      selectedProfile: { outDir: "profile-runs" },
+    });
+    expect(fromCli.outDir).toBe(join(tempDir, "cli-runs"));
+    expect(fromCli._resolution?.outDir).toMatchObject({ source: "cli", rawValue: "cli-runs", selectedProfile: "ci" });
+
+    rmSync(join(configDir, "config.yaml"));
+    const fallback = await loadConfig({ cwd: tempDir, cli: {} });
+    expect(fallback.outDir).toBe(join(tempDir, ".open-dynamic-workflow", "runs"));
+    expect(fallback._resolution?.outDir.source).toBe("built-in-default");
+    rmSync(tempDir, { recursive: true, force: true });
+  });
   it("56. no-config defaults include all new providers without changing default provider", async () => {
     // Arrange
     const emptyDir = join(tmpdir(), "open-dynamic-workflow-test-empty-" + Date.now());

@@ -35,7 +35,8 @@ export interface RunManifest {
 
 export interface CreateRunInput {
   runId: string;
-  outDir: string;
+  /** Absolute parent directory that contains individual run directories. */
+  runsRoot: string;
   workflowPath: string;
   workflowSource: string;
   workflowHash: string;
@@ -61,6 +62,8 @@ export interface ToolArtifacts {
 
 export interface RunArtifacts {
   runId: string;
+  /** Absolute parent directory that contains this run directory. */
+  runsRoot: string;
   rootDir: string;
   manifestPath: string;
   workflowInputPath: string;

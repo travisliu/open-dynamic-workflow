@@ -114,7 +114,8 @@ describe("DefaultRuntimeRunner", () => {
 
     const eventSink = new FakeEventSink();
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink, clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -141,7 +142,8 @@ describe("DefaultRuntimeRunner", () => {
 
     const eventSink = new FakeEventSink();
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink, clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -169,6 +171,7 @@ describe("DefaultRuntimeRunner", () => {
     const eventSink = new FakeEventSink();
     const result = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: { ...defaultResolvedConfig, maxAgentCalls: 1 },
         cli: defaultCliOptions
@@ -206,7 +209,8 @@ describe("DefaultRuntimeRunner", () => {
     };
 
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -235,7 +239,8 @@ describe("DefaultRuntimeRunner", () => {
     };
 
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -259,7 +264,8 @@ describe("DefaultRuntimeRunner", () => {
     };
 
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -282,7 +288,8 @@ describe("DefaultRuntimeRunner", () => {
 
     const controller = new AbortController();
     const runPromise = runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions, signal: controller.signal },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions, signal: controller.signal },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -308,7 +315,8 @@ describe("DefaultRuntimeRunner", () => {
     };
 
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -330,7 +338,8 @@ describe("DefaultRuntimeRunner", () => {
     };
 
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -352,7 +361,8 @@ describe("DefaultRuntimeRunner", () => {
     };
 
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -375,7 +385,8 @@ describe("DefaultRuntimeRunner", () => {
 
     const cliOptions = { ...defaultCliOptions, failFast: true };
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: cliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: cliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -400,7 +411,8 @@ describe("DefaultRuntimeRunner", () => {
     };
 
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -426,7 +438,8 @@ describe("DefaultRuntimeRunner", () => {
     const executor = new FakeAgentExecutor();
     const cliOptions = { ...defaultCliOptions, concurrency: 5 };
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: cliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: cliOptions },
       { agentExecutor: executor, eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 

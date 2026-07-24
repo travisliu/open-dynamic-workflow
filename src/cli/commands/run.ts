@@ -14,10 +14,11 @@ import { loadSharedAgentRegistry } from "../../shared-agents/load.js";
 import { loadToolRegistry } from "../../tools/load.js";
 import { DefaultToolExecutor } from "../../tools/executor.js";
 import * as path from "node:path";
+import { stat } from "node:fs/promises";
 import { detectProjectInitHintContext, attachHintToError } from "../../errors/project-init-hint.js";
 import { resolveRunProfile } from "../profile-resolution.js";
-import { readRunInput } from "../run-input.js";
 import { createRecordedRunProfile } from "../run-input-profile.js";
+import { legacyRunsRoot, resolvePreviousRun } from "../artifact-paths.js";
 
 export interface RunCommandDeps {
   runtimeRunner: RuntimeRunner;
@@ -109,41 +110,21 @@ export async function runWorkflowService(
     diagnosticContext: strict ? "run-strict" : "run"
   });
 
-  // Detect if we are resuming and have a recorded profile
-  let recordedProfile: any = rawOptions.recordedProfile;
-  if (!recordedProfile && rawOptions.resume) {
-    try {
-      const { runInput } = await readRunInput(rawOptions.resume, rawOptions.out, cwd);
-      recordedProfile = runInput.profile;
-    } catch (err) {
-      if (err instanceof OpenDynamicWorkflowError && err.code === ErrorCode.PROFILE_VALIDATION_ERROR) {
-        throw err;
-      }
-      throw err;
-    }
-  }
-
   // Resolve profile before discovery
   const {
     profileRunAsCli,
     finalCliArgs,
     selection,
     contextSeed,
-    reportProfile,
-    resumedFromRecordedProfile
+    reportProfile
   } = await resolveRunProfile({
     cwd: baseConfig.cwd,
     configPath: baseConfig.configPath,
     baseConfig,
     rawOptions,
     explicitCliOverrides,
-    explicitArgs: parsedArgs,
-    recordedProfile
+    explicitArgs: parsedArgs
   });
-  
-  if (resumedFromRecordedProfile && reportProfile) {
-    reportProfile.resumedFromRecordedProfile = true;
-  }
 
   const mergedCliOverrides = { ...profileRunAsCli.config, ...explicitCliOverrides };
   if (
@@ -158,17 +139,29 @@ export async function runWorkflowService(
     }
   }
 
-  // Load final config
-  let config = baseConfig;
-  if (selection) {
-    config = await loadConfig({
-      cwd,
-      configPath: rawOptions.config,
-      outDir: rawOptions.out,
-      cli: mergedCliOverrides,
-      diagnosticContext: strict ? "run-strict" : "run"
-    });
-  }
+  // Reload after profile resolution so execution settings and runs-root provenance
+  // describe the same current profile selection.
+  const config = await loadConfig({
+    cwd,
+    configPath: rawOptions.config,
+    outDir: rawOptions.out,
+    cli: mergedCliOverrides,
+    diagnosticContext: strict ? "run-strict" : "run",
+    ...(selection ? {
+      selectedProfileName: selection.selected,
+      selectedProfile: selection.resolved,
+    } : {}),
+  });
+
+  const previousRunDir = rawOptions.resume !== undefined
+    ? (await resolvePreviousRun({
+      target: rawOptions.resume,
+      cwd: config.cwd,
+      effectiveRunsRoot: config.outDir,
+      legacyRunsRoot: legacyRunsRoot(config.cwd),
+      fs: { stat },
+    })).runDir
+    : undefined;
 
   const { precollectAllResourcesForLoad, checkDiscoveryPolicy } = await import("../../discovery/precollect.js");
 
@@ -284,8 +277,7 @@ export async function runWorkflowService(
   }
 
   const runIdGenerated = crypto.randomUUID();
-  const runOutDir = path.join(config.outDir, runIdGenerated);
-  const artifactStore = new FileSystemArtifactStore({ rootDir: config.outDir });
+  const artifactStore = new FileSystemArtifactStore();
 
   // Initialize abort controller early for tools and agents
   const abortController = new AbortController();
@@ -312,9 +304,9 @@ export async function runWorkflowService(
   };
 
   // Initialize artifact store before running so it's ready regardless of which runner is used.
-  await artifactStore.createRun({
+  const createdArtifacts = await artifactStore.createRun({
     runId: runIdGenerated,
-    outDir: runOutDir,
+    runsRoot: config.outDir,
     workflowPath: resolved.workflowFile,
     workflowSource: rootDefinition.parsedWorkflow.sourceText || "",
     workflowHash: parsed.sourceHash,
@@ -323,38 +315,47 @@ export async function runWorkflowService(
     openDynamicWorkflowVersion: parsed.meta.version || "0.0.0",
     cwd,
     configPath: rawOptions.config
-  });
+  } as any);
+  const runDir = (createdArtifacts as any)?.rootDir ?? artifactStore.getRunArtifacts().rootDir;
   await artifactStore.writeJson("run-input.json", {
-    schemaVersion: "open-dynamic-workflow.run-input.v1",
+    schemaVersion: "open-dynamic-workflow.run-input.v2",
     runId: runIdGenerated,
     workflowFile: resolved.workflowFile,
     requestedTarget: resolved.requestedTarget,
     targetKind: resolved.targetKind,
     workflowName: resolved.workflowName,
     cwd: config.cwd,
-    outDir: config.outDir,
     configPath: config.configPath,
-    args: finalCliArgs,
-    rawOptions: {
+    output: {
+      effectiveRunsRoot: config.outDir,
+      source: config._resolution?.outDir.source,
+      ...(config._resolution?.outDir.selectedProfile !== undefined ? {
+        selectedProfile: config._resolution.outDir.selectedProfile,
+      } : {}),
+      ...(rawOptions.out !== undefined ? { explicitCliOut: rawOptions.out } : {}),
+    },
+    invocation: {
       provider: rawOptions.provider,
       model: rawOptions.model,
-      arg: rawOptions.arg || [],
-      config: config.configPath,
-      cwd: config.cwd,
-      out: config.outDir,
+      args: [...(rawOptions.arg ?? [])],
       report: rawOptions.report,
       concurrency: rawOptions.concurrency,
       timeoutMs: rawOptions.timeoutMs,
       maxAgentCalls: rawOptions.maxAgentCalls,
-      resume: rawOptions.resume,
       noCache: noCache,
       failFast: config.failFast ?? false,
       verbose: !!rawOptions.verbose,
       thinkingEffort: rawOptions.thinkingEffort,
-      strict: strict
+      strict,
+      retryMaxAttempts: rawOptions.retryMaxAttempts,
+      retryDelayMs: rawOptions.retryDelayMs,
+      retryMaxDelayMs: rawOptions.retryMaxDelayMs,
+      retryBackoff: rawOptions.retryBackoff,
+      retryDisableDelay: rawOptions.retryDisableDelay,
+      noRetry: rawOptions.noRetry,
     },
     ...(selection ? {
-      profile: createRecordedRunProfile(selection, resumedFromRecordedProfile ? { resumedFromRecordedProfile: true } : undefined)
+      profile: createRecordedRunProfile(selection)
     } : {})
   });
 
@@ -414,7 +415,7 @@ export async function runWorkflowService(
     runId: runIdGenerated,
     meta: parsed.meta,
     workflow: workflowIdentity,
-    artifactsDir: runOutDir
+    artifactsDir: runDir
   });
 
   const defaultRunner = new DefaultRuntimeRunner();
@@ -432,12 +433,11 @@ export async function runWorkflowService(
         model: rawOptions.model,
         args: finalCliArgs,
         cwd: config.cwd,
-        outDir: runOutDir,
+        outDir: config.outDir,
         report: config.reporting.mode,
         concurrency: config.concurrency,
         timeoutMs: config.timeoutMs,
         maxAgentCalls: config.maxAgentCalls,
-        resume: rawOptions.resume,
         noCache,
         dryRun: false,
         failFast: config.failFast ?? false,
@@ -448,7 +448,12 @@ export async function runWorkflowService(
       sharedAgentRegistry,
       toolRegistry,
       profileContextSeed: contextSeed,
-      profileReport: reportProfile
+      profileReport: reportProfile,
+      run: {
+        runId: runIdGenerated,
+        runDir,
+        ...(previousRunDir !== undefined ? { previousRunDir } : {}),
+      },
     }, (() => {
       let pipelineCounter = 0;
       return {
@@ -520,4 +525,3 @@ export async function runCommand(input: RunCommandInput): Promise<void> {
     throw attachHintToError(error, hintContext);
   }
 }
-

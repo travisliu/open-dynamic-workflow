@@ -53,7 +53,7 @@ describe("Profile resume integration tests", () => {
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
   });
 
-  it("resumes with recorded profile even if the original profiles file is deleted", async () => {
+  it("requires the recorded profile name to remain available for standalone resume", async () => {
     const profilesPath = path.join(TEMP_DIR, "profiles.yaml");
     await fs.writeFile(
       profilesPath,
@@ -93,15 +93,12 @@ profiles:
     expect(runsAfterRun1.length).toBe(1);
     const runId1 = runsAfterRun1[0]!;
 
-    const runInput1 = JSON.parse(await fs.readFile(path.join(TEMP_DIR, runId1, "run-input.json"), "utf8"));
-    const originalHash = runInput1.profile.hash;
-    expect(originalHash).toBeDefined();
-
     // 2. Modify and delete the profiles file
     await fs.writeFile(profilesPath, "corrupted content", "utf8");
     await fs.unlink(profilesPath);
 
-    // 3. odw resume should succeed reusing the recorded profile
+    // 3. Standalone resume fails closed because the recorded name cannot be
+    // resolved from the current catalog.
     const resultResume = await runCli([
       "resume",
       runId1,
@@ -109,20 +106,9 @@ profiles:
       TEMP_DIR
     ]);
 
-    expect(resultResume.error).toBeNull();
+    expect(resultResume.error).toMatchObject({ code: "CLI_USAGE_ERROR" });
 
-    // Verify a new run was created for the resume
-    const runsAfterResume = (await fs.readdir(TEMP_DIR)).filter(r => r !== "profiles.yaml");
-    expect(runsAfterResume.length).toBe(2);
-    const runId2 = runsAfterResume.find(r => r !== runId1)!;
-
-    const runInput2 = JSON.parse(await fs.readFile(path.join(TEMP_DIR, runId2, "run-input.json"), "utf8"));
-    expect(runInput2.profile).toBeDefined();
-    expect(runInput2.profile.resumedFromRecordedProfile).toBe(true);
-    expect(runInput2.profile.hash).toBe(originalHash);
-    expect(runInput2.profile.resolved.args.val).toBe("my-arg");
-
-    // 4. odw run --resume should also succeed reusing the recorded profile
+    // 4. run --resume uses the previous run only for cache input.
     const resultRunResume = await runCli([
       "run",
       workflowPath,
@@ -135,13 +121,10 @@ profiles:
     expect(resultRunResume.error).toBeNull();
 
     const runsAfterRunResume = (await fs.readdir(TEMP_DIR)).filter(r => r !== "profiles.yaml");
-    expect(runsAfterRunResume.length).toBe(3);
-    const runId3 = runsAfterRunResume.find(r => r !== runId1 && r !== runId2)!;
-
-    const runInput3 = JSON.parse(await fs.readFile(path.join(TEMP_DIR, runId3, "run-input.json"), "utf8"));
-    expect(runInput3.profile).toBeDefined();
-    expect(runInput3.profile.resumedFromRecordedProfile).toBe(true);
-    expect(runInput3.profile.hash).toBe(originalHash);
+    expect(runsAfterRunResume.length).toBe(2);
+    const runId2 = runsAfterRunResume.find(r => r !== runId1)!;
+    const runInput2 = JSON.parse(await fs.readFile(path.join(TEMP_DIR, runId2, "run-input.json"), "utf8"));
+    expect(runInput2.profile).toBeUndefined();
 
     // 5. odw run --resume with explicit --profile override should try to resolve fresh profile
     // and fail because the profiles file is deleted.

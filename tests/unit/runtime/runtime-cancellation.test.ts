@@ -99,6 +99,7 @@ describe("Runtime cancellation behavior", () => {
 
     const result = await runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: defaultConfig,
         cli: defaultCliOptions,
@@ -133,6 +134,7 @@ describe("Runtime cancellation behavior", () => {
 
     const runPromise = runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: defaultConfig,
         cli: defaultCliOptions,
@@ -174,6 +176,7 @@ describe("Runtime cancellation behavior", () => {
 
     const runPromise = runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: defaultConfig,
         cli: defaultCliOptions,
@@ -240,6 +243,7 @@ describe("Runtime cancellation behavior", () => {
 
     const runPromise = runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: defaultConfig,
         cli: defaultCliOptions,
@@ -280,6 +284,7 @@ describe("Runtime cancellation behavior", () => {
 
     const runPromise = runner.run(
       {
+        run: { runId: "test-run", runDir: "/tmp/test-run" },
         parsedWorkflow,
         config: { ...defaultConfig, concurrency: 2 },
         cli: { ...defaultCliOptions, concurrency: 2 },

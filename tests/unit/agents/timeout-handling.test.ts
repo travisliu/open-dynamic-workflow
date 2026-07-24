@@ -40,7 +40,7 @@ describe("Timeout handling (Unit)", () => {
     
     await store.createRun({
       runId,
-      outDir: runOutDir,
+      runsRoot: TEST_OUT_DIR,
       workflowPath: "dummy.ts",
       workflowSource: "",
       workflowHash: "hash",

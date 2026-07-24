@@ -3,11 +3,13 @@ import { parseConfigYaml } from "./yaml.js";
 import { ErrorCode } from "../errors/codes.js";
 import { OpenDynamicWorkflowError } from "../errors/types.js";
 import { DEFAULT_CONFIG } from "./defaults.js";
-import { mergeConfig, type ConfigCliOverrides } from "./merge.js";
+import { mergeConfigWithMetadata, type ConfigCliOverrides } from "./merge.js";
 import { validateConfig, validateRetryConfigInput } from "./schema.js";
 import type { ResolvedOpenDynamicWorkflowConfig, ConfigDiagnosticContext, DiscoveryCliOverrides, ExecutionDefaultLayers, RetryCliOverrides } from "./types.js";
 import type { ThinkingEffort } from "../types/thinking-effort.js";
 import { resolveUserPath, resolveProjectPath } from "../cli/paths.js";
+import { resolveArtifactRunsRoot } from "../cli/artifact-paths.js";
+import type { RunProfileConfig } from "./types.js";
 import { normalizeDiscoveryConfig } from "./path-discovery.js";
 import { getFatalConfigDiagnostics } from "./path-diagnostics.js";
 import { resolveProviderAliases } from "./provider-aliases.js";
@@ -17,6 +19,8 @@ export interface LoadConfigInput {
   cwd: string;
   configPath?: string;
   outDir?: string;
+  selectedProfileName?: string;
+  selectedProfile?: RunProfileConfig;
   cli: ConfigCliOverrides;
   diagnosticContext?: ConfigDiagnosticContext;
   discoveryCliOverrides?: DiscoveryCliOverrides;
@@ -96,7 +100,8 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
   }
 
   validateRetryConfigInput(fileConfig?.retry);
-  const merged = mergeConfig(DEFAULT_CONFIG, fileConfig || {}, input.cli);
+  const mergedResult = mergeConfigWithMetadata(DEFAULT_CONFIG, fileConfig || {}, input.cli);
+  const merged = mergedResult.config;
   validateConfig(merged);
 
   const aliasResult = resolveProviderAliases({
@@ -180,9 +185,14 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
     );
   }
 
-  const resolvedOutDir = input.outDir 
-    ? resolveUserPath(input.outDir, absoluteCwd) 
-    : resolveProjectPath(".open-dynamic-workflow/runs", absoluteCwd);
+  const resolvedOutDir = resolveArtifactRunsRoot({
+    cwd: absoluteCwd,
+    ...(input.outDir !== undefined ? { cliOutDir: input.outDir } : {}),
+    ...(input.selectedProfileName !== undefined ? { selectedProfileName: input.selectedProfileName } : {}),
+    ...(input.selectedProfile !== undefined ? { selectedProfile: input.selectedProfile } : {}),
+    ...(mergedResult.explicit.outDir ? { fileOutDir: (fileConfig as any).outDir } : {}),
+    builtInOutDir: DEFAULT_CONFIG.outDir ?? ".open-dynamic-workflow/runs",
+  });
 
   const result: ResolvedOpenDynamicWorkflowConfig = {
     ...merged,
@@ -217,7 +227,8 @@ export async function loadConfig(input: LoadConfigInput): Promise<ResolvedOpenDy
       maxLoopRounds: merged.workflow.maxLoopRounds ?? 20,
     },
     cwd: absoluteCwd,
-    outDir: resolvedOutDir,
+    outDir: resolvedOutDir.path,
+    _resolution: { outDir: resolvedOutDir },
     _normalizedDiscovery: discovery,
     _configDiagnostics: diagnostics,
     retry: merged.retry as any,

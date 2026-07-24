@@ -78,7 +78,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -120,7 +121,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -153,7 +155,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -181,7 +184,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -207,7 +211,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -238,7 +243,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -280,7 +286,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result1 = await runner.run(
-      { parsedWorkflow: run1, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: run1, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -289,7 +296,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result2 = await runner.run(
-      { parsedWorkflow: run2, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow: run2, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -319,7 +327,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -350,7 +359,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -381,7 +391,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -414,7 +425,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -444,7 +456,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -477,7 +490,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 
@@ -511,7 +525,8 @@ describe("Workflow Context Top-Level Runtime Integration", () => {
 
     // Act
     const result = await runner.run(
-      { parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
+      { run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow, config: defaultResolvedConfig, cli: defaultCliOptions },
       { agentExecutor: new FakeAgentExecutor(), eventSink: new FakeEventSink(), clock: mockClock, idGenerator: mockIdGenerator }
     );
 

@@ -44,7 +44,7 @@ describe("DefaultAgentExecutor stress and edge cases", () => {
     const runId = "test-run-split-secret";
     await store.createRun({
       runId,
-      outDir: path.join(TEST_OUT_DIR, runId),
+      runsRoot: TEST_OUT_DIR,
       workflowPath: "dummy.ts",
       workflowSource: "",
       workflowHash: "hash",
@@ -96,7 +96,7 @@ describe("DefaultAgentExecutor stress and edge cases", () => {
     const runId = "test-run-large-output";
     await store.createRun({
       runId,
-      outDir: path.join(TEST_OUT_DIR, runId),
+      runsRoot: TEST_OUT_DIR,
       workflowPath: "dummy.ts",
       workflowSource: "",
       workflowHash: "hash",
@@ -142,7 +142,7 @@ describe("DefaultAgentExecutor stress and edge cases", () => {
 
     const store = new FileSystemArtifactStore({ rootDir: TEST_OUT_DIR });
     const runId = "test-run-io-fail";
-    await store.createRun({ runId, outDir: path.join(TEST_OUT_DIR, runId), workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
+    await store.createRun({ runId, runsRoot: TEST_OUT_DIR, workflowPath: "dummy.ts", workflowSource: "", workflowHash: "hash", resolvedConfig: config, openDynamicWorkflowVersion: "1.0.0", cwd: process.cwd() });
     
     // Mock appendText to fail
     (store as any).appendText = async () => {

@@ -34,6 +34,7 @@ function resolveInsideRoot(rootDir: string, relativePath: string): string {
 
 export class FileSystemArtifactStore implements ArtifactStore {
   private runRootDir?: string;
+  private runsRoot?: string;
   private runId?: string;
   private manifestObj?: RunManifest;
   private options: { rootDir?: string };
@@ -43,12 +44,9 @@ export class FileSystemArtifactStore implements ArtifactStore {
   }
 
   async createRun(input: CreateRunInput): Promise<RunArtifacts> {
-    const outDir = input.outDir || this.options.rootDir || defaultRunsDir();
-    const runRootDir = outDir.endsWith(input.runId) ? path.resolve(outDir) : path.resolve(outDir, input.runId);
-    this.runRootDir = runRootDir;
-    this.runId = input.runId;
+    const { runsRoot, runRootDir } = this.resolveRunDirectory(input.runsRoot, input.runId);
 
-    await fs.mkdir(runRootDir, { recursive: true });
+    await this.writeInitialArtifact(`create run directory`, runRootDir, () => fs.mkdir(runRootDir, { recursive: true }));
 
     // Initial manifest
     const manifestObj = createInitialManifest({
@@ -60,32 +58,39 @@ export class FileSystemArtifactStore implements ArtifactStore {
       cwd: input.cwd,
       configPath: input.configPath
     });
-    this.manifestObj = manifestObj;
-
     const manifestPath = path.join(runRootDir, "manifest.json");
-    await fs.writeFile(manifestPath, JSON.stringify(manifestObj, null, 2), "utf8");
+    await this.writeInitialArtifact("write manifest", manifestPath, () => fs.writeFile(manifestPath, JSON.stringify(manifestObj, null, 2), "utf8"));
 
     // Workflow input
     const workflowInputPath = path.join(runRootDir, "workflow.input.ts");
-    await fs.writeFile(workflowInputPath, input.workflowSource, "utf8");
+    await this.writeInitialArtifact("write workflow input", workflowInputPath, () => fs.writeFile(workflowInputPath, input.workflowSource, "utf8"));
 
     // Resolved config
     const resolvedConfigPath = path.join(runRootDir, "config.resolved.json");
     const projectedConfig = toResolvedConfigArtifact(input.resolvedConfig);
-    await fs.writeFile(resolvedConfigPath, JSON.stringify(projectedConfig, null, 2), "utf8");
+    await this.writeInitialArtifact("write resolved config", resolvedConfigPath, () => fs.writeFile(resolvedConfigPath, JSON.stringify(projectedConfig, null, 2), "utf8"));
 
     // Resume/cache artifacts
-    await fs.writeFile(path.join(runRootDir, "run-input.json"), "{}", "utf8");
-    await fs.writeFile(path.join(runRootDir, "calls.jsonl"), "", "utf8");
-    await fs.writeFile(
-      path.join(runRootDir, "cache-index.json"),
+    const runInputPath = path.join(runRootDir, "run-input.json");
+    await this.writeInitialArtifact("write run input", runInputPath, () => fs.writeFile(runInputPath, "{}", "utf8"));
+    const callsPath = path.join(runRootDir, "calls.jsonl");
+    await this.writeInitialArtifact("write calls log", callsPath, () => fs.writeFile(callsPath, "", "utf8"));
+    const cacheIndexPath = path.join(runRootDir, "cache-index.json");
+    await this.writeInitialArtifact("write cache index", cacheIndexPath, () => fs.writeFile(
+      cacheIndexPath,
       JSON.stringify({ schemaVersion: "open-dynamic-workflow.cache-index.v1", entries: [] }, null, 2),
       "utf8"
-    );
+    ));
 
     // Events file
     const eventsPath = path.join(runRootDir, "events.jsonl");
-    await fs.writeFile(eventsPath, "", "utf8");
+    await this.writeInitialArtifact("write events log", eventsPath, () => fs.writeFile(eventsPath, "", "utf8"));
+
+    // Mark the store as created only after every initial artifact has been written.
+    this.runsRoot = runsRoot;
+    this.runRootDir = runRootDir;
+    this.runId = input.runId;
+    this.manifestObj = manifestObj;
 
     return this.getRunArtifacts();
   }
@@ -153,12 +158,13 @@ export class FileSystemArtifactStore implements ArtifactStore {
   }
 
   getRunArtifacts(): RunArtifacts {
-    if (!this.runRootDir || !this.runId) {
+    if (!this.runRootDir || !this.runsRoot || !this.runId) {
       throw new Error("Run has not been created yet.");
     }
     const rootDir = this.runRootDir;
     return {
       runId: this.runId,
+      runsRoot: this.runsRoot,
       rootDir,
       manifestPath: path.join(rootDir, "manifest.json"),
       workflowInputPath: path.join(rootDir, "workflow.input.ts"),
@@ -178,5 +184,54 @@ export class FileSystemArtifactStore implements ArtifactStore {
         return path.join(rootDir, "workflows", safeFileName(workflowInvocationId));
       }
     };
+  }
+
+  private resolveRunDirectory(inputRunsRoot: string, runId: string): { runsRoot: string; runRootDir: string } {
+    if (typeof inputRunsRoot !== "string" || !path.isAbsolute(inputRunsRoot)) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.ARTIFACT_WRITE_FAILED,
+        `Artifact runs root must be an absolute path: ${String(inputRunsRoot)}`
+      );
+    }
+    const trimmedRunId = typeof runId === "string" ? runId.trim() : "";
+    if (
+      typeof runId !== "string" ||
+      trimmedRunId === "" ||
+      trimmedRunId === "." ||
+      trimmedRunId === ".." ||
+      runId.includes("/") ||
+      runId.includes("\\")
+    ) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.ARTIFACT_WRITE_FAILED,
+        `Invalid artifact run ID "${String(runId)}" for runs root "${inputRunsRoot}"`
+      );
+    }
+
+    const runsRoot = path.resolve(inputRunsRoot);
+    const runRootDir = path.resolve(runsRoot, runId);
+    const relative = path.relative(runsRoot, runRootDir);
+    if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.ARTIFACT_WRITE_FAILED,
+        `Invalid artifact run ID "${runId}" for runs root "${inputRunsRoot}"`
+      );
+    }
+    return { runsRoot, runRootDir };
+  }
+
+  private async writeInitialArtifact(operation: string, target: string, action: () => Promise<unknown>): Promise<void> {
+    try {
+      await action();
+    } catch (error) {
+      if (error instanceof OpenDynamicWorkflowError) {
+        throw error;
+      }
+      throw new OpenDynamicWorkflowError(
+        ErrorCode.ARTIFACT_WRITE_FAILED,
+        `Failed to ${operation} at ${target}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error }
+      );
+    }
   }
 }

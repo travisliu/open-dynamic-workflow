@@ -314,7 +314,7 @@ profiles:
     ]);
 
     expect(resumeResult.error).toBeNull();
-    expect(resumeResult.stdout).toContain("profile:   fast (reused from recorded run input)");
+    expect(resumeResult.stdout).toContain("profile:   fast");
 
     // Check JSON output of resumed run
     const resumeJsonResult = await runCli([
@@ -330,7 +330,7 @@ profiles:
     const parsedResume = JSON.parse(resumeJsonResult.stdout);
     expect(parsedResume.profile).toBeDefined();
     expect(parsedResume.profile.selected).toBe("fast");
-    expect(parsedResume.profile.source).toBe("recorded");
-    expect(parsedResume.profile.resumedFromRecordedProfile).toBe(true);
+    expect(parsedResume.profile.source).toBe("config");
+    expect(parsedResume.profile.resumedFromRecordedProfile).toBeUndefined();
   });
 });

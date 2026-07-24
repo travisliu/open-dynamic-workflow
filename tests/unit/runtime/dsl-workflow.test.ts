@@ -51,7 +51,8 @@ describe("workflow() DSL", () => {
     } as any;
 
     const result = await runner.run({
-      parsedWorkflow,
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow,
       workflowRegistry: registry,
       config: { concurrency: 1 } as any,
       cli: { args: {} } as any
@@ -102,7 +103,8 @@ describe("workflow() DSL", () => {
     } as any;
 
     const result = await runner.run({
-      parsedWorkflow,
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow,
       workflowRegistry: registry,
       config: { concurrency: 1 } as any,
       cli: { args: { x: "parent-x" } } as any
@@ -307,7 +309,8 @@ describe("workflow() DSL", () => {
     });
 
     const result = await runner.run({
-      parsedWorkflow,
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow,
       workflowRegistry: registry,
       config: { concurrency: 1 } as any,
       cli: {
@@ -503,7 +506,8 @@ describe("workflow() DSL", () => {
     });
 
     const result = await runner.run({
-      parsedWorkflow,
+      run: { runId: "test-run", runDir: "/tmp/test-run" },
+        parsedWorkflow,
       workflowRegistry: registry,
       config: { concurrency: 1 } as any,
       cli: {

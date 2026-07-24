@@ -125,9 +125,10 @@ export default async () => {
     expect(runInputStr).not.toContain("secret-key-123");
     expect(runInputStr).not.toContain("bar");
     
-    expect(runInput.schemaVersion).toBe("open-dynamic-workflow.run-input.v1");
+    expect(runInput.schemaVersion).toBe("open-dynamic-workflow.run-input.v2");
     expect(runInput.runId).toBe(runId);
-    expect(runInput.rawOptions).toBeDefined();
+    expect(runInput.output.effectiveRunsRoot).toBe(runsDir);
+    expect(runInput.invocation.args).toEqual([]);
     
     // Check for "secrets" - verify it doesn't dump process.env
     expect(runInput.env).toBeUndefined(); 
