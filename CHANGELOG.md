@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-07-29
+
+### Added
+
+- **Run-Scoped Workflow Context**: Added the global `context` API for JSON-safe run state. Workflows, child workflows, pipeline stages, and loop rounds can read, write, merge, append, delete, snapshot, and scope state by key path. Context operations validate paths and values, enforce size limits, and reject prototype-pollution keys.
+- **Configuration Profiles**: Added named profiles with inheritance and external profile catalogs. Select profiles with `--profile` and load catalogs with `--profiles`; resolved profile metadata is included in artifacts and reports to make runs and resumes auditable.
+- **Provider Aliases**: Added validated, inheritable execution presets through `providerAliases`. An `agent()` provider reference can now resolve to an alias that supplies a concrete provider, model, thinking effort, timeout, and retry policy without exposing provider command or permission settings to workflow code.
+- **Provider-Selection Reporting and Cache Safety**: Reports, JSONL events, and artifacts now record requested and resolved provider selections, alias chains, setting sources, and diagnostics. Alias identity and digest are included in agent cache fingerprints so relevant configuration changes invalidate cached calls.
+- **Configurable Artifact Runs Roots**: Added global and profile `outDir` settings plus the `run --out` and `resume --out` overrides. Runs use the unambiguous `<runsRoot>/<runId>` layout, and new run-input records preserve output-root provenance while remaining compatible with existing v1 records.
+- **Artifact-Root Doctor Checks**: `doctor` now validates the resolved global or profile artifact runs root, creates it when needed, checks writeability with a temporary exclusive probe, and reports the resolved location.
+- **Host-Compatible Tool Runtime Loading**: Tools can use the host-provided runtime globals and compatible module loading path. Project initialization now generates a `globals.d.ts` declaration file for `defineTool`.
+- **Documentation Website**: Added the project documentation site and GitHub Pages deployment workflow.
+
+### Changed & Improved
+
+- **Simplified Workflow Context Model**: Context is now one shared run-scoped global store, accessed as `context`; child workflows and callbacks share it directly. The previously proposed per-construct context options, overlays, inheritance rules, and `ctx.context` form are not supported.
+- **Artifact-Root Resolution and Resume Behavior**: Runs-root selection now has explicit precedence (`--out`, selected profile, top-level configuration, then the default). Bare resume IDs use a bounded current-root then legacy-root lookup, explicit paths are used directly, and every continuation writes to a fresh directory under the current effective root.
+- **No-Write Inspection Commands**: Normal `init`, `list`, `validate`, and dry-run commands no longer create or readiness-probe artifact runs roots. Generated configuration explicitly includes the default runs root.
+- **More Deterministic Tool Loading**: Tool definitions are loaded through a compatibility layer that supplies runtime globals while preserving isolation and serialized access to shared runtime state. Templates and initialization output were updated for the current tool authoring model.
+- **Provider Resolution Is Authoritative**: Provider, model, thinking-effort, timeout, and retry resolution is centralized before execution. CLI validation, doctor output, workflow validation, adapters, retries, artifacts, and reporters use the same resolved selection.
+- **Release and Packaging Hardening**: The build now copies runtime assets needed by packed CLI installations, and package-level acceptance coverage exercises the packed executable.
+
+### Fixed
+
+- **Workflow Context Boundary Hardening**: Hardened the workflow sandbox context boundary against prototype-pollution inputs.
+- **Artifact-Root Safety**: Prevented duplicate run-ID path nesting and unintended output-root writes during inspection commands.
+
 ## [0.5.0] - 2026-07-07
 
 ### Added
