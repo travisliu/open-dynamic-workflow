@@ -22,6 +22,7 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
   const dsl = createDsl(runtime);
   const activeInvocation = getActiveWorkflowInvocation();
   const args = activeInvocation ? activeInvocation.args : runtime.args;
+  const contextFacade = createSandboxContextFacade(runtime.contextRuntime.createFacade());
 
   // Use a clean object for the sandbox global scope
   const sandbox = Object.create(null);
@@ -74,7 +75,7 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
     cwd: { value: runtime.cwd, enumerable: true, configurable: false, writable: false },
     runId: { value: runtime.runId, enumerable: true, configurable: false, writable: false },
     artifactsDir: { value: runtime.artifactsDir, enumerable: true, configurable: false, writable: false },
-    context: { value: createSandboxContextFacade(runtime.contextRuntime.createFacade()), enumerable: true, configurable: false, writable: false },
+    context: { value: contextFacade, enumerable: true, configurable: false, writable: false },
     signal: {
       get: () => {
         const activeInvocation = getActiveWorkflowInvocation();
@@ -97,6 +98,30 @@ export function createSandboxContext(runtime: RuntimeState): vm.Context {
     
     // Placeholder for the default export capture. 
     __default: { value: undefined, enumerable: false, configurable: false, writable: true }
+  });
+
+  // Node 20's contextified global proxy reports false from
+  // Object.prototype.propertyIsEnumerable even for enumerable own properties.
+  // Keep globalThis limited to already exposed bindings while preserving aliases.
+  const globalThisFacade = Object.create(null);
+  for (const key of [
+    "agent", "tool", "parallel", "phase", "log", "pipeline", "workflow", "loop",
+    "args", "cwd", "runId", "artifactsDir", "context", "signal", "setTimeout", "clearTimeout", "Promise"
+  ]) {
+    Object.defineProperty(globalThisFacade, key, Object.getOwnPropertyDescriptor(sandbox, key)!);
+  }
+  Object.defineProperty(globalThisFacade, "globalThis", {
+    value: globalThisFacade,
+    enumerable: false,
+    configurable: false,
+    writable: false
+  });
+  Object.freeze(globalThisFacade);
+  Object.defineProperty(sandbox, "globalThis", {
+    value: globalThisFacade,
+    enumerable: false,
+    configurable: false,
+    writable: false
   });
 
   const context = vm.createContext(sandbox);

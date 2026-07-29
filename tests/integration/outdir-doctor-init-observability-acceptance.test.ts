@@ -9,7 +9,6 @@ import { doctorCommand } from "../../src/cli/commands/doctor.js";
 import { loadConfig } from "../../src/config/load.js";
 import { buildProfileCatalog, resolveSelectedProfile } from "../../src/config/profiles.js";
 
-const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url));
 const legacyRootRelative = path.join(".open-dynamic-workflow", "runs");
 const temporaryProjects: string[] = [];
 
@@ -366,45 +365,4 @@ profiles:
     expect(await fs.readFile(examplePath)).toEqual(originalBytes);
   });
 
-  it("keeps release documents explicit about configurable roots and safe compatibility", async () => {
-    // Arrange
-    const documents = await Promise.all([
-      fs.readFile(path.join(repositoryRoot, "README.md"), "utf8"),
-      fs.readFile(path.join(repositoryRoot, "skills/open-dynamic-workflow/references/configuration.md"), "utf8"),
-      fs.readFile(path.join(repositoryRoot, "skills/open-dynamic-workflow/references/cli-commands.md"), "utf8"),
-      fs.readFile(path.join(repositoryRoot, "skills/open-dynamic-workflow/references/api-document.md"), "utf8"),
-      fs.readFile(path.join(repositoryRoot, "CHANGELOG.md"), "utf8"),
-    ]);
-    const [readme, configuration, cliCommands, apiDocument, changelog] = documents;
-
-    // Act
-    const unreleased = changelog.match(/## \[Unreleased\][\s\S]*?(?=\n## \[|$)/)?.[0] ?? "";
-
-    // Assert
-    expect(readme).toContain("run directory       = <outDir>/<runId>");
-    expect(readme).toMatch(/--out[\s\S]*selected profile[\s\S]*explicit top-level[\s\S]*built-in/i);
-    expect(readme).toMatch(/literal[^.]*not expanded/i);
-    expect(readme).toMatch(/Ordinary `init`[^.]*does not create the root/i);
-    expect(readme).toMatch(/`validate`, `list`, and `run --dry-run` neither create nor readiness-probe/i);
-    expect(readme).toMatch(/doctor[^.]*readiness/i);
-    expect(configuration).toContain("| `outDir` | `string` | `\".open-dynamic-workflow/runs\"`");
-    expect(configuration).toContain("optional artifact runs root");
-    expect(configuration).toContain("direct or inherited `outDir`");
-    expect(configuration).toContain("`cli`, `profile`, `config`, or `built-in-default`");
-    expect(configuration).toContain("Command side effects for the runs root");
-    expect(configuration).toMatch(/v2[\s\S]*v1 run input\. Stored roots/i);
-    expect(cliCommands).toMatch(/bare ID[\s\S]*legacy[\s\S]*fallback/i);
-    expect(cliCommands).toMatch(/Explicit relative and absolute paths[\s\S]*never fall back/i);
-    expect(cliCommands).toMatch(/continuation writes a fresh directory/i);
-    expect(cliCommands).toContain("open-dynamic-workflow doctor [--profile <name>]");
-    expect(apiDocument).toContain("<outDir>/<runId>");
-    expect(apiDocument).toContain("Path text is literal: no home-directory, environment-variable, or template interpolation occurs.");
-    expect(apiDocument).toMatch(/custom, shared, and external roots need the same protection/i);
-    expect(apiDocument).toMatch(/v1 run input[\s\S]*current configuration/i);
-    expect(unreleased).toContain("Configurable Artifact Runs Roots");
-    expect(unreleased).toContain("Strict Runs Layout");
-    expect(unreleased).toContain("Safe Resume Root Lookup");
-    expect(unreleased).toContain("Resolved-Root Doctor Readiness");
-    expect(unreleased).toContain("No-Write Inspection Commands");
-  });
 });

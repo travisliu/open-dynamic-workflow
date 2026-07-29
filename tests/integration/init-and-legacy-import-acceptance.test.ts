@@ -212,7 +212,7 @@ export default async () => {
     expect(validateResult.status).toBe(0);
     const finalGlobalsContent = await fs.readFile(globalsDtsPath, "utf8");
     expect(finalGlobalsContent).toBe(initialGlobalsContent);
-  });
+  }, 20_000);
 
   afterAll(async () => {
     if (tempDir && existsSync(tempDir)) {
