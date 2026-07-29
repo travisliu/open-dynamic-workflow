@@ -2,21 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
-### Added
-
-- **Configurable Artifact Runs Roots**: Added global and profile `outDir` settings with source-aware precedence and provenance: CLI override, selected profile, explicit config, then the built-in default.
-- **Strict Runs Layout**: Runs now use the unambiguous `<runsRoot>/<runId>` layout, with a fresh current-root destination for each continuation.
-- **Safe Resume Root Lookup**: Bare run IDs use a bounded current-root then legacy-root fallback; explicit paths are used directly without fallback.
-- **Run-Input Provenance Compatibility**: New v2 run input records output-root audit metadata while existing v1 run inputs remain readable; historical roots and snapshots remain audit-only.
-- **Resolved-Root Doctor Readiness**: Doctor checks the resolved global/profile root, creates a missing root when needed, and cleans up its writeability probe.
-- **Runs-Root Observability**: Generated init configuration includes the explicit default root, and verbose dry-run reports root source and profile selection.
-
-### Changed & Improved
-
-- **No-Write Inspection Commands**: Ordinary init, validate, list, and dry-run do not create or readiness-probe artifact runs roots.
-
 ## [0.5.0] - 2026-07-07
 
 ### Added
