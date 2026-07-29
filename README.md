@@ -21,10 +21,6 @@ Natural-language prompts are flexible, but they are not always reliable for repe
 
 A workflow script defines which agents run, how they are coordinated, what outputs are expected, and how failures are handled. This gives teams more stable execution than ad-hoc prompting, while making workflows easier to review, debug, reuse, and maintain.
 
-### Workflow state
-
-Each workflow run receives exactly one JSON-safe global `context` store. Distinction between global `context` and callback `ctx`: use `context` for run-scoped workflow state, while callback `ctx` provides operational helpers such as `ctx.agent()` and `ctx.workflow()`.
-
 ## Start with an AI-generated workflow
 
 To get started quickly, you can describe the workflow you want in natural language to an AI coding assistant to generate the workflow script. Once generated, use the CLI to validate and run it:
@@ -290,48 +286,6 @@ The run ID is appended exactly once.
 ```
 
 Artifacts are always enabled so failed or partial runs remain debuggable.
-
-### Artifact runs root
-
-The effective `outDir` is selected in this order:
-
-1. Current `--out`
-2. Selected profile's direct or inherited `outDir`
-3. Explicit top-level config `outDir`
-4. Built-in `.open-dynamic-workflow/runs`
-
-Relative roots are normalized from the active `--cwd`; absolute roots may be outside the project. Values are literal path text: `~`, `$VAR`, `%VAR%`, and template-looking strings are not expanded.
-
-```bash
-# Select a profile root.
-open-dynamic-workflow run review --profile ci
-
-# Override every configured root for this invocation.
-open-dynamic-workflow run review --out .artifacts/manual-runs
-
-# Inspect the resolved root, source, and selected profile without writing it.
-open-dynamic-workflow run review --dry-run --verbose --profile ci
-
-# Check the selected profile's root for readiness.
-open-dynamic-workflow doctor --profile ci
-```
-
-Verbose command output identifies the resolved `Artifacts root`, `Output-root source` (`cli`, `profile`, `config`, or `built-in-default`), and `Selected profile`. A selected profile can still fall through to a global or built-in root, so these fields are intentionally separate.
-
-Ordinary `init` writes the built-in `outDir` key but does not create the root. `validate`, `list`, and `run --dry-run` neither create nor readiness-probe it. Normal and continuation runs create their fresh run directory lazily. `doctor` is the explicit readiness command: it may create a missing root, probe write access, and removes its temporary probe. `init --run-smoke-test` is an exception because it starts a real run.
-
-For resume, a bare ID checks the effective current root and then the legacy default root only when those differ. It does not search profiles or historical roots. Explicit paths never fall back:
-
-```bash
-# After changing the current runs root, find a prior run by bare ID.
-open-dynamic-workflow run review --resume <previous-run-id>
-
-# Explicit relative and absolute previous-run paths are used directly.
-open-dynamic-workflow resume .open-dynamic-workflow/runs/<runId>
-open-dynamic-workflow resume /srv/odw-runs/<runId>
-```
-
-A continuation always writes a new run directory under the current effective root, never into the previous run directory.
 
 
 ## Configuration
